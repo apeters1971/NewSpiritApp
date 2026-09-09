@@ -9,6 +9,8 @@ let catalog = { roles: [], categories: [] };
 let state = { users: [], dates: [], online: 0 };
 let selectedUser = "";
 let selectedDate = "";
+let pollRows = [];
+let pollFrozen = false;
 
 async function api(path, opts = {}) {
   const res = await fetch(path, {
@@ -63,6 +65,58 @@ function formatWhen(iso) {
   return new Date(iso).toLocaleString(I18N.locale(), {
     weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
   });
+}
+
+function formatRange(start, end) {
+  let s = formatWhen(start);
+  if (end) s += " – " + formatWhen(end);
+  return s;
+}
+
+function renderPollRows() {
+  const box = document.getElementById("poll-options");
+  box.innerHTML = pollRows.map((row, i) => `
+    <div class="poll-row">
+      <label>${I18N.t("optionStart")}
+        <input type="datetime-local" data-poll="${i}" data-field="start" value="${row.startsAt}" ${pollFrozen ? "disabled" : ""} />
+      </label>
+      <label>${I18N.t("optionEnd")}
+        <input type="datetime-local" data-poll="${i}" data-field="end" value="${row.endsAt}" ${pollFrozen ? "disabled" : ""} />
+      </label>
+      <button type="button" class="btn ghost" data-remove-poll="${i}" ${pollFrozen ? "disabled" : ""}>${I18N.t("removePollOption")}</button>
+    </div>`).join("");
+  syncPollMode();
+  document.getElementById("btn-add-poll").hidden = pollFrozen;
+}
+
+function syncPollMode() {
+  const filled = [...document.querySelectorAll("#poll-options [data-field=start]")].filter((el) => el.value).length;
+  const pollMode = filled >= 2 && !pollFrozen;
+  document.getElementById("date-start-wrap").hidden = pollMode;
+  document.getElementById("date-end-wrap").hidden = pollMode;
+  document.getElementById("date-start").required = false;
+}
+
+function readPollRows() {
+  return [...document.querySelectorAll(".poll-row")].map((row, i) => {
+    const start = row.querySelector("[data-field=start]")?.value || "";
+    const end = row.querySelector("[data-field=end]")?.value || "";
+    return {
+      id: pollRows[i]?.id || "",
+      startsAt: start ? toISO(start) : "",
+      endsAt: end ? toISO(end) : "",
+    };
+  }).filter((r) => r.startsAt);
+}
+
+function setPollRows(options = [], frozen = false) {
+  pollFrozen = !!frozen;
+  pollRows = (options || []).map((o) => ({
+    id: o.id || "",
+    startsAt: toLocalInput(o.startsAt),
+    endsAt: toLocalInput(o.endsAt),
+  }));
+  renderPollRows();
 }
 
 function toLocalInput(iso) {
@@ -126,9 +180,10 @@ function renderDates() {
   document.getElementById("date-list").innerHTML = state.dates.map((d) => `
     <article class="date-item ${d.id === selectedDate ? "active" : ""}" data-id="${d.id}">
       <span class="badge ${d.status}">${I18N.status(d.status)}</span>
+      ${d.pollOpen ? `<span class="badge voting">${I18N.t("pollOpen")}</span>` : d.frozenOptionId ? `<span class="badge accepted">${I18N.t("pollFrozen")}</span>` : ""}
       <h3>${escapeHtml(d.title)}</h3>
       <p>${escapeHtml(I18N.category(d.category))}${bringList(d.bring).length ? " · " + escapeHtml(bringList(d.bring).join(", ")) : ""}</p>
-      <p>${escapeHtml(formatWhen(d.startsAt))}${d.location ? " · " + escapeHtml(d.location) : ""}</p>
+      <p>${escapeHtml(d.pollOpen ? I18N.t("severalTimes") : formatWhen(d.startsAt))}${d.location ? " · " + escapeHtml(d.location) : ""}</p>
       <p>${d.roles.map((r) => I18N.role(r)).join(" · ")}</p>
     </article>
   `).join("") || `<p class="lede" style="padding:1rem">${I18N.t("noDatesYet")}</p>`;
@@ -145,6 +200,7 @@ function renderDateDetail() {
     return;
   }
   fin.hidden = d.status !== "voting";
+  document.getElementById("btn-accept").hidden = !!d.pollOpen;
   const counts = (d.subroleCounts || []).map((c) => `
     <div class="count">
       <strong>${escapeHtml(I18N.role(c.role))} · ${escapeHtml(I18N.subrole(c.subrole))}</strong>
@@ -158,13 +214,27 @@ function renderDateDetail() {
     return `<tr><td>${escapeHtml(e.nickname)}</td><td>${escapeHtml(I18N.subrole(e.subrole))}</td><td>${vote}</td></tr>`;
   }).join("");
   const commentCount = (d.comments || []).length;
-  box.innerHTML = `
+  const poll = (d.options || []).length >= 2 ? `
+    <h3>${I18N.t("poll")}</h3>
+    ${d.pollOpen ? `<p class="muted">${I18N.t("freezeHint")}</p>` : ""}
+    ${(d.options || []).map((o) => `
+      <article class="poll-result ${o.frozen ? "frozen" : ""}">
+        <p><strong>${escapeHtml(formatRange(o.startsAt, o.endsAt))}</strong>
+          ${o.frozen ? ` <span class="badge accepted">${I18N.t("chosenTime")}</span>` : ""}</p>
+        <p class="muted">${I18N.t("yes")} ${o.yes} · ${I18N.t("maybe")} ${o.maybe} · ${I18N.t("no")} ${o.no} · ${I18N.t("unknown")} ${o.unknown}</p>
+        ${d.pollOpen ? `<button type="button" class="btn" data-freeze="${o.id}">${I18N.t("freezePoll")}</button>` : ""}
+      </article>`).join("")}
+  ` : "";
+  const voteBlock = d.pollOpen ? "" : `
     <h3>${I18N.t("votes")}</h3>
     <div class="counts">${counts}</div>
     <table>
       <thead><tr><th>${I18N.t("name")}</th><th>${I18N.t("subrole")}</th><th>${I18N.t("vote")}</th></tr></thead>
       <tbody>${rows || `<tr><td colspan="3" class="muted">${I18N.t("noPeopleRoles")}</td></tr>`}</tbody>
-    </table>
+    </table>`;
+  box.innerHTML = `
+    ${poll}
+    ${voteBlock}
     <div class="drawer-actions">
       <button type="button" class="btn ghost" id="btn-comments">${I18N.t("comments")}${commentCount ? ` (${commentCount})` : ""}</button>
     </div>`;
@@ -214,6 +284,7 @@ function resetDateForm() {
   document.getElementById("date-notes").value = "";
   document.querySelectorAll("#date-roles input").forEach((el) => { el.checked = false; });
   setBringForm();
+  setPollRows([], false);
   document.getElementById("btn-date-delete").disabled = true;
   renderDates();
   showError(dateError, "");
@@ -233,6 +304,7 @@ function fillDateForm(d) {
     el.checked = (d.roles || []).includes(el.value);
   });
   setBringForm(d.bring);
+  setPollRows(d.options, !d.pollOpen && (d.options || []).length >= 2);
   document.getElementById("btn-date-delete").disabled = false;
   renderDates();
 }
@@ -351,6 +423,7 @@ document.getElementById("btn-date-new").addEventListener("click", resetDateForm)
 document.getElementById("date-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   showError(dateError, "");
+  syncPollMode();
   const id = document.getElementById("date-id").value;
   const body = {
     title: document.getElementById("date-title").value,
@@ -361,6 +434,7 @@ document.getElementById("date-form").addEventListener("submit", async (e) => {
     notes: document.getElementById("date-notes").value,
     roles: [...document.querySelectorAll("#date-roles input:checked")].map((el) => el.value),
     bring: readBringForm(),
+    options: readPollRows(),
   };
   try {
     const data = id
@@ -403,7 +477,46 @@ async function setStatus(status) {
 document.getElementById("btn-accept").addEventListener("click", () => setStatus("accepted"));
 document.getElementById("btn-cancel").addEventListener("click", () => setStatus("cancelled"));
 
-document.getElementById("date-detail").addEventListener("click", (e) => {
+document.getElementById("btn-add-poll").addEventListener("click", () => {
+  if (pollFrozen) return;
+  pollRows.push({ id: "", startsAt: "", endsAt: "" });
+  renderPollRows();
+});
+
+document.getElementById("poll-options").addEventListener("input", (e) => {
+  const input = e.target.closest("input[data-poll]");
+  if (!input) return;
+  const row = pollRows[Number(input.dataset.poll)];
+  if (!row) return;
+  if (input.dataset.field === "start") row.startsAt = input.value;
+  if (input.dataset.field === "end") row.endsAt = input.value;
+  syncPollMode();
+});
+document.getElementById("poll-options").addEventListener("change", () => syncPollMode());
+
+document.getElementById("poll-options").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-remove-poll]");
+  if (!btn || pollFrozen) return;
+  pollRows.splice(Number(btn.dataset.removePoll), 1);
+  renderPollRows();
+});
+
+document.getElementById("date-detail").addEventListener("click", async (e) => {
+  const freezeBtn = e.target.closest("[data-freeze]");
+  if (freezeBtn && selectedDate) {
+    showError(dateError, "");
+    try {
+      const data = await api(`/api/controller/dates/${selectedDate}/freeze`, {
+        method: "POST",
+        body: JSON.stringify({ optionId: freezeBtn.dataset.freeze }),
+      });
+      await loadState();
+      fillDateForm(data.date);
+    } catch (err) {
+      showError(dateError, err.message);
+    }
+    return;
+  }
   if (!e.target.closest("#btn-comments") || !selectedDate) return;
   const d = state.dates.find((x) => x.id === selectedDate);
   if (!d) return;
@@ -439,6 +552,7 @@ I18N.onChange(() => {
   dateTitle.textContent = selectedDate ? I18N.t("editDate") : I18N.t("addDate");
   const pwHint = document.getElementById("pw-hint");
   if (selectedUser) pwHint.textContent = I18N.t("passwordKeep");
+  renderPollRows();
   if (!dash.hidden) {
     renderPeople();
     renderDates();

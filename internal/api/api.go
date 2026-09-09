@@ -51,6 +51,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/me", s.handleMe)
 	mux.HandleFunc("GET /api/dates", s.handleDates)
 	mux.HandleFunc("POST /api/dates/{id}/vote", s.handleVote)
+	mux.HandleFunc("POST /api/dates/{id}/poll", s.handlePollVote)
 	mux.HandleFunc("POST /api/dates/{id}/comments", s.handleAddComment)
 	mux.HandleFunc("GET /ws/client", s.handleMemberWS)
 
@@ -64,6 +65,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PATCH /api/controller/dates/{id}", s.handleUpdateDate)
 	mux.HandleFunc("DELETE /api/controller/dates/{id}", s.handleDeleteDate)
 	mux.HandleFunc("POST /api/controller/dates/{id}/status", s.handleDateStatus)
+	mux.HandleFunc("POST /api/controller/dates/{id}/freeze", s.handleFreezePoll)
 	mux.HandleFunc("GET /ws/controller", s.handleControllerWS)
 
 	mux.HandleFunc("GET /controller", s.serveControllerIndex)
@@ -190,6 +192,33 @@ func (s *Server) handleVote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.Store.SetVote(user.ID, r.PathValue("id"), body.Choice); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	view, err := s.Store.DateView(r.PathValue("id"), &user)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"date": view})
+}
+
+func (s *Server) handlePollVote(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var body struct {
+		OptionID string `json:"optionId"`
+		Choice   string `json:"choice"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if err := s.Store.SetPollVote(user.ID, r.PathValue("id"), body.OptionID, body.Choice); err != nil {
 		writeStoreError(w, err)
 		return
 	}
@@ -342,35 +371,74 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-type dateBody struct {
-	Title    string      `json:"title"`
-	Category string      `json:"category"`
-	StartsAt string      `json:"startsAt"`
-	EndsAt   string      `json:"endsAt"`
-	Location string      `json:"location"`
-	Notes    string      `json:"notes"`
-	Roles    []string    `json:"roles"`
-	Bring    store.Bring `json:"bring"`
+type pollOptionBody struct {
+	ID       string `json:"id"`
+	StartsAt string `json:"startsAt"`
+	EndsAt   string `json:"endsAt"`
 }
 
-func parseDateBody(r *http.Request) (dateBody, time.Time, *time.Time, error) {
+type dateBody struct {
+	Title    string            `json:"title"`
+	Category string            `json:"category"`
+	StartsAt string            `json:"startsAt"`
+	EndsAt   string            `json:"endsAt"`
+	Location string            `json:"location"`
+	Notes    string            `json:"notes"`
+	Roles    []string          `json:"roles"`
+	Bring    store.Bring       `json:"bring"`
+	Options  []pollOptionBody  `json:"options"`
+}
+
+func parsePollOptions(raw []pollOptionBody) ([]store.PollOptionInput, error) {
+	out := make([]store.PollOptionInput, 0, len(raw))
+	for _, item := range raw {
+		if strings.TrimSpace(item.StartsAt) == "" {
+			continue
+		}
+		starts, err := parseWhen(item.StartsAt)
+		if err != nil {
+			return nil, errors.New("invalid start time")
+		}
+		opt := store.PollOptionInput{ID: strings.TrimSpace(item.ID), StartsAt: starts}
+		if strings.TrimSpace(item.EndsAt) != "" {
+			t, err := parseWhen(item.EndsAt)
+			if err != nil {
+				return nil, errors.New("invalid end time")
+			}
+			opt.EndsAt = &t
+		}
+		out = append(out, opt)
+	}
+	return out, nil
+}
+
+func parseDateBody(r *http.Request) (dateBody, time.Time, *time.Time, []store.PollOptionInput, error) {
 	var body dateBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		return body, time.Time{}, nil, err
+		return body, time.Time{}, nil, nil, err
 	}
-	starts, err := parseWhen(body.StartsAt)
+	options, err := parsePollOptions(body.Options)
 	if err != nil {
-		return body, time.Time{}, nil, errors.New("invalid start time")
+		return body, time.Time{}, nil, nil, err
+	}
+	var starts time.Time
+	if strings.TrimSpace(body.StartsAt) != "" {
+		starts, err = parseWhen(body.StartsAt)
+		if err != nil {
+			return body, time.Time{}, nil, nil, errors.New("invalid start time")
+		}
+	} else if len(options) < 2 {
+		return body, time.Time{}, nil, nil, errors.New("invalid start time")
 	}
 	var ends *time.Time
 	if strings.TrimSpace(body.EndsAt) != "" {
 		t, err := parseWhen(body.EndsAt)
 		if err != nil {
-			return body, time.Time{}, nil, errors.New("invalid end time")
+			return body, time.Time{}, nil, nil, errors.New("invalid end time")
 		}
 		ends = &t
 	}
-	return body, starts, ends, nil
+	return body, starts, ends, options, nil
 }
 
 func parseWhen(s string) (time.Time, error) {
@@ -390,12 +458,12 @@ func (s *Server) handleCreateDate(w http.ResponseWriter, r *http.Request) {
 	if !s.requireController(w, r) {
 		return
 	}
-	body, starts, ends, err := parseDateBody(r)
+	body, starts, ends, options, err := parseDateBody(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	d, err := s.Store.CreateDate(body.Title, body.Category, starts, ends, body.Location, body.Notes, body.Roles, body.Bring)
+	d, err := s.Store.CreateDate(body.Title, body.Category, starts, ends, body.Location, body.Notes, body.Roles, body.Bring, options)
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -413,12 +481,12 @@ func (s *Server) handleUpdateDate(w http.ResponseWriter, r *http.Request) {
 	if !s.requireController(w, r) {
 		return
 	}
-	body, starts, ends, err := parseDateBody(r)
+	body, starts, ends, options, err := parseDateBody(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if _, err := s.Store.UpdateDate(r.PathValue("id"), body.Title, body.Category, starts, ends, body.Location, body.Notes, body.Roles, body.Bring); err != nil {
+	if _, err := s.Store.UpdateDate(r.PathValue("id"), body.Title, body.Category, starts, ends, body.Location, body.Notes, body.Roles, body.Bring, options); err != nil {
 		writeStoreError(w, err)
 		return
 	}
@@ -455,6 +523,30 @@ func (s *Server) handleDateStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := s.Store.SetDateStatus(r.PathValue("id"), body.Status); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	view, err := s.Store.DateView(r.PathValue("id"), nil)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"date": view})
+}
+
+func (s *Server) handleFreezePoll(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	var body struct {
+		OptionID string `json:"optionId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if _, err := s.Store.FreezePoll(r.PathValue("id"), body.OptionID); err != nil {
 		writeStoreError(w, err)
 		return
 	}

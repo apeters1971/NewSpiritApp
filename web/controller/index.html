@@ -103,10 +103,18 @@
           <input id="date-title" required />
           <label for="date-category" data-i18n="category">Kategorie</label>
           <select id="date-category" required></select>
-          <label for="date-start" data-i18n="starts">Beginn</label>
-          <input id="date-start" type="datetime-local" required />
-          <label for="date-end"><span data-i18n="ends">Ende</span> <span class="optional" data-i18n="optional">(optional)</span></label>
-          <input id="date-end" type="datetime-local" />
+          <div id="date-start-wrap">
+            <label for="date-start" data-i18n="starts">Beginn</label>
+            <input id="date-start" type="datetime-local" />
+          </div>
+          <div id="date-end-wrap">
+            <label for="date-end"><span data-i18n="ends">Ende</span> <span class="optional" data-i18n="optional">(optional)</span></label>
+            <input id="date-end" type="datetime-local" />
+          </div>
+          <p class="label" data-i18n="pollOptions">Zeitvorschläge</p>
+          <p class="muted" data-i18n="pollHint">Zwei oder mehr Zeitvorschläge: alle stimmen ab, die Verwaltung legt danach einen fest.</p>
+          <div id="poll-options" class="poll-rows"></div>
+          <button type="button" id="btn-add-poll" class="btn ghost" data-i18n="addPollOption">Zeitvorschlag hinzufügen</button>
           <label for="date-location" data-i18n="location">Ort</label>
           <input id="date-location" />
           <label for="date-notes" data-i18n="notes">Notizen</label>

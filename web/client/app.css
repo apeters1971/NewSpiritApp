@@ -169,6 +169,16 @@ body {
   align-items: start;
   margin-bottom: 0.75rem;
 }
+.badges { display: flex; flex-wrap: wrap; gap: 0.35rem; justify-content: end; }
+.poll-option {
+  border: 1px solid var(--line);
+  background: #101820;
+  padding: 0.7rem 0.8rem;
+  margin: 0.65rem 0;
+}
+.poll-option.frozen { border-color: rgba(127, 217, 154, 0.45); }
+.poll-option .vote-row { margin: 0.45rem 0 0.35rem; }
+.poll-table { margin-top: 0.75rem; }
 .card h2 { margin: 0.15rem 0 0.25rem; font-size: 1.25rem; }
 .when { margin: 0; color: var(--muted); font-size: 0.92rem; }
 .notes { margin: 0.55rem 0 0; color: var(--muted); white-space: pre-wrap; }

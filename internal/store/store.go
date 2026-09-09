@@ -44,8 +44,11 @@ type Date struct {
 	Notes     string     `json:"notes,omitempty"`
 	Status    string     `json:"status"`
 	Roles     []string   `json:"roles"`
-	Bring     Bring      `json:"bring"`
-	CreatedAt time.Time  `json:"createdAt"`
+	Bring           Bring        `json:"bring"`
+	FrozenOptionID  string       `json:"frozenOptionId,omitempty"`
+	PollOpen        bool         `json:"pollOpen"`
+	Options         []PollOption `json:"options"`
+	CreatedAt       time.Time    `json:"createdAt"`
 }
 
 type Bring struct {
@@ -170,6 +173,23 @@ CREATE TABLE IF NOT EXISTS comments (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_comments_date ON comments(date_id, created_at);
+CREATE TABLE IF NOT EXISTS poll_options (
+  id TEXT PRIMARY KEY,
+  date_id TEXT NOT NULL REFERENCES dates(id) ON DELETE CASCADE,
+  starts_at TEXT NOT NULL,
+  ends_at TEXT,
+  sort_order INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS poll_votes (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  option_id TEXT NOT NULL REFERENCES poll_options(id) ON DELETE CASCADE,
+  choice TEXT NOT NULL,
+  initial_choice TEXT,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, option_id)
+);
+CREATE INDEX IF NOT EXISTS idx_poll_options_date ON poll_options(date_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_poll_votes_option ON poll_votes(option_id);
 `)
 	if err != nil {
 		return err
@@ -179,6 +199,7 @@ CREATE INDEX IF NOT EXISTS idx_comments_date ON comments(date_id, created_at);
 	_, _ = s.db.Exec(`ALTER TABLE dates ADD COLUMN bring_cable INTEGER NOT NULL DEFAULT 0`)
 	_, _ = s.db.Exec(`ALTER TABLE dates ADD COLUMN bring_stand INTEGER NOT NULL DEFAULT 0`)
 	_, _ = s.db.Exec(`ALTER TABLE dates ADD COLUMN bring_dress TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE dates ADD COLUMN frozen_option_id TEXT NOT NULL DEFAULT ''`)
 	return nil
 }
 
@@ -428,24 +449,22 @@ func (s *Store) RevokeControllerSession(sessionID string) {
 	_, _ = s.db.Exec(`UPDATE controller_sessions SET revoked_at=? WHERE id=? AND revoked_at IS NULL`, fmtTime(now()), sessionID)
 }
 
-func (s *Store) CreateDate(title, category string, startsAt time.Time, endsAt *time.Time, location, notes string, roles []string, bring Bring) (Date, error) {
+func (s *Store) CreateDate(title, category string, startsAt time.Time, endsAt *time.Time, location, notes string, roles []string, bring Bring, options []PollOptionInput) (Date, error) {
 	title = NormalizeName(title)
 	if title == "" {
 		return Date{}, fmt.Errorf("title is required")
 	}
-	if startsAt.IsZero() {
-		return Date{}, fmt.Errorf("start time is required")
+	startsAt, endsAt, options, err := resolveSchedule(startsAt, endsAt, options)
+	if err != nil {
+		return Date{}, err
 	}
-	category, err := NormalizeCategory(category)
+	category, err = NormalizeCategory(category)
 	if err != nil {
 		return Date{}, err
 	}
 	roles, err = NormalizeRoles(roles)
 	if err != nil {
 		return Date{}, err
-	}
-	if endsAt != nil && endsAt.Before(startsAt) {
-		return Date{}, fmt.Errorf("end time is before start time")
 	}
 	bring, err = normalizeBring(bring)
 	if err != nil {
@@ -455,13 +474,14 @@ func (s *Store) CreateDate(title, category string, startsAt time.Time, endsAt *t
 		ID:        newID(),
 		Title:     title,
 		Category:  category,
-		StartsAt:  startsAt.UTC(),
-		EndsAt:    utcPtr(endsAt),
+		StartsAt:  startsAt,
+		EndsAt:    endsAt,
 		Location:  NormalizeName(location),
 		Notes:     strings.TrimSpace(notes),
 		Status:    StatusVoting,
 		Roles:     roles,
 		Bring:     bring,
+		Options:   []PollOption{},
 		CreatedAt: now(),
 	}
 	tx, err := s.db.Begin()
@@ -474,41 +494,48 @@ func (s *Store) CreateDate(title, category string, startsAt time.Time, endsAt *t
 		ends = fmtTime(*d.EndsAt)
 	}
 	if _, err := tx.Exec(
-		`INSERT INTO dates(id, title, category, starts_at, ends_at, location, notes, status, bring_mic, bring_cable, bring_stand, bring_dress, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		d.ID, d.Title, d.Category, fmtTime(d.StartsAt), ends, d.Location, d.Notes, d.Status, boolInt(d.Bring.Mic), boolInt(d.Bring.Cable), boolInt(d.Bring.Stand), d.Bring.Dress, fmtTime(d.CreatedAt),
+		`INSERT INTO dates(id, title, category, starts_at, ends_at, location, notes, status, bring_mic, bring_cable, bring_stand, bring_dress, frozen_option_id, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		d.ID, d.Title, d.Category, fmtTime(d.StartsAt), ends, d.Location, d.Notes, d.Status, boolInt(d.Bring.Mic), boolInt(d.Bring.Cable), boolInt(d.Bring.Stand), d.Bring.Dress, "", fmtTime(d.CreatedAt),
 	); err != nil {
 		return Date{}, err
 	}
 	if err := insertDateRoles(tx, d.ID, d.Roles); err != nil {
 		return Date{}, err
 	}
+	if err := s.replacePollOptions(tx, d.ID, options); err != nil {
+		return Date{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return Date{}, err
 	}
-	return d, nil
+	return s.dateRow(d.ID)
 }
 
-func (s *Store) UpdateDate(id, title, category string, startsAt time.Time, endsAt *time.Time, location, notes string, roles []string, bring Bring) (Date, error) {
-	if _, err := s.dateRow(id); err != nil {
+func (s *Store) UpdateDate(id, title, category string, startsAt time.Time, endsAt *time.Time, location, notes string, roles []string, bring Bring, options []PollOptionInput) (Date, error) {
+	cur, err := s.dateRow(id)
+	if err != nil {
 		return Date{}, err
 	}
 	title = NormalizeName(title)
 	if title == "" {
 		return Date{}, fmt.Errorf("title is required")
 	}
-	if startsAt.IsZero() {
-		return Date{}, fmt.Errorf("start time is required")
+	if cur.FrozenOptionID != "" {
+		options = nil
+		startsAt, endsAt, _, err = resolveSchedule(startsAt, endsAt, nil)
+	} else {
+		startsAt, endsAt, options, err = resolveSchedule(startsAt, endsAt, options)
 	}
-	category, err := NormalizeCategory(category)
+	if err != nil {
+		return Date{}, err
+	}
+	category, err = NormalizeCategory(category)
 	if err != nil {
 		return Date{}, err
 	}
 	roles, err = NormalizeRoles(roles)
 	if err != nil {
 		return Date{}, err
-	}
-	if endsAt != nil && endsAt.Before(startsAt) {
-		return Date{}, fmt.Errorf("end time is before start time")
 	}
 	bring, err = normalizeBring(bring)
 	if err != nil {
@@ -534,6 +561,11 @@ func (s *Store) UpdateDate(id, title, category string, startsAt time.Time, endsA
 	}
 	if err := insertDateRoles(tx, id, roles); err != nil {
 		return Date{}, err
+	}
+	if cur.FrozenOptionID == "" {
+		if err := s.replacePollOptions(tx, id, options); err != nil {
+			return Date{}, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return Date{}, err
@@ -564,6 +596,9 @@ func (s *Store) SetDateStatus(id, status string) (Date, error) {
 	if d.Status != StatusVoting {
 		return Date{}, fmt.Errorf("date is already %s", d.Status)
 	}
+	if status == StatusAccepted && d.PollOpen {
+		return Date{}, fmt.Errorf("choose a poll time before accepting")
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return Date{}, err
@@ -588,6 +623,9 @@ func (s *Store) SetVote(userID, dateID, choice string) error {
 	}
 	if d.Status == StatusCancelled {
 		return fmt.Errorf("%w: voting is locked on cancelled dates", ErrForbidden)
+	}
+	if d.PollOpen {
+		return fmt.Errorf("%w: vote on a poll option instead", ErrForbidden)
 	}
 	u, err := s.UserByID(userID)
 	if err != nil {
@@ -721,6 +759,16 @@ func (s *Store) attachView(d Date, viewer *User, comments []Comment) (DateView, 
 	if comments == nil {
 		comments = []Comment{}
 	}
+	optionIDs := make([]string, 0, len(d.Options))
+	for _, o := range d.Options {
+		optionIDs = append(optionIDs, o.ID)
+	}
+	pollVotes, err := s.pollVotesForOptions(optionIDs)
+	if err != nil {
+		return DateView{}, err
+	}
+	d.Options = attachPoll(d.Options, d.FrozenOptionID, roster, pollVotes, viewer)
+	d.PollOpen = pollOpen(d.FrozenOptionID, d.Options)
 	view := DateView{
 		Date:          d,
 		MyChoice:      VoteUnknown,
@@ -741,7 +789,7 @@ func (s *Store) attachView(d Date, viewer *User, comments []Comment) (DateView, 
 }
 
 func (s *Store) listDates() ([]Date, error) {
-	rows, err := s.db.Query(`SELECT id, title, category, starts_at, ends_at, location, notes, status, bring_mic, bring_cable, bring_stand, bring_dress, created_at FROM dates ORDER BY starts_at`)
+	rows, err := s.db.Query(`SELECT id, title, category, starts_at, ends_at, location, notes, status, bring_mic, bring_cable, bring_stand, bring_dress, frozen_option_id, created_at FROM dates ORDER BY starts_at`)
 	if err != nil {
 		return nil, err
 	}
@@ -759,35 +807,47 @@ func (s *Store) listDates() ([]Date, error) {
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	roleMap, err := s.rolesForDates(ids)
-	if err != nil {
+	if err := s.decorateDates(dates, ids); err != nil {
 		return nil, err
-	}
-	for i := range dates {
-		dates[i].Roles = roleMap[dates[i].ID]
-		if dates[i].Roles == nil {
-			dates[i].Roles = []string{}
-		}
 	}
 	return dates, nil
 }
 
 func (s *Store) dateRow(id string) (Date, error) {
 	d, err := scanDateRow(s.db.QueryRow(
-		`SELECT id, title, category, starts_at, ends_at, location, notes, status, bring_mic, bring_cable, bring_stand, bring_dress, created_at FROM dates WHERE id=?`, id,
+		`SELECT id, title, category, starts_at, ends_at, location, notes, status, bring_mic, bring_cable, bring_stand, bring_dress, frozen_option_id, created_at FROM dates WHERE id=?`, id,
 	))
 	if err != nil {
 		return Date{}, err
 	}
-	roles, err := s.rolesForDates([]string{id})
-	if err != nil {
+	dates := []Date{d}
+	if err := s.decorateDates(dates, []string{id}); err != nil {
 		return Date{}, err
 	}
-	d.Roles = roles[id]
-	if d.Roles == nil {
-		d.Roles = []string{}
+	return dates[0], nil
+}
+
+func (s *Store) decorateDates(dates []Date, ids []string) error {
+	roleMap, err := s.rolesForDates(ids)
+	if err != nil {
+		return err
 	}
-	return d, nil
+	optMap, err := s.optionsForDates(ids)
+	if err != nil {
+		return err
+	}
+	for i := range dates {
+		dates[i].Roles = roleMap[dates[i].ID]
+		if dates[i].Roles == nil {
+			dates[i].Roles = []string{}
+		}
+		dates[i].Options = optMap[dates[i].ID]
+		if dates[i].Options == nil {
+			dates[i].Options = []PollOption{}
+		}
+		dates[i].PollOpen = pollOpen(dates[i].FrozenOptionID, dates[i].Options)
+	}
+	return nil
 }
 
 func (s *Store) rolesForDates(ids []string) (map[string][]string, error) {
@@ -924,7 +984,7 @@ func scanDate(rs rowScanner) (Date, error) {
 	var starts, created string
 	var ends sql.NullString
 	var mic, cable, stand int
-	if err := rs.Scan(&d.ID, &d.Title, &d.Category, &starts, &ends, &d.Location, &d.Notes, &d.Status, &mic, &cable, &stand, &d.Bring.Dress, &created); err != nil {
+	if err := rs.Scan(&d.ID, &d.Title, &d.Category, &starts, &ends, &d.Location, &d.Notes, &d.Status, &mic, &cable, &stand, &d.Bring.Dress, &d.FrozenOptionID, &created); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Date{}, ErrNotFound
 		}

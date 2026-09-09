@@ -55,6 +55,16 @@ function formatRange(date) {
   return s;
 }
 
+function formatOptionRange(opt) {
+  let s = formatWhen(opt.startsAt);
+  if (opt.endsAt) s += " – " + formatWhen(opt.endsAt);
+  return s;
+}
+
+function pollOpen(date) {
+  return !!(date.pollOpen && date.options?.length >= 2);
+}
+
 function voteLabel(choice) {
   return I18N.vote(choice || "unknown");
 }
@@ -90,8 +100,44 @@ function renderCounts(date) {
     </div>`).join("")}</div>`;
 }
 
+function renderPoll(date) {
+  const locked = date.status === "cancelled" || !date.pollOpen;
+  const options = date.options || [];
+  const blocks = options.map((o) => {
+    const mine = o.myInitial && o.myInitial !== o.myChoice
+      ? `<p class="changed">${I18N.t("yourFirstVote")}: ${voteLabel(o.myInitial)}</p>`
+      : "";
+    const buttons = CHOICES.map((c) => `
+      <button type="button" data-id="${date.id}" data-option="${o.id}" data-choice="${c}" class="${c}${o.myChoice === c ? " on" : ""}" ${locked ? "disabled" : ""}>${voteLabel(c)}</button>
+    `).join("");
+    return `<div class="poll-option ${o.frozen ? "frozen" : ""}">
+      <p class="when">${escapeHtml(formatOptionRange(o))}${o.frozen ? ` · ${I18N.t("chosenTime")}` : ""}</p>
+      <div class="vote-row">${buttons}</div>
+      ${mine}
+      <p class="muted">${I18N.t("yes")} ${o.yes} · ${I18N.t("maybe")} ${o.maybe} · ${I18N.t("no")} ${o.no} · ${I18N.t("unknown")} ${o.unknown}</p>
+    </div>`;
+  }).join("");
+  const people = date.roster || [];
+  const head = `<tr><th>${I18N.t("name")}</th>${options.map((o) => `<th>${escapeHtml(formatOptionRange(o))}</th>`).join("")}</tr>`;
+  const body = people.map((p) => {
+    const cells = options.map((o) => {
+      const entry = (o.roster || []).find((e) => e.userId === p.userId);
+      const choice = entry?.choice || "unknown";
+      const changed = entry?.initialChoice && entry.initialChoice !== choice;
+      return `<td><span class="badge ${choice}">${voteLabel(choice)}</span>${changed ? ` <span class="changed">${I18N.t("firstVote")} ${voteLabel(entry.initialChoice)}</span>` : ""}</td>`;
+    }).join("");
+    return `<tr><td>${escapeHtml(p.nickname)}</td>${cells}</tr>`;
+  }).join("");
+  return `${blocks}
+    <table class="roster poll-table">
+      <thead>${head}</thead>
+      <tbody>${body || `<tr><td colspan="${options.length + 1}" class="muted">${I18N.t("noPeopleRoles")}</td></tr>`}</tbody>
+    </table>`;
+}
+
 function renderDate(date) {
   const locked = date.status === "cancelled";
+  const isPoll = (date.options || []).length >= 2;
   const buttons = CHOICES.map((c) => `
     <button type="button" data-id="${date.id}" data-choice="${c}" class="${c}${date.myChoice === c ? " on" : ""}" ${locked ? "disabled" : ""}>${voteLabel(c)}</button>
   `).join("");
@@ -100,24 +146,33 @@ function renderDate(date) {
     : "";
   const notes = date.notes ? `<p class="notes">${escapeHtml(date.notes)}</p>` : "";
   const commentCount = (date.comments || []).length;
+  const when = pollOpen(date)
+    ? I18N.t("severalTimes") + (date.location ? " · " + date.location : "")
+    : formatRange(date);
+  const extraBadge = pollOpen(date)
+    ? `<span class="badge voting">${I18N.t("poll")}</span>`
+    : date.frozenOptionId ? `<span class="badge accepted">${I18N.t("chosenTime")}</span>` : "";
   return `<article class="card">
     <div class="card-head">
       <div>
         <p class="brand">${escapeHtml(I18N.category(date.category))} · ${date.roles.map((r) => I18N.role(r)).join(" · ")}</p>
         <h2 id="date-${date.id}">${escapeHtml(date.title)}</h2>
-        <p class="when">${escapeHtml(formatRange(date))}</p>
+        <p class="when">${escapeHtml(when)}</p>
         ${renderBring(date.bring)}
         ${notes}
       </div>
-      <span class="badge ${date.status}">${I18N.status(date.status)}</span>
+      <div class="badges">
+        ${extraBadge}
+        <span class="badge ${date.status}">${I18N.status(date.status)}</span>
+      </div>
     </div>
-    <div class="vote-row">${buttons}</div>
-    ${mine}
+    ${isPoll ? renderPoll(date) : ""}
+    ${pollOpen(date) ? "" : `<div class="vote-row">${buttons}</div>${mine}`}
     <div class="card-actions">
       <button type="button" class="btn ghost" data-comments="${date.id}">${I18N.t("comments")}${commentCount ? ` (${commentCount})` : ""}</button>
     </div>
-    ${renderCounts(date)}
-    ${renderRoster(date)}
+    ${pollOpen(date) ? "" : renderCounts(date)}
+    ${pollOpen(date) ? "" : renderRoster(date)}
   </article>`;
 }
 
@@ -125,6 +180,12 @@ function escapeHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, (ch) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
   }[ch]));
+}
+
+function overviewPollVote(d) {
+  const options = d.options || [];
+  const voted = options.filter((o) => o.myChoice && o.myChoice !== "unknown").length;
+  return `${voted}/${options.length}`;
 }
 
 function upcomingDates() {
@@ -147,12 +208,12 @@ function renderOverview() {
   empty.hidden = rows.length > 0;
   body.innerHTML = rows.map((d) => `
     <tr data-jump="${d.id}">
-      <td>${escapeHtml(formatWhen(d.startsAt))}</td>
+      <td>${escapeHtml(pollOpen(d) ? `${formatWhen(d.startsAt)} · ${I18N.t("poll")}` : formatWhen(d.startsAt))}</td>
       <td>${escapeHtml(I18N.category(d.category))}</td>
       <td>${escapeHtml(d.title)}</td>
       <td>${escapeHtml(bringList(d.bring).join(", ") || "—")}</td>
       <td><span class="badge ${d.status}">${I18N.status(d.status)}</span></td>
-      <td><span class="badge ${d.myChoice}">${voteLabel(d.myChoice)}</span></td>
+      <td>${pollOpen(d) ? escapeHtml(overviewPollVote(d)) : `<span class="badge ${d.myChoice}">${voteLabel(d.myChoice)}</span>`}</td>
     </tr>`).join("");
 }
 
@@ -252,10 +313,17 @@ datesEl.addEventListener("click", async (e) => {
   const btn = e.target.closest("button[data-choice]");
   if (!btn || btn.disabled) return;
   try {
-    await api(`/api/dates/${btn.dataset.id}/vote`, {
-      method: "POST",
-      body: JSON.stringify({ choice: btn.dataset.choice }),
-    });
+    if (btn.dataset.option) {
+      await api(`/api/dates/${btn.dataset.id}/poll`, {
+        method: "POST",
+        body: JSON.stringify({ optionId: btn.dataset.option, choice: btn.dataset.choice }),
+      });
+    } else {
+      await api(`/api/dates/${btn.dataset.id}/vote`, {
+        method: "POST",
+        body: JSON.stringify({ choice: btn.dataset.choice }),
+      });
+    }
     await loadDates();
   } catch (err) {
     alert(err.message);

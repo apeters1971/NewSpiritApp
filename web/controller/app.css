@@ -249,6 +249,24 @@ tbody tr:hover, tbody tr.active, .date-item.active { background: rgba(61, 214, 1
 .count span { color: var(--muted); }
 .changed { color: var(--muted); font-size: 0.78rem; }
 .finalize { margin-top: 1rem; padding-top: 0.6rem; border-top: 1px solid var(--line); }
+.poll-rows { display: grid; gap: 0.65rem; margin: 0.45rem 0 0.55rem; }
+.poll-row {
+  display: grid;
+  gap: 0.4rem;
+  border: 1px solid var(--line);
+  background: #101820;
+  padding: 0.55rem 0.6rem;
+}
+.poll-row label { margin: 0; }
+.poll-result {
+  border: 1px solid var(--line);
+  background: #101820;
+  padding: 0.55rem 0.65rem;
+  margin: 0.45rem 0;
+}
+.poll-result.frozen { border-color: rgba(127, 217, 154, 0.45); }
+.poll-result p { margin: 0 0 0.35rem; }
+.poll-result .btn { margin-top: 0.2rem; }
 
 .dialog {
   width: min(520px, calc(100vw - 2rem));

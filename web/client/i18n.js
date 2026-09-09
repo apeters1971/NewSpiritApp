@@ -141,6 +141,22 @@
       errAlreadyFinal: "Der Termin ist bereits abgeschlossen",
       errLocked: "Bei abgesagten Terminen kann nicht mehr abgestimmt werden",
       errNotYourRole: "Dieser Termin gilt nicht für deine Rolle",
+      poll: "Umfrage",
+      pollHint: "Zwei oder mehr Zeitvorschläge: alle stimmen ab, die Verwaltung legt danach einen fest.",
+      pollOptions: "Zeitvorschläge",
+      addPollOption: "Zeitvorschlag hinzufügen",
+      removePollOption: "Entfernen",
+      freezePoll: "Diesen Termin festlegen",
+      freezeHint: "Wähle den endgültigen Termin. Danach ist die Umfrage geschlossen.",
+      chosenTime: "Festgelegt",
+      pollOpen: "Umfrage offen",
+      pollFrozen: "Termin festgelegt",
+      severalTimes: "Mehrere Zeitvorschläge",
+      optionStart: "Beginn",
+      optionEnd: "Ende",
+      errPollFrozen: "Die Umfrage ist geschlossen",
+      errPollVote: "Stimme für einen Zeitvorschlag ab",
+      errPollAccept: "Lege zuerst einen Termin aus der Umfrage fest",
     },
     en: {
       pageMember: "New Spirit",
@@ -280,6 +296,22 @@
       errAlreadyFinal: "This date is already finalized",
       errLocked: "Voting is locked on cancelled dates",
       errNotYourRole: "This date is not for your role",
+      poll: "Poll",
+      pollHint: "Add two or more time ranges so people can vote; then pick the final one.",
+      pollOptions: "Time options",
+      addPollOption: "Add time option",
+      removePollOption: "Remove",
+      freezePoll: "Choose this time",
+      freezeHint: "Pick the final time. This closes the poll.",
+      chosenTime: "Chosen",
+      pollOpen: "Poll open",
+      pollFrozen: "Time chosen",
+      severalTimes: "Several times",
+      optionStart: "Start",
+      optionEnd: "End",
+      errPollFrozen: "The poll is closed",
+      errPollVote: "Vote on a time option instead",
+      errPollAccept: "Choose a poll time before accepting",
     },
   };
 
@@ -354,6 +386,9 @@
     if (raw.includes("already")) return t("errAlreadyFinal");
     if (raw.includes("voting is locked")) return t("errLocked");
     if (raw.includes("not for your role")) return t("errNotYourRole");
+    if (raw.includes("poll is frozen")) return t("errPollFrozen");
+    if (raw.includes("poll option")) return t("errPollVote");
+    if (raw.includes("choose a poll time")) return t("errPollAccept");
     return raw;
   }
 
