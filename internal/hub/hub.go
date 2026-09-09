@@ -84,6 +84,40 @@ func (h *Hub) OnlineCount() int {
 	return len(h.members)
 }
 
+func (h *Hub) BroadcastToRole(role string, env Envelope) {
+	h.BroadcastToRoles([]string{role}, env)
+}
+
+func (h *Hub) BroadcastToRoles(roles []string, env Envelope) {
+	raw, err := json.Marshal(env)
+	if err != nil {
+		return
+	}
+	allowed := map[string]struct{}{}
+	for _, role := range roles {
+		allowed[role] = struct{}{}
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, set := range h.members {
+		for c := range set {
+			if _, ok := allowed[c.role]; !ok {
+				continue
+			}
+			select {
+			case c.send <- raw:
+			default:
+			}
+		}
+	}
+	for c := range h.controllers {
+		select {
+		case c.send <- raw:
+		default:
+		}
+	}
+}
+
 func (h *Hub) Broadcast(env Envelope) {
 	raw, err := json.Marshal(env)
 	if err != nil {

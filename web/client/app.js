@@ -11,6 +11,12 @@ let me = null;
 let dates = [];
 let ranking = { year: 0, leader: null };
 let commentDateId = "";
+let chatRoom = "";
+let chatMessages = [];
+
+const CHAT_ROOMS = ["choir", "band", "orchestra"];
+const CHAT_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
+const MEMBER_COLORS = ["#3dd6c6", "#f0a35e", "#8cb4ff", "#e38cff", "#7fd99a", "#f07178", "#ffd166", "#9ad0c8"];
 
 async function api(path, opts = {}) {
   const res = await fetch(path, {
@@ -171,6 +177,7 @@ function renderDate(date) {
     ${pollOpen(date) ? "" : `<div class="vote-row">${buttons}</div>${mine}`}
     <div class="card-actions">
       <button type="button" class="btn ghost" data-comments="${date.id}">${I18N.t("comments")}${commentCount ? ` (${commentCount})` : ""}</button>
+      ${date.chatOpen ? `<button type="button" class="btn ghost" data-event-chat="${date.id}">${I18N.t("eventChat")}</button>` : ""}
     </div>
     ${pollOpen(date) ? "" : renderCounts(date)}
     ${pollOpen(date) ? "" : renderRoster(date)}
@@ -226,13 +233,22 @@ function renderSpirit() {
     box.innerHTML = "";
     return;
   }
+  const mine = typeof ranking.myScore === "number"
+    ? `<div class="spirit-mine">
+        <span class="spirit-mine-label">${I18N.t("myPoints")}</span>
+        <strong class="spirit-score">${ranking.myScore}</strong>
+      </div>`
+    : "";
   box.hidden = false;
   box.innerHTML = `
     <p class="brand" data-i18n="spiritOfTheYear">${I18N.t("spiritOfTheYear")}</p>
     <div class="spirit-row">
-      <strong>${escapeHtml(leader.nickname)}</strong>
-      <span>${escapeHtml(I18N.subrole(leader.subrole))}</span>
-      <span class="spirit-score">${leader.score} ${I18N.t("spiritPoints")}</span>
+      <div class="spirit-leader">
+        <strong>${escapeHtml(leader.nickname)}</strong>
+        <span>${escapeHtml(I18N.subrole(leader.subrole))}</span>
+        <span class="spirit-score">${leader.score} ${I18N.t("spiritPoints")}</span>
+      </div>
+      ${mine}
     </div>`;
 }
 
@@ -290,6 +306,7 @@ async function boot() {
     document.getElementById("who-meta").textContent = `${I18N.role(me.role)} · ${I18N.subrole(me.subrole)} · ${me.email}`;
     Photo.paint(document.getElementById("who-photo"), me);
     paintInfoButton(document.getElementById("who-info"), me);
+    renderChatTabs();
     await loadDates();
     connectWS();
   } catch {
@@ -333,6 +350,17 @@ datesEl.addEventListener("click", async (e) => {
     openComments(commentsBtn.dataset.comments);
     return;
   }
+  const eventChat = e.target.closest("button[data-event-chat]");
+  if (eventChat) {
+    const date = dates.find((d) => d.id === eventChat.dataset.eventChat);
+    if (!date) return;
+    try {
+      await openChat(`event:${date.id}`, date.title);
+    } catch (err) {
+      alert(err.message);
+    }
+    return;
+  }
   const btn = e.target.closest("button[data-choice]");
   if (!btn || btn.disabled) return;
   try {
@@ -374,10 +402,140 @@ document.getElementById("comment-form").addEventListener("submit", async (e) => 
   }
 });
 
+function memberColor(id) {
+  let h = 0;
+  for (const ch of String(id || "")) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return MEMBER_COLORS[h % MEMBER_COLORS.length];
+}
+
+function formatChatWhen(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  return d.toLocaleString(I18N.locale(), sameDay
+    ? { hour: "2-digit", minute: "2-digit" }
+    : { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+function renderChatTabs() {
+  const box = document.getElementById("chat-tabs");
+  let any = false;
+  box.querySelectorAll("[data-chat]").forEach((btn) => {
+    const show = !!(me && CHAT_ROOMS.includes(me.role) && btn.dataset.chat === me.role);
+    btn.hidden = !show;
+    btn.classList.toggle("on", show && chatRoom === me.role);
+    btn.textContent = I18N.role(btn.dataset.chat);
+    if (show) any = true;
+  });
+  box.hidden = !any;
+}
+
+function chatAuthorKey(m) {
+  return m.isAdmin ? "admin" : m.userId;
+}
+
+function chatReactionsHTML(m) {
+  const chips = (m.reactions || []).map((r) => `
+    <button type="button" class="chat-react ${r.mine ? "on" : ""}" data-id="${m.id}" data-react="${r.emoji}">
+      ${r.emoji}<span>${r.count}</span>
+    </button>`).join("");
+  const picks = CHAT_EMOJIS.map((emoji) => `
+    <button type="button" data-id="${m.id}" data-react="${emoji}">${emoji}</button>`).join("");
+  return `<div class="chat-reacts">
+    ${chips}
+    <button type="button" class="chat-react-add" data-pick="${m.id}" aria-label="${escapeHtml(I18N.t("chatReact"))}">😊</button>
+    <div class="chat-picker" hidden data-picker="${m.id}">${picks}</div>
+  </div>`;
+}
+
+function chatMessageHTML(m, stacked) {
+  const mine = !!(me && !m.isAdmin && m.userId === me.id);
+  const color = m.isAdmin ? "#f0a35e" : memberColor(m.userId);
+  const face = mine ? "" : Photo.html({
+    id: m.isAdmin ? "" : m.userId,
+    nickname: m.isAdmin ? I18N.t("chatAdmin") : m.nickname,
+    hasPhoto: !m.isAdmin && m.hasPhoto,
+    photoUpdatedAt: m.photoUpdatedAt,
+  }, "sm");
+  return `<article class="chat-row ${mine ? "mine" : "theirs"}${stacked ? " stack" : ""}">
+    ${face}
+    <div class="chat-col">
+      <div class="chat-bubble">
+        <p class="chat-name" style="color:${color}">${escapeHtml(m.isAdmin ? I18N.t("chatAdmin") : m.nickname)}</p>
+        <p class="chat-text">${escapeHtml(m.text)}</p>
+        <span class="chat-time">${escapeHtml(formatChatWhen(m.createdAt))}</span>
+      </div>
+      ${chatReactionsHTML(m)}
+    </div>
+  </article>`;
+}
+
+function renderChat(keepTop) {
+  const list = document.getElementById("chat-list");
+  const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 48;
+  list.innerHTML = chatMessages.length
+    ? chatMessages.map((m, i) => {
+      const prev = chatMessages[i - 1];
+      return chatMessageHTML(m, !!(prev && chatAuthorKey(prev) === chatAuthorKey(m)));
+    }).join("")
+    : `<p class="muted">${I18N.t("noMessages")}</p>`;
+  list.scrollTop = keepTop != null && !atBottom ? keepTop : list.scrollHeight;
+}
+
+function applyReactions(messageId, reactions) {
+  const m = chatMessages.find((x) => x.id === messageId);
+  if (!m) return;
+  const list = document.getElementById("chat-list");
+  m.reactions = reactions || [];
+  renderChat(list.scrollTop);
+}
+
+function appendChat(msg) {
+  if (!msg?.id || chatMessages.some((m) => m.id === msg.id)) return;
+  chatMessages.push(msg);
+  renderChat();
+}
+
+function chatTitle(room, title) {
+  if (title) return title;
+  if (CHAT_ROOMS.includes(room)) return I18N.t(`chat.${room}`);
+  return I18N.t("eventChat");
+}
+
+async function openChat(room, title) {
+  const event = room.startsWith("event:");
+  if (!me || (!event && me.role !== room)) return;
+  chatRoom = room;
+  renderChatTabs();
+  document.getElementById("chat-title").textContent = chatTitle(room, title);
+  document.getElementById("chat-text").value = "";
+  showError(document.getElementById("chat-error"), "");
+  const data = await api(`/api/chats/${encodeURIComponent(room)}`);
+  chatMessages = data.messages || [];
+  renderChat();
+  const input = document.getElementById("chat-text");
+  input.placeholder = I18N.t("chatWrite");
+  document.getElementById("chat-dialog").showModal();
+  input.focus();
+}
+
 function connectWS() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   const ws = new WebSocket(`${proto}://${location.host}/ws/client`);
-  ws.onmessage = () => { loadDates().catch(() => {}); };
+  ws.onmessage = (ev) => {
+    let msg = {};
+    try { msg = JSON.parse(ev.data); } catch { return; }
+    if (msg.type === "chat") {
+      if (chatRoom && msg.data?.room === chatRoom) appendChat(msg.data);
+      return;
+    }
+    if (msg.type === "react") {
+      if (chatRoom && msg.data?.room === chatRoom) applyReactions(msg.data.messageId, msg.data.reactions);
+      return;
+    }
+    if (msg.type === "changed") loadDates().catch(() => {});
+  };
   ws.onclose = () => setTimeout(connectWS, 2000);
 }
 
@@ -388,7 +546,90 @@ I18N.onChange(() => {
     document.getElementById("who-meta").textContent = `${I18N.role(me.role)} · ${I18N.subrole(me.subrole)} · ${me.email}`;
     Photo.paint(document.getElementById("who-photo"), me);
     paintInfoButton(document.getElementById("who-info"), me);
+    renderChatTabs();
+    if (document.getElementById("chat-dialog").open && chatRoom) {
+      const date = chatRoom.startsWith("event:")
+        ? dates.find((d) => d.id === chatRoom.slice("event:".length))
+        : null;
+      document.getElementById("chat-title").textContent = chatTitle(chatRoom, date?.title);
+      document.getElementById("chat-text").placeholder = I18N.t("chatWrite");
+      renderChat(document.getElementById("chat-list").scrollTop);
+    }
     render();
+  }
+});
+
+document.getElementById("chat-tabs").addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-chat]");
+  if (!btn || btn.hidden) return;
+  try {
+    await openChat(btn.dataset.chat);
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+document.getElementById("chat-close").addEventListener("click", () => {
+  document.getElementById("chat-dialog").close();
+  chatRoom = "";
+  chatMessages = [];
+  renderChatTabs();
+});
+
+document.getElementById("chat-dialog").addEventListener("close", () => {
+  chatRoom = "";
+  chatMessages = [];
+  renderChatTabs();
+});
+
+async function sendChat() {
+  if (!chatRoom) return;
+  const input = document.getElementById("chat-text");
+  const errEl = document.getElementById("chat-error");
+  showError(errEl, "");
+  const text = input.value.trim();
+  if (!text) return;
+  try {
+    const data = await api(`/api/chats/${encodeURIComponent(chatRoom)}`, {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    });
+    input.value = "";
+    input.style.height = "";
+    appendChat(data.message);
+  } catch (err) {
+    showError(errEl, err.message);
+  }
+}
+
+document.getElementById("chat-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  await sendChat();
+});
+
+document.getElementById("chat-text").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" || e.shiftKey) return;
+  e.preventDefault();
+  sendChat();
+});
+
+document.getElementById("chat-list").addEventListener("click", async (e) => {
+  const pick = e.target.closest("[data-pick]");
+  if (pick) {
+    const box = document.querySelector(`[data-picker="${pick.dataset.pick}"]`);
+    if (box) box.hidden = !box.hidden;
+    return;
+  }
+  const btn = e.target.closest("[data-react]");
+  if (!btn || !chatRoom) return;
+  try {
+    const data = await api(`/api/chats/${encodeURIComponent(chatRoom)}/messages/${encodeURIComponent(btn.dataset.id)}/react`, {
+      method: "POST",
+      body: JSON.stringify({ emoji: btn.dataset.react }),
+    });
+    applyReactions(data.message.id, data.message.reactions);
+  } catch (err) {
+    showError(document.getElementById("chat-error"), err.message);
   }
 });
 

@@ -99,6 +99,7 @@ type DateView struct {
 	Roster        []RosterEntry  `json:"roster"`
 	SubroleCounts []SubroleCount `json:"subroleCounts"`
 	Comments      []Comment      `json:"comments"`
+	ChatOpen      bool           `json:"chatOpen"`
 }
 
 func Open(path string) (*Store, error) {
@@ -201,6 +202,21 @@ CREATE TABLE IF NOT EXISTS user_photos (
   data BLOB NOT NULL,
   updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id TEXT PRIMARY KEY,
+  room TEXT NOT NULL,
+  user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+  text TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_chat_room ON chat_messages(room, created_at);
+CREATE TABLE IF NOT EXISTS chat_reactions (
+  message_id TEXT NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL DEFAULT '',
+  emoji TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (message_id, user_id, emoji)
+);
 `)
 	if err != nil {
 		return err
@@ -214,7 +230,52 @@ CREATE TABLE IF NOT EXISTS user_photos (
 	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN address TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN phone TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN birthday TEXT NOT NULL DEFAULT ''`)
-	return nil
+	_, _ = s.db.Exec(`
+CREATE TABLE IF NOT EXISTS chat_reactions (
+  message_id TEXT NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL DEFAULT '',
+  emoji TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (message_id, user_id, emoji)
+)`)
+	return s.allowAdminChatMessages()
+}
+
+func (s *Store) allowAdminChatMessages() error {
+	var notnull int
+	err := s.db.QueryRow(`SELECT "notnull" FROM pragma_table_info('chat_messages') WHERE name='user_id'`).Scan(&notnull)
+	if err != nil || notnull == 0 {
+		return nil
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`
+CREATE TABLE chat_messages_v2 (
+  id TEXT PRIMARY KEY,
+  room TEXT NOT NULL,
+  user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+  text TEXT NOT NULL,
+  created_at TEXT NOT NULL
+)`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`INSERT INTO chat_messages_v2 (id, room, user_id, text, created_at)
+SELECT id, room, user_id, text, created_at FROM chat_messages`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DROP TABLE chat_messages`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`ALTER TABLE chat_messages_v2 RENAME TO chat_messages`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_chat_room ON chat_messages(room, created_at)`); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func newID() string {
@@ -845,6 +906,7 @@ func (s *Store) attachView(d Date, viewer *User, comments []Comment) (DateView, 
 		Roster:        roster,
 		SubroleCounts: countsFor(d.Roles, roster),
 		Comments:      comments,
+		ChatOpen:      EventChatIsOpen(d, now()),
 	}
 	if viewer != nil {
 		for _, entry := range roster {

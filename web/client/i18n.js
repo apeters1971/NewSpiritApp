@@ -29,6 +29,7 @@
       noContacts: "Noch keine Kontakte.",
       spiritOfTheYear: "Spirit of the Year",
       spiritPoints: "Punkte",
+      myPoints: "Meine Punkte",
       spiritEmpty: "Noch keine Chor-Stimmen in diesem Jahr.",
       rankingTitle: "Chor-Rangliste",
       rankingHint: "Ja = 2, Vielleicht = 1, Nein = 0. Wer zuerst Ja sagt und später auf Nein wechselt, bekommt −1. Offene Umfragen und Absagen zählen nicht.",
@@ -106,6 +107,21 @@
       errPictureInvalid: "Ungültiges Bild",
       addInfo: "Info hinzufügen",
       modifyInfo: "Info ändern",
+      chatBrand: "Chat",
+      chatWrite: "Nachricht schreiben",
+      chatSend: "Senden",
+      noMessages: "Noch keine Nachrichten.",
+      chatAdmin: "Admin",
+      eventChat: "Termin-Chat",
+      chatReact: "Reaktion",
+      "chat.choir": "Chor-Chat",
+      "chat.band": "Band-Chat",
+      "chat.orchestra": "Orchester-Chat",
+      errChat: "Nachricht fehlt",
+      errChatLong: "Nachricht ist zu lang",
+      errChatRoom: "Dieser Chat gilt nicht für deine Rolle",
+      errChatClosed: "Dieser Chat ist geschlossen.",
+      errChatReact: "Unbekannte Reaktion",
       infoTitle: "Persönliche Daten",
       address: "Adresse",
       phone: "Telefon",
@@ -221,6 +237,7 @@
       noContacts: "No contacts yet.",
       spiritOfTheYear: "Spirit of the Year",
       spiritPoints: "points",
+      myPoints: "My points",
       spiritEmpty: "No choir votes this year yet.",
       rankingTitle: "Choir ranking",
       rankingHint: "Yes = 2, Maybe = 1, No = 0. Switching from Yes to No later scores −1. Open polls and cancelled dates do not count.",
@@ -298,6 +315,21 @@
       errPictureInvalid: "Invalid picture",
       addInfo: "Add Info",
       modifyInfo: "Modify info",
+      chatBrand: "Chat",
+      chatWrite: "Write a message",
+      chatSend: "Send",
+      noMessages: "No messages yet.",
+      chatAdmin: "Admin",
+      eventChat: "Event chat",
+      chatReact: "React",
+      "chat.choir": "Choir Chat",
+      "chat.band": "Band Chat",
+      "chat.orchestra": "Orchestra Chat",
+      errChat: "Message is required",
+      errChatLong: "Message is too long",
+      errChatRoom: "This chat is not for your role",
+      errChatClosed: "This chat is closed.",
+      errChatReact: "Unknown reaction",
       infoTitle: "Personal info",
       address: "Address",
       phone: "Phone",
@@ -415,6 +447,8 @@
     "address is too long": "errAddressLong",
     "phone is too long": "errPhoneLong",
     "invalid birthday": "errBirthday",
+    "message is required": "errChat",
+    "message is too long": "errChatLong",
   };
 
   function stored() {
@@ -465,6 +499,10 @@
     if (raw.includes("nickname or email already exists")) return t("errExists");
     if (raw.includes("already")) return t("errAlreadyFinal");
     if (raw.includes("voting is locked")) return t("errLocked");
+    if (raw.includes("this chat is not for your role")) return t("errChatRoom");
+    if (raw.includes("this chat is closed")) return t("errChatClosed");
+    if (raw.includes("unknown chat")) return t("errChatRoom");
+    if (raw.includes("unknown reaction")) return t("errChatReact");
     if (raw.includes("not for your role")) return t("errNotYourRole");
     if (raw.includes("poll is frozen")) return t("errPollFrozen");
     if (raw.includes("poll option")) return t("errPollVote");

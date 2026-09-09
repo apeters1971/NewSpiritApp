@@ -281,3 +281,96 @@ func TestUserInfo(t *testing.T) {
 		t.Fatal("expected invalid birthday")
 	}
 }
+
+func TestChatRoom(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "chat.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	ada, err := st.CreateUser("Ada", "ada@example.com", "secret1", RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cara, err := st.CreateUser("Cara", "cara@example.com", "secret1", RoleBand, "Drums")
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg, err := st.AddChatMessage(ada.ID, RoleChoir, "Hello choir")
+	if err != nil || msg.Text != "Hello choir" || msg.Nickname != "Ada" {
+		t.Fatalf("add %+v %v", msg, err)
+	}
+	if _, err := st.AddChatMessage(cara.ID, RoleChoir, "nope"); err == nil {
+		t.Fatal("band should not post in choir")
+	}
+	if _, err := st.ListChatMessages(cara.Role, RoleChoir, cara.ID); err == nil {
+		t.Fatal("band should not read choir")
+	}
+	admin, err := st.AddAdminChatMessage(RoleChoir, "From admin")
+	if err != nil || !admin.IsAdmin || admin.Nickname != "Admin" {
+		t.Fatalf("admin %+v %v", admin, err)
+	}
+	if _, err := st.AddAdminChatMessage(RoleTechnician, "nope"); err == nil {
+		t.Fatal("technician has no chat")
+	}
+	list, err := st.ListChatMessages(ada.Role, RoleChoir, ada.ID)
+	if err != nil || len(list) != 2 || list[1].Text != "From admin" || !list[1].IsAdmin {
+		t.Fatalf("list %+v %v", list, err)
+	}
+	ctrl, err := st.ListChatMessagesForRoom(RoleChoir)
+	if err != nil || len(ctrl) != 2 {
+		t.Fatalf("controller list %+v %v", ctrl, err)
+	}
+
+	reacted, err := st.ToggleChatReaction(ada.ID, RoleChoir, msg.ID, "👍", false)
+	if err != nil || len(reacted.Reactions) != 1 || reacted.Reactions[0].Emoji != "👍" || !reacted.Reactions[0].Mine {
+		t.Fatalf("react %+v %v", reacted, err)
+	}
+	again, err := st.ToggleChatReaction(ada.ID, RoleChoir, msg.ID, "👍", false)
+	if err != nil || len(again.Reactions) != 0 {
+		t.Fatalf("unreact %+v %v", again, err)
+	}
+
+	future := time.Now().UTC().Add(24 * time.Hour)
+	d, err := st.CreateDate("Show", CategoryConcert, future, nil, "", "", []string{RoleChoir}, Bring{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := st.DateView(d.ID, &ada)
+	if err != nil || !view.ChatOpen {
+		t.Fatalf("future event chat should be open %+v %v", view, err)
+	}
+	room := EventChatRoom(d.ID)
+	if _, err := st.AddChatMessage(ada.ID, room, "See you there"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.AddChatMessage(cara.ID, room, "nope"); err == nil {
+		t.Fatal("band should not post in choir event chat")
+	}
+	if _, err := st.AddAdminChatMessage(room, "Doors at 7"); err != nil {
+		t.Fatal(err)
+	}
+
+	past := time.Now().UTC().Add(-72 * time.Hour)
+	old, err := st.CreateDate("Old show", CategoryConcert, past, nil, "", "", []string{RoleChoir}, Bring{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldView, err := st.DateView(old.ID, &ada)
+	if err != nil || oldView.ChatOpen {
+		t.Fatalf("old event chat should be closed %+v %v", oldView, err)
+	}
+	if _, err := st.AddChatMessage(ada.ID, EventChatRoom(old.ID), "too late"); err == nil {
+		t.Fatal("closed event chat should reject posts")
+	}
+	yesterday := time.Now().UTC().Add(-20 * time.Hour)
+	still, err := st.CreateDate("Last night", CategoryConcert, yesterday, nil, "", "", []string{RoleChoir}, Bring{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stillView, err := st.DateView(still.ID, &ada)
+	if err != nil || !stillView.ChatOpen {
+		t.Fatalf("event from yesterday should stay open through +1 day %+v %v", stillView, err)
+	}
+}

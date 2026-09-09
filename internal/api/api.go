@@ -58,6 +58,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/dates/{id}/vote", s.handleVote)
 	mux.HandleFunc("POST /api/dates/{id}/poll", s.handlePollVote)
 	mux.HandleFunc("POST /api/dates/{id}/comments", s.handleAddComment)
+	mux.HandleFunc("GET /api/chats/{room}", s.handleChatList)
+	mux.HandleFunc("POST /api/chats/{room}", s.handleChatPost)
+	mux.HandleFunc("POST /api/chats/{room}/messages/{id}/react", s.handleChatReact)
 	mux.HandleFunc("GET /ws/client", s.handleMemberWS)
 
 	mux.HandleFunc("POST /api/controller/login", s.handleControllerLogin)
@@ -74,6 +77,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/controller/dates/{id}", s.handleDeleteDate)
 	mux.HandleFunc("POST /api/controller/dates/{id}/status", s.handleDateStatus)
 	mux.HandleFunc("POST /api/controller/dates/{id}/freeze", s.handleFreezePoll)
+	mux.HandleFunc("GET /api/controller/chats/{room}", s.handleControllerChatList)
+	mux.HandleFunc("POST /api/controller/chats/{room}", s.handleControllerChatPost)
+	mux.HandleFunc("POST /api/controller/chats/{room}/messages/{id}/react", s.handleControllerChatReact)
 	mux.HandleFunc("GET /ws/controller", s.handleControllerWS)
 
 	mux.HandleFunc("GET /controller", s.serveControllerIndex)
@@ -335,12 +341,19 @@ func (s *Server) handleDates(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	payload := map[string]any{
+		"year":   rank.Year,
+		"leader": rank.Leader,
+	}
+	for _, e := range rank.Entries {
+		if e.UserID == user.ID {
+			payload["myScore"] = e.Score
+			break
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"dates": dates,
-		"ranking": map[string]any{
-			"year":   rank.Year,
-			"leader": rank.Leader,
-		},
+		"dates":   dates,
+		"ranking": payload,
 	})
 }
 
@@ -421,6 +434,130 @@ func (s *Server) handleAddComment(w http.ResponseWriter, r *http.Request) {
 	}
 	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
 	writeJSON(w, http.StatusCreated, map[string]any{"date": view})
+}
+
+func (s *Server) publishChat(room string, env hub.Envelope) {
+	s.Hub.BroadcastToRoles(s.Store.ChatRoomRoles(room), env)
+}
+
+func (s *Server) handleChatList(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	msgs, err := s.Store.ListChatMessages(user.Role, r.PathValue("room"), user.ID)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"messages": msgs})
+}
+
+func (s *Server) handleChatPost(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var body struct {
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	msg, err := s.Store.AddChatMessage(user.ID, r.PathValue("room"), body.Text)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.publishChat(msg.Room, hub.Envelope{Type: "chat", Data: msg})
+	writeJSON(w, http.StatusCreated, map[string]any{"message": msg})
+}
+
+func (s *Server) handleChatReact(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var body struct {
+		Emoji string `json:"emoji"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	room := r.PathValue("room")
+	msg, err := s.Store.ToggleChatReaction(user.ID, room, r.PathValue("id"), body.Emoji, false)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.publishChat(room, hub.Envelope{Type: "react", Data: map[string]any{
+		"room":      room,
+		"messageId": msg.ID,
+		"reactions": msg.Reactions,
+	}})
+	writeJSON(w, http.StatusOK, map[string]any{"message": msg})
+}
+
+func (s *Server) handleControllerChatList(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	msgs, err := s.Store.ListChatMessagesForRoom(r.PathValue("room"))
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"messages": msgs})
+}
+
+func (s *Server) handleControllerChatPost(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	var body struct {
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	msg, err := s.Store.AddAdminChatMessage(r.PathValue("room"), body.Text)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.publishChat(msg.Room, hub.Envelope{Type: "chat", Data: msg})
+	writeJSON(w, http.StatusCreated, map[string]any{"message": msg})
+}
+
+func (s *Server) handleControllerChatReact(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	var body struct {
+		Emoji string `json:"emoji"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	room := r.PathValue("room")
+	msg, err := s.Store.ToggleChatReaction("", room, r.PathValue("id"), body.Emoji, true)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.publishChat(room, hub.Envelope{Type: "react", Data: map[string]any{
+		"room":      room,
+		"messageId": msg.ID,
+		"reactions": msg.Reactions,
+	}})
+	writeJSON(w, http.StatusOK, map[string]any{"message": msg})
 }
 
 func (s *Server) handleControllerLogin(w http.ResponseWriter, r *http.Request) {

@@ -14,6 +14,12 @@ let pollFrozen = false;
 let pendingPhoto = null;
 let pendingPhotoURL = "";
 let pendingInfo = { address: "", phone: "", birthday: "" };
+let chatRoom = "";
+let chatMessages = [];
+
+const CHAT_ROOMS = ["choir", "band", "orchestra"];
+const CHAT_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
+const MEMBER_COLORS = ["#3dd6c6", "#f0a35e", "#8cb4ff", "#e38cff", "#7fd99a", "#f07178", "#ffd166", "#9ad0c8"];
 
 function currentPerson() {
   return state.users.find((u) => u.id === selectedUser) || {
@@ -314,6 +320,7 @@ function renderDateDetail() {
     ${voteBlock}
     <div class="drawer-actions">
       <button type="button" class="btn ghost" id="btn-comments">${I18N.t("comments")}${commentCount ? ` (${commentCount})` : ""}</button>
+      ${d.chatOpen ? `<button type="button" class="btn ghost" id="btn-event-chat">${I18N.t("eventChat")}</button>` : ""}
     </div>`;
 }
 
@@ -474,6 +481,7 @@ async function boot() {
     document.getElementById("date-form-title").textContent = selectedDate ? I18N.t("editDate") : I18N.t("addDate");
     gate.hidden = true;
     dash.hidden = false;
+    renderChatTabs();
     connectWS();
   } catch {
     gate.hidden = false;
@@ -496,6 +504,7 @@ document.getElementById("gate-form").addEventListener("submit", async (e) => {
 });
 
 document.getElementById("btn-logout").addEventListener("click", async () => {
+  closeChat();
   await api("/api/controller/logout", { method: "POST" });
   await boot();
 });
@@ -674,6 +683,16 @@ document.getElementById("date-detail").addEventListener("click", async (e) => {
     }
     return;
   }
+  if (e.target.closest("#btn-event-chat") && selectedDate) {
+    const event = state.dates.find((x) => x.id === selectedDate);
+    if (!event) return;
+    try {
+      await openChat(`event:${event.id}`, event.title);
+    } catch (err) {
+      alert(err.message);
+    }
+    return;
+  }
   if (!e.target.closest("#btn-comments") || !selectedDate) return;
   const d = state.dates.find((x) => x.id === selectedDate);
   if (!d) return;
@@ -693,12 +712,214 @@ document.getElementById("comment-close").addEventListener("click", () => {
   document.getElementById("comment-dialog").close();
 });
 
+function memberColor(id) {
+  let n = 0;
+  for (const ch of String(id || "")) n = (n + ch.charCodeAt(0)) % MEMBER_COLORS.length;
+  return MEMBER_COLORS[n];
+}
+
+function formatChatWhen(iso) {
+  const d = new Date(iso);
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  return d.toLocaleString(I18N.locale(), sameDay
+    ? { hour: "2-digit", minute: "2-digit" }
+    : { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+function chatAuthorKey(m) {
+  return m.isAdmin ? "admin" : m.userId;
+}
+
+function renderChatTabs() {
+  document.querySelectorAll("#chat-tabs [data-chat]").forEach((btn) => {
+    btn.textContent = I18N.role(btn.dataset.chat);
+    btn.classList.toggle("on", chatRoom === btn.dataset.chat);
+  });
+}
+
+function chatReactionsHTML(m) {
+  const chips = (m.reactions || []).map((r) => `
+    <button type="button" class="chat-react ${r.mine ? "on" : ""}" data-id="${m.id}" data-react="${r.emoji}">
+      ${r.emoji}<span>${r.count}</span>
+    </button>`).join("");
+  const picks = CHAT_EMOJIS.map((emoji) => `
+    <button type="button" data-id="${m.id}" data-react="${emoji}">${emoji}</button>`).join("");
+  return `<div class="chat-reacts">
+    ${chips}
+    <button type="button" class="chat-react-add" data-pick="${m.id}" aria-label="${escapeHtml(I18N.t("chatReact"))}">😊</button>
+    <div class="chat-picker" hidden data-picker="${m.id}">${picks}</div>
+  </div>`;
+}
+
+function chatMessageHTML(m, stacked) {
+  const mine = !!m.isAdmin;
+  const color = m.isAdmin ? "#f0a35e" : memberColor(m.userId);
+  const face = mine ? "" : Photo.html({
+    id: m.userId,
+    nickname: m.nickname,
+    hasPhoto: m.hasPhoto,
+    photoUpdatedAt: m.photoUpdatedAt,
+  }, "sm");
+  return `<article class="chat-row ${mine ? "mine" : "theirs"}${stacked ? " stack" : ""}">
+    ${face}
+    <div class="chat-col">
+      <div class="chat-bubble">
+        <p class="chat-name" style="color:${color}">${escapeHtml(m.isAdmin ? I18N.t("chatAdmin") : m.nickname)}</p>
+        <p class="chat-text">${escapeHtml(m.text)}</p>
+        <span class="chat-time">${escapeHtml(formatChatWhen(m.createdAt))}</span>
+      </div>
+      ${chatReactionsHTML(m)}
+    </div>
+  </article>`;
+}
+
+function renderChat(keepTop) {
+  const list = document.getElementById("chat-list");
+  const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 48;
+  list.innerHTML = chatMessages.length
+    ? chatMessages.map((m, i) => {
+      const prev = chatMessages[i - 1];
+      return chatMessageHTML(m, !!(prev && chatAuthorKey(prev) === chatAuthorKey(m)));
+    }).join("")
+    : `<p class="muted">${I18N.t("noMessages")}</p>`;
+  list.scrollTop = keepTop != null && !atBottom ? keepTop : list.scrollHeight;
+}
+
+function applyReactions(messageId, reactions) {
+  const m = chatMessages.find((x) => x.id === messageId);
+  if (!m) return;
+  const list = document.getElementById("chat-list");
+  m.reactions = reactions || [];
+  renderChat(list.scrollTop);
+}
+
+function appendChat(msg) {
+  if (!msg?.id || chatMessages.some((m) => m.id === msg.id)) return;
+  chatMessages.push(msg);
+  renderChat();
+}
+
+function closeChat() {
+  const dialog = document.getElementById("chat-dialog");
+  if (dialog.open) dialog.close();
+  chatRoom = "";
+  chatMessages = [];
+  renderChatTabs();
+}
+
+function chatTitle(room, title) {
+  if (title) return title;
+  if (CHAT_ROOMS.includes(room)) return I18N.t(`chat.${room}`);
+  return I18N.t("eventChat");
+}
+
+async function openChat(room, title) {
+  const event = room.startsWith("event:");
+  if (!event && !CHAT_ROOMS.includes(room)) return;
+  chatRoom = room;
+  renderChatTabs();
+  document.getElementById("chat-title").textContent = chatTitle(room, title);
+  document.getElementById("chat-text").value = "";
+  showError(document.getElementById("chat-error"), "");
+  const data = await api(`/api/controller/chats/${encodeURIComponent(room)}`);
+  chatMessages = data.messages || [];
+  renderChat();
+  const input = document.getElementById("chat-text");
+  input.placeholder = I18N.t("chatWrite");
+  document.getElementById("chat-dialog").showModal();
+  input.focus();
+}
+
+async function sendChat() {
+  if (!chatRoom) return;
+  const input = document.getElementById("chat-text");
+  const errEl = document.getElementById("chat-error");
+  showError(errEl, "");
+  const text = input.value.trim();
+  if (!text) return;
+  try {
+    const data = await api(`/api/controller/chats/${encodeURIComponent(chatRoom)}`, {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    });
+    input.value = "";
+    input.style.height = "";
+    appendChat(data.message);
+  } catch (err) {
+    showError(errEl, err.message);
+  }
+}
+
 function connectWS() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   const ws = new WebSocket(`${proto}://${location.host}/ws/controller`);
-  ws.onmessage = () => { loadState().catch(() => {}); };
+  ws.onmessage = (ev) => {
+    let msg = {};
+    try { msg = JSON.parse(ev.data); } catch { loadState().catch(() => {}); return; }
+    if (msg.type === "chat") {
+      if (chatRoom && msg.data?.room === chatRoom) appendChat(msg.data);
+      return;
+    }
+    if (msg.type === "react") {
+      if (chatRoom && msg.data?.room === chatRoom) applyReactions(msg.data.messageId, msg.data.reactions);
+      return;
+    }
+    loadState().catch(() => {});
+  };
   ws.onclose = () => { if (!dash.hidden) setTimeout(connectWS, 2000); };
 }
+
+document.getElementById("chat-tabs").addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-chat]");
+  if (!btn) return;
+  try {
+    await openChat(btn.dataset.chat);
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+document.getElementById("chat-close").addEventListener("click", () => {
+  document.getElementById("chat-dialog").close();
+});
+
+document.getElementById("chat-dialog").addEventListener("close", () => {
+  chatRoom = "";
+  chatMessages = [];
+  renderChatTabs();
+});
+
+document.getElementById("chat-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  await sendChat();
+});
+
+document.getElementById("chat-text").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" || e.shiftKey) return;
+  e.preventDefault();
+  sendChat();
+});
+
+document.getElementById("chat-list").addEventListener("click", async (e) => {
+  const pick = e.target.closest("[data-pick]");
+  if (pick) {
+    const box = document.querySelector(`[data-picker="${pick.dataset.pick}"]`);
+    if (box) box.hidden = !box.hidden;
+    return;
+  }
+  const btn = e.target.closest("[data-react]");
+  if (!btn || !chatRoom) return;
+  try {
+    const data = await api(`/api/controller/chats/${encodeURIComponent(chatRoom)}/messages/${encodeURIComponent(btn.dataset.id)}/react`, {
+      method: "POST",
+      body: JSON.stringify({ emoji: btn.dataset.react }),
+    });
+    applyReactions(data.message.id, data.message.reactions);
+  } catch (err) {
+    showError(document.getElementById("chat-error"), err.message);
+  }
+});
 
 document.getElementById("user-nickname").addEventListener("input", () => {
   if (!selectedUser && !pendingPhotoURL) paintPersonPhoto();
@@ -775,6 +996,15 @@ I18N.onChange(() => {
   const pwHint = document.getElementById("pw-hint");
   if (selectedUser) pwHint.textContent = I18N.t("passwordKeep");
   renderPollRows();
+  renderChatTabs();
+  if (document.getElementById("chat-dialog").open && chatRoom) {
+    const date = chatRoom.startsWith("event:")
+      ? state.dates.find((d) => d.id === chatRoom.slice("event:".length))
+      : null;
+    document.getElementById("chat-title").textContent = chatTitle(chatRoom, date?.title);
+    document.getElementById("chat-text").placeholder = I18N.t("chatWrite");
+    renderChat(document.getElementById("chat-list").scrollTop);
+  }
   if (!dash.hidden) {
     renderPeople();
     renderContacts();

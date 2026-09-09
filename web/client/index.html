@@ -45,6 +45,11 @@
         </div>
       </div>
       <div class="top-actions">
+        <div id="chat-tabs" class="chat-tabs" hidden>
+          <button type="button" class="btn ghost chat-tab" data-chat="choir" hidden>Chor</button>
+          <button type="button" class="btn ghost chat-tab" data-chat="band" hidden>Band</button>
+          <button type="button" class="btn ghost chat-tab" data-chat="orchestra" hidden>Orchester</button>
+        </div>
         <div class="lang-switch" role="group" data-i18n-aria="lang">
           <button type="button" class="lang-btn" data-lang="de">DE</button>
           <button type="button" class="lang-btn" data-lang="en">EN</button>
@@ -128,6 +133,21 @@
       <input id="info-birthday" type="date" />
       <p id="info-error" class="error" hidden></p>
       <button type="submit" data-i18n="save">Speichern</button>
+    </form>
+  </dialog>
+  <dialog id="chat-dialog" class="dialog chat-dialog">
+    <div class="dialog-head">
+      <div>
+        <p class="brand" data-i18n="chatBrand">Chat</p>
+        <h2 id="chat-title">Chat</h2>
+      </div>
+      <button type="button" id="chat-close" class="btn ghost" data-i18n="close">Schließen</button>
+    </div>
+    <div id="chat-list" class="chat-list"></div>
+    <form id="chat-form" class="chat-composer">
+      <label class="visually-hidden" for="chat-text" data-i18n="chatWrite">Nachricht schreiben</label>
+      <textarea id="chat-text" required maxlength="2000" rows="1"></textarea>
+      <p id="chat-error" class="error" hidden></p>
     </form>
   </dialog>
   <script src="/static/i18n.js"></script>
