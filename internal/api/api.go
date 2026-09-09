@@ -94,6 +94,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PATCH /api/controller/dates/{id}", s.handleUpdateDate)
 	mux.HandleFunc("DELETE /api/controller/dates/{id}", s.handleDeleteDate)
 	mux.HandleFunc("POST /api/controller/dates/{id}/status", s.handleDateStatus)
+	mux.HandleFunc("POST /api/controller/dates/{id}/attendance", s.handleControllerAttendance)
 	mux.HandleFunc("POST /api/controller/dates/{id}/freeze", s.handleFreezePoll)
 	mux.HandleFunc("GET /api/controller/dates/{id}/gallery", s.handleControllerGalleryList)
 	mux.HandleFunc("POST /api/controller/dates/{id}/gallery", s.handleControllerGalleryUpload)
@@ -1112,6 +1113,31 @@ func (s *Server) handleDateStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := s.Store.SetDateStatus(r.PathValue("id"), body.Status); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	view, err := s.Store.DateView(r.PathValue("id"), nil)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"date": view})
+}
+
+func (s *Server) handleControllerAttendance(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	var body struct {
+		UserID      string `json:"userId"`
+		Attendance  string `json:"attendance"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if err := s.Store.SetDateAttendance(r.PathValue("id"), body.UserID, body.Attendance); err != nil {
 		writeStoreError(w, err)
 		return
 	}

@@ -210,6 +210,26 @@ func TestChoirRanking(t *testing.T) {
 	if rank.Entries[1].Nickname != "Ada" || rank.Entries[1].Score != 1 || rank.Entries[1].Flipped != 1 {
 		t.Fatalf("ada %+v", rank.Entries[1])
 	}
+	if err := st.SetDateAttendance(d1.ID, ada.ID, AttendanceAbsent); err != nil {
+		t.Fatal(err)
+	}
+	absentRank, err := st.ChoirRanking(2026)
+	if err != nil || absentRank.Entries[1].Nickname != "Ada" || absentRank.Entries[1].Score != -3 {
+		t.Fatalf("absent ada %+v %v", absentRank.Entries, err)
+	}
+	if err := st.SetDateAttendance(d1.ID, ada.ID, AttendanceExcused); err != nil {
+		t.Fatal(err)
+	}
+	excusedRank, err := st.ChoirRanking(2026)
+	if err != nil || excusedRank.Entries[1].Nickname != "Ada" || excusedRank.Entries[1].Score != -1 {
+		t.Fatalf("excused ada %+v %v", excusedRank.Entries, err)
+	}
+	if err := st.SetDateAttendance(d1.ID, ada.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetDateAttendance(d1.ID, ben.ID, AttendanceAbsent); err == nil {
+		t.Fatal("maybe vote should not be marked absent")
+	}
 
 	dana, err := st.CreateUser("Dana", "dana@example.com", "secret1", RoleChoir, "Sopran")
 	if err != nil {

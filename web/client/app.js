@@ -554,9 +554,10 @@ function showTitlesList() {
   const items = date?.titles || [];
   if (copyBtn) copyBtn.disabled = items.length === 0;
   list.innerHTML = items.length
-    ? items.map((item) => `
+    ? items.map((item, i) => `
       <button type="button" class="title-item" data-title="${item.id}">
-        <div>
+        <span class="title-num">${i + 1}</span>
+        <div class="title-item-text">
           <strong>${escapeHtml(item.title)}</strong>
           ${item.composer ? `<p>${escapeHtml(item.composer)}</p>` : ""}
         </div>

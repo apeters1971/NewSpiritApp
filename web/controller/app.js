@@ -339,7 +339,18 @@ function renderDateDetail() {
     const vote = changed
       ? `<span class="badge ${e.choice}">${voteLabel(e.choice)}</span> <span class="changed">${I18N.t("firstVote")} ${voteLabel(e.initialChoice)}</span>`
       : `<span class="badge ${e.choice}">${voteLabel(e.choice)}</span>`;
-    return `<tr><td>${escapeHtml(e.nickname)}</td><td>${escapeHtml(I18N.subrole(e.subrole))}</td><td>${vote}</td></tr>`;
+    const mark = e.attendance === "absent"
+      ? ` <span class="badge no">${I18N.t("absent")}</span>`
+      : e.attendance === "excused"
+        ? ` <span class="badge maybe">${I18N.t("excused")}</span>`
+        : "";
+    const actions = e.choice === "yes"
+      ? `<div class="attendance-actions">
+          <button type="button" class="btn ghost${e.attendance === "absent" ? " on" : ""}" data-attendance="absent" data-user="${e.userId}" aria-pressed="${e.attendance === "absent"}">${I18N.t("absent")}</button>
+          <button type="button" class="btn ghost${e.attendance === "excused" ? " on" : ""}" data-attendance="excused" data-user="${e.userId}" aria-pressed="${e.attendance === "excused"}">${I18N.t("excused")}</button>
+        </div>`
+      : "";
+    return `<tr><td>${escapeHtml(e.nickname)}</td><td>${escapeHtml(I18N.subrole(e.subrole))}</td><td>${vote}${mark}</td><td>${actions}</td></tr>`;
   }).join("");
   const commentCount = (d.comments || []).length;
   const poll = (d.options || []).length >= 2 ? `
@@ -357,8 +368,8 @@ function renderDateDetail() {
     <h3>${I18N.t("votes")}</h3>
     <div class="counts">${counts}</div>
     <table>
-      <thead><tr><th>${I18N.t("name")}</th><th>${I18N.t("subrole")}</th><th>${I18N.t("vote")}</th></tr></thead>
-      <tbody>${rows || `<tr><td colspan="3" class="muted">${I18N.t("noPeopleRoles")}</td></tr>`}</tbody>
+      <thead><tr><th>${I18N.t("name")}</th><th>${I18N.t("subrole")}</th><th>${I18N.t("vote")}</th><th>${I18N.t("attendance")}</th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="4" class="muted">${I18N.t("noPeopleRoles")}</td></tr>`}</tbody>
     </table>`;
   box.innerHTML = `
     ${poll}
@@ -1163,6 +1174,22 @@ document.getElementById("date-detail").addEventListener("click", async (e) => {
       const data = await api(`/api/controller/dates/${selectedDate}/freeze`, {
         method: "POST",
         body: JSON.stringify({ optionId: freezeBtn.dataset.freeze }),
+      });
+      await loadState();
+      fillDateForm(data.date);
+    } catch (err) {
+      showError(dateError, err.message);
+    }
+    return;
+  }
+  const attendBtn = e.target.closest("[data-attendance]");
+  if (attendBtn && selectedDate) {
+    const next = attendBtn.getAttribute("aria-pressed") === "true" ? "" : attendBtn.dataset.attendance;
+    showError(dateError, "");
+    try {
+      const data = await api(`/api/controller/dates/${selectedDate}/attendance`, {
+        method: "POST",
+        body: JSON.stringify({ userId: attendBtn.dataset.user, attendance: next }),
       });
       await loadState();
       fillDateForm(data.date);

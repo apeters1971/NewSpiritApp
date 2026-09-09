@@ -46,7 +46,13 @@ type Ranking struct {
 	BySubrole     []SubroleStat  `json:"bySubrole"`
 }
 
-func votePoints(choice, initial string) int {
+func votePoints(choice, initial, attendance string) int {
+	if choice == VoteYes && attendance == AttendanceAbsent {
+		return -2
+	}
+	if choice == VoteYes && attendance == AttendanceExcused {
+		return 0
+	}
 	if choice == VoteYes {
 		return 2
 	}
@@ -85,6 +91,10 @@ func (s *Store) ChoirRanking(year int) (Ranking, error) {
 	if err != nil {
 		return out, err
 	}
+	attendance, err := s.attendanceForDates(ids)
+	if err != nil {
+		return out, err
+	}
 
 	entries := []RankingEntry{}
 	for _, u := range users {
@@ -98,7 +108,11 @@ func (s *Store) ChoirRanking(year int) (Ranking, error) {
 				choice = v.choice
 				initial = v.initial
 			}
-			e.Score += votePoints(choice, initial)
+			mark := ""
+			if byUser, ok := attendance[d.ID]; ok {
+				mark = byUser[u.ID]
+			}
+			e.Score += votePoints(choice, initial, mark)
 			switch choice {
 			case VoteYes:
 				e.Yes++

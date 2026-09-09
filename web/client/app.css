@@ -978,7 +978,7 @@ p.notes { margin: 0.55rem 0 0; color: var(--muted); white-space: pre-wrap; }
 .title-item {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: start;
   gap: 0.75rem;
   width: 100%;
   margin: 0;
@@ -991,6 +991,15 @@ p.notes { margin: 0.55rem 0 0; color: var(--muted); white-space: pre-wrap; }
   cursor: pointer;
 }
 .title-item:hover { background: rgba(61, 214, 198, 0.08); }
+.title-num {
+  flex: 0 0 2.1rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  text-align: right;
+  line-height: 1.35;
+}
+.title-item-text { min-width: 0; flex: 1; }
 .title-item strong { display: block; }
 .title-item p { margin: 0.15rem 0 0; color: var(--muted); font-size: 0.82rem; }
 .archive-toolbar { margin: 0.75rem 0 0.85rem; }

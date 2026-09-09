@@ -620,6 +620,20 @@ tbody tr:hover, tbody tr.active, .date-item.active { background: rgba(61, 214, 1
 .badge.maybe { background: rgba(240, 163, 94, 0.18); color: var(--warn); }
 .badge.no { background: rgba(240, 113, 120, 0.16); color: var(--danger); }
 .badge.unknown { background: rgba(255,255,255,0.06); color: var(--muted); }
+.attendance-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.attendance-actions .btn {
+  font-size: 0.75rem;
+  padding: 0.3rem 0.5rem;
+}
+.attendance-actions .btn.on {
+  background: rgba(61, 214, 198, 0.16);
+  border-color: rgba(61, 214, 198, 0.55);
+  color: var(--accent);
+}
 
 .counts { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.6rem 0; }
 .count {

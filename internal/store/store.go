@@ -90,6 +90,7 @@ type RosterEntry struct {
 	Subrole       string  `json:"subrole"`
 	Choice        string  `json:"choice"`
 	InitialChoice *string `json:"initialChoice,omitempty"`
+	Attendance    string  `json:"attendance,omitempty"`
 }
 
 type SubroleCount struct {
@@ -289,6 +290,9 @@ CREATE TABLE IF NOT EXISTS settings (
 		return err
 	}
 	if err := s.migrateGallery(); err != nil {
+		return err
+	}
+	if err := s.migrateAbsences(); err != nil {
 		return err
 	}
 	return s.migrateChatReads()
@@ -936,7 +940,13 @@ INSERT INTO votes(user_id, date_id, choice, initial_choice, updated_at) VALUES(?
 ON CONFLICT(user_id, date_id) DO UPDATE SET choice=excluded.choice, updated_at=excluded.updated_at`,
 		userID, dateID, choice, choice, fmtTime(now()),
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	if choice != VoteYes {
+		_, _ = s.db.Exec(`DELETE FROM date_absences WHERE date_id=? AND user_id=?`, dateID, userID)
+	}
+	return nil
 }
 
 func (s *Store) AddComment(userID, dateID, text string) (Comment, error) {
@@ -1206,14 +1216,15 @@ func (s *Store) roster(d Date) ([]RosterEntry, error) {
 	}
 	placeholders := strings.Repeat("?,", len(d.Roles))
 	placeholders = placeholders[:len(placeholders)-1]
-	args := []any{d.ID}
+	args := []any{d.ID, d.ID}
 	for _, role := range d.Roles {
 		args = append(args, role)
 	}
 	rows, err := s.db.Query(`
-SELECT u.id, u.nickname, u.email, u.role, u.subrole, v.choice, v.initial_choice
+SELECT u.id, u.nickname, u.email, u.role, u.subrole, v.choice, v.initial_choice, a.kind
 FROM users u
 LEFT JOIN votes v ON v.user_id = u.id AND v.date_id = ?
+LEFT JOIN date_absences a ON a.user_id = u.id AND a.date_id = ?
 WHERE u.role IN (`+placeholders+`)
 ORDER BY u.role, u.subrole, u.nickname COLLATE NOCASE`, args...)
 	if err != nil {
@@ -1223,10 +1234,11 @@ ORDER BY u.role, u.subrole, u.nickname COLLATE NOCASE`, args...)
 	out := []RosterEntry{}
 	for rows.Next() {
 		var e RosterEntry
-		var choice, initial sql.NullString
-		if err := rows.Scan(&e.UserID, &e.Nickname, &e.Email, &e.Role, &e.Subrole, &choice, &initial); err != nil {
+		var choice, initial, kind sql.NullString
+		if err := rows.Scan(&e.UserID, &e.Nickname, &e.Email, &e.Role, &e.Subrole, &choice, &initial, &kind); err != nil {
 			return nil, err
 		}
+		e.Attendance = scanAttendance(kind)
 		e.Choice = VoteUnknown
 		if choice.Valid && choice.String != "" {
 			e.Choice = choice.String
