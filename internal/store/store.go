@@ -42,6 +42,17 @@ type User struct {
 	CreatedAt          time.Time  `json:"createdAt"`
 }
 
+type DirectoryEntry struct {
+	ID             string     `json:"id"`
+	Nickname       string     `json:"nickname"`
+	Email          string     `json:"email"`
+	Phone          string     `json:"phone"`
+	Role           string     `json:"role"`
+	Subrole        string     `json:"subrole"`
+	HasPhoto       bool       `json:"hasPhoto"`
+	PhotoUpdatedAt *time.Time `json:"photoUpdatedAt,omitempty"`
+}
+
 type Date struct {
 	ID             string       `json:"id"`
 	Title          string       `json:"title"`
@@ -547,6 +558,40 @@ func (s *Store) ListUsers() ([]User, error) {
 	}
 	if err := s.attachChannels(out); err != nil {
 		return nil, err
+	}
+	return out, nil
+}
+
+func (s *Store) ListDirectory() ([]DirectoryEntry, error) {
+	rows, err := s.db.Query(`SELECT id, nickname, email, role, subrole, phone FROM users ORDER BY nickname COLLATE NOCASE`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []DirectoryEntry{}
+	for rows.Next() {
+		var e DirectoryEntry
+		if err := rows.Scan(&e.ID, &e.Nickname, &e.Email, &e.Role, &e.Subrole, &e.Phone); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(out) == 0 {
+		return out, nil
+	}
+	times, err := s.photoTimes()
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		if t, ok := times[out[i].ID]; ok {
+			out[i].HasPhoto = true
+			tt := t
+			out[i].PhotoUpdatedAt = &tt
+		}
 	}
 	return out, nil
 }

@@ -71,6 +71,7 @@
           <button type="button" class="btn ghost chat-tab" data-chat="orchestra" hidden>Orchester</button>
         </div>
         <button type="button" id="btn-calendar" class="btn calendar" data-i18n="subscribeCalendar">Kalender</button>
+        <button type="button" id="btn-directory" class="btn book" data-i18n="addressBook">Adressbuch</button>
         <button type="button" id="btn-propose" class="btn song" data-i18n="proposeSong">Song vorschlagen</button>
         <button type="button" id="btn-proposals" class="btn song" data-i18n="songProposals">Songvorschläge</button>
         <div class="lang-switch" role="group" data-i18n-aria="lang">
@@ -181,6 +182,19 @@
       <p id="propose-error" class="error" hidden></p>
       <button type="submit" data-i18n="proposeSubmit">Vorschlagen</button>
     </form>
+  </dialog>
+  <dialog id="directory-dialog" class="dialog directory-dialog">
+    <div class="dialog-head">
+      <div>
+        <p class="brand" data-i18n="addressBook">Adressbuch</p>
+        <h2 data-i18n="addressBookTitle">Personen</h2>
+      </div>
+      <button type="button" id="directory-close" class="btn ghost" data-i18n="close">Schließen</button>
+    </div>
+    <p class="muted" data-i18n="addressBookLede">E-Mail und Telefon aller Personen.</p>
+    <label for="directory-search" data-i18n="search">Suchen</label>
+    <input id="directory-search" type="search" autocomplete="off" />
+    <div id="directory-list" class="directory-list"></div>
   </dialog>
   <dialog id="proposals-dialog" class="dialog">
     <div class="dialog-head">

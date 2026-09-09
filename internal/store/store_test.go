@@ -301,6 +301,38 @@ func TestUserInfo(t *testing.T) {
 	}
 }
 
+func TestDirectory(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "directory.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	ada, err := st.CreateUser("Ada", "ada@example.com", "secret1", RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateUser("Ben", "ben@example.com", "secret1", RoleChoir, "Alt"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.SetUserInfo(ada.ID, "Hidden Street", "+49 611 1234", "1990-05-01"); err != nil {
+		t.Fatal(err)
+	}
+	list, err := st.ListDirectory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("got %d people", len(list))
+	}
+	if list[0].Nickname != "Ada" || list[0].Email != "ada@example.com" || list[0].Phone != "+49 611 1234" {
+		t.Fatalf("ada %+v", list[0])
+	}
+	if list[1].Nickname != "Ben" || list[1].Phone != "" {
+		t.Fatalf("ben %+v", list[1])
+	}
+}
+
 func TestChatRoom(t *testing.T) {
 	st, err := Open(filepath.Join(t.TempDir(), "chat.db"))
 	if err != nil {

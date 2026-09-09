@@ -68,6 +68,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/archive/{id}/files/{fileId}", s.handleArchiveFile)
 	mux.HandleFunc("GET /api/proposals", s.handleProposals)
 	mux.HandleFunc("POST /api/proposals", s.handleCreateProposal)
+	mux.HandleFunc("GET /api/directory", s.handleDirectory)
 	mux.HandleFunc("GET /api/me/calendar", s.handleMeCalendar)
 	mux.HandleFunc("GET /calendar/{token}", s.handleCalendarFeed)
 	mux.HandleFunc("GET /ws/client", s.handleMemberWS)
@@ -1338,6 +1339,19 @@ func (s *Server) handleCalendarFeed(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "public, max-age=300")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(body))
+}
+
+func (s *Server) handleDirectory(w http.ResponseWriter, r *http.Request) {
+	if _, err := s.userFromRequest(r); err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	list, err := s.Store.ListDirectory()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"people": list})
 }
 
 func (s *Server) handleProposals(w http.ResponseWriter, r *http.Request) {

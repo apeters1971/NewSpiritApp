@@ -170,6 +170,11 @@ button.avatar { cursor: pointer; appearance: none; }
   border-color: #8cb4ff;
   color: #c5d8ff;
 }
+.btn.book {
+  background: rgba(127, 217, 154, 0.18);
+  border-color: #7fd99a;
+  color: #c8f0d4;
+}
 a.btn { display: inline-block; text-decoration: none; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
@@ -673,6 +678,32 @@ a.btn { display: inline-block; text-decoration: none; }
 }
 .comment-card .meta { margin: 0 0 0.3rem; color: var(--muted); font-size: 0.78rem; }
 .comment-card p { margin: 0; white-space: pre-wrap; }
+.directory-dialog { width: min(640px, calc(100vw - 2rem)); }
+.directory-dialog label { display: block; margin-bottom: 0.35rem; font-size: 0.9rem; }
+.directory-dialog input[type="search"] {
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--line);
+  background: #0f151b;
+  color: var(--ink);
+  font: inherit;
+  margin-bottom: 0.85rem;
+}
+.directory-list { display: grid; gap: 0.55rem; max-height: 50vh; overflow: auto; }
+.directory-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.7rem;
+  align-items: start;
+  border: 1px solid var(--line);
+  background: #101820;
+  padding: 0.7rem 0.8rem;
+}
+.directory-card .avatar { pointer-events: none; }
+.directory-card strong { display: block; font-size: 1.02rem; }
+.directory-card .meta { margin: 0.15rem 0 0.4rem; color: var(--muted); font-size: 0.78rem; }
+.directory-card p { margin: 0.15rem 0 0; word-break: break-word; }
+.directory-card a { color: var(--accent); }
 .proposals-list { display: grid; gap: 0.65rem; max-height: 50vh; overflow: auto; }
 .proposal-card {
   border: 1px solid var(--line);

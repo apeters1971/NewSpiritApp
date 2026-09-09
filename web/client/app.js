@@ -12,6 +12,7 @@ let me = null;
 let dates = [];
 let ranking = { year: 0, leaders: [] };
 let proposals = [];
+let directory = [];
 let commentDateId = "";
 let titlesDateId = "";
 let chatRoom = "";
@@ -409,7 +410,7 @@ function archiveFileURL(id, file) {
 function archiveRoleLabel(role) {
   const id = String(role || "").trim();
   if (!id) return "";
-  if (["choir", "band", "orchestra", "technician"].includes(id)) return I18N.role(id);
+  if (["choir", "chorleiter", "band", "orchestra", "technician", "ehemalige"].includes(id)) return I18N.role(id);
   return id;
 }
 
@@ -944,6 +945,7 @@ function connectWS() {
       if (!me?.mustChangePassword) {
         loadDates().catch(() => {});
         if (document.getElementById("proposals-dialog").open) loadProposals().catch(() => {});
+        if (document.getElementById("directory-dialog").open) loadDirectory().catch(() => {});
       }
     }
   };
@@ -968,6 +970,7 @@ I18N.onChange(() => {
       renderChat(document.getElementById("chat-list").scrollTop);
     }
     if (document.getElementById("proposals-dialog").open) renderProposalList();
+    if (document.getElementById("directory-dialog").open) renderDirectory();
     render();
   }
 });
@@ -1169,6 +1172,65 @@ function renderProposalList() {
     </article>
   `).join("");
 }
+
+function phoneHref(phone) {
+  const n = String(phone || "").replace(/[^\d+]/g, "");
+  return n ? `tel:${n}` : "";
+}
+
+async function loadDirectory() {
+  const data = await api("/api/directory");
+  directory = data.people || [];
+  renderDirectory();
+}
+
+function renderDirectory() {
+  const list = document.getElementById("directory-list");
+  const q = document.getElementById("directory-search").value.trim().toLowerCase();
+  const rows = directory.filter((p) => {
+    if (!q) return true;
+    const hay = `${p.nickname} ${p.email} ${p.phone} ${I18N.role(p.role)} ${I18N.subrole(p.subrole)}`.toLowerCase();
+    return hay.includes(q);
+  });
+  if (!rows.length) {
+    list.innerHTML = `<p class="muted">${I18N.t("noContacts")}</p>`;
+    return;
+  }
+  list.innerHTML = rows.map((p) => {
+    const mail = p.email ? `<p><a href="mailto:${escapeHtml(p.email)}">${escapeHtml(p.email)}</a></p>` : "";
+    const tel = phoneHref(p.phone);
+    const phone = p.phone
+      ? `<p>${tel ? `<a href="${escapeHtml(tel)}">${escapeHtml(p.phone)}</a>` : escapeHtml(p.phone)}</p>`
+      : "";
+    return `
+    <article class="directory-card">
+      ${Photo.html(p, "sm")}
+      <div>
+        <strong>${escapeHtml(p.nickname)}</strong>
+        <p class="meta">${escapeHtml(I18N.role(p.role))} · ${escapeHtml(I18N.subrole(p.subrole))}</p>
+        ${mail}${phone}
+      </div>
+    </article>
+  `;
+  }).join("");
+}
+
+document.getElementById("btn-directory").addEventListener("click", async () => {
+  try {
+    document.getElementById("directory-search").value = "";
+    await loadDirectory();
+    document.getElementById("directory-dialog").showModal();
+    document.getElementById("directory-search").focus();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+document.getElementById("directory-close").addEventListener("click", () => {
+  document.getElementById("directory-dialog").close();
+});
+
+document.getElementById("directory-search").addEventListener("input", renderDirectory);
 
 document.getElementById("btn-propose").addEventListener("click", () => {
   document.getElementById("propose-form").reset();

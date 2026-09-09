@@ -12,6 +12,7 @@ const (
 	RoleBand        = "band"
 	RoleOrchestra   = "orchestra"
 	RoleTechnician  = "technician"
+	RoleEhemalige   = "ehemalige"
 	StatusVoting    = "voting"
 	StatusAccepted  = "accepted"
 	StatusCancelled = "cancelled"
@@ -21,7 +22,7 @@ const (
 	VoteUnknown     = "unknown"
 )
 
-var Roles = []string{RoleChoir, RoleChorleiter, RoleBand, RoleOrchestra, RoleTechnician}
+var Roles = []string{RoleChoir, RoleChorleiter, RoleBand, RoleOrchestra, RoleTechnician, RoleEhemalige}
 
 var Subroles = map[string][]string{
 	RoleChoir:       {"Sopran", "Alt", "Tenor/Bass"},
@@ -29,6 +30,7 @@ var Subroles = map[string][]string{
 	RoleBand:        {"Drums", "Percussion", "Guitar", "Hammond", "E-Bass", "Trumpet", "Sax", "Trombone", "Piano"},
 	RoleOrchestra:   {"Strings", "Woodbrass", "Brass", "Percussion", "Harp"},
 	RoleTechnician:  {"Sound", "Light", "Stage"},
+	RoleEhemalige:   {"Ehemalige"},
 }
 
 var RoleLabels = map[string]string{
@@ -37,6 +39,7 @@ var RoleLabels = map[string]string{
 	RoleBand:        "Band",
 	RoleOrchestra:   "Orchestra",
 	RoleTechnician:  "Technician",
+	RoleEhemalige:   "Alumni",
 }
 
 func RoleSeesDate(role string, dateRoles []string) bool {
@@ -151,8 +154,8 @@ const (
 var DressOptions = []string{DressWhite, DressBlack, DressCasual}
 
 var DressLabels = map[string]string{
-	DressWhite:  "White Dress",
-	DressBlack:  "Black Dress",
+	DressWhite:  "White Cloth",
+	DressBlack:  "Black Cloth",
 	DressCasual: "Casual",
 }
 

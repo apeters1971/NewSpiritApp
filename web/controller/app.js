@@ -624,7 +624,7 @@ function archiveFileURL(id, file) {
 function archiveRoleLabel(role) {
   const id = String(role || "").trim();
   if (!id) return "";
-  if (["choir", "band", "orchestra", "technician"].includes(id)) return I18N.role(id);
+  if (["choir", "chorleiter", "band", "orchestra", "technician", "ehemalige"].includes(id)) return I18N.role(id);
   return id;
 }
 
