@@ -50,7 +50,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/login", s.handleLogin)
 	mux.HandleFunc("POST /api/logout", s.handleLogout)
 	mux.HandleFunc("GET /api/me", s.handleMe)
+	mux.HandleFunc("PATCH /api/me/password", s.handleMePassword)
 	mux.HandleFunc("PATCH /api/me/info", s.handleMeInfo)
+	mux.HandleFunc("PATCH /api/me/channels/{n}", s.handleMeChannel)
 	mux.HandleFunc("POST /api/me/photo", s.handleMePhoto)
 	mux.HandleFunc("DELETE /api/me/photo", s.handleDeleteMePhoto)
 	mux.HandleFunc("GET /api/photos/{id}", s.handleGetPhoto)
@@ -61,11 +63,19 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/chats/{room}", s.handleChatList)
 	mux.HandleFunc("POST /api/chats/{room}", s.handleChatPost)
 	mux.HandleFunc("POST /api/chats/{room}/messages/{id}/react", s.handleChatReact)
+	mux.HandleFunc("DELETE /api/chats/{room}/messages/{id}", s.handleChatDelete)
+	mux.HandleFunc("GET /api/archive/{id}", s.handleArchiveItem)
+	mux.HandleFunc("GET /api/archive/{id}/files/{fileId}", s.handleArchiveFile)
+	mux.HandleFunc("GET /api/proposals", s.handleProposals)
+	mux.HandleFunc("POST /api/proposals", s.handleCreateProposal)
+	mux.HandleFunc("GET /api/me/calendar", s.handleMeCalendar)
+	mux.HandleFunc("GET /calendar/{token}", s.handleCalendarFeed)
 	mux.HandleFunc("GET /ws/client", s.handleMemberWS)
 
 	mux.HandleFunc("POST /api/controller/login", s.handleControllerLogin)
 	mux.HandleFunc("POST /api/controller/logout", s.handleControllerLogout)
 	mux.HandleFunc("GET /api/controller/state", s.handleControllerState)
+	mux.HandleFunc("PATCH /api/controller/settings", s.handleControllerSettings)
 	mux.HandleFunc("POST /api/controller/users", s.handleCreateUser)
 	mux.HandleFunc("PATCH /api/controller/users/{id}", s.handleUpdateUser)
 	mux.HandleFunc("PATCH /api/controller/users/{id}/info", s.handleControllerUserInfo)
@@ -80,6 +90,18 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/controller/chats/{room}", s.handleControllerChatList)
 	mux.HandleFunc("POST /api/controller/chats/{room}", s.handleControllerChatPost)
 	mux.HandleFunc("POST /api/controller/chats/{room}/messages/{id}/react", s.handleControllerChatReact)
+	mux.HandleFunc("DELETE /api/controller/chats/{room}/messages/{id}", s.handleControllerChatDelete)
+	mux.HandleFunc("GET /api/controller/archive", s.handleControllerArchiveList)
+	mux.HandleFunc("POST /api/controller/archive", s.handleControllerArchiveCreate)
+	mux.HandleFunc("PATCH /api/controller/archive/{id}", s.handleControllerArchiveUpdate)
+	mux.HandleFunc("DELETE /api/controller/archive/{id}", s.handleControllerArchiveDelete)
+	mux.HandleFunc("POST /api/controller/archive/{id}/files", s.handleControllerArchiveUpload)
+	mux.HandleFunc("PATCH /api/controller/archive/{id}/files/{fileId}", s.handleControllerArchiveUpdateFile)
+	mux.HandleFunc("DELETE /api/controller/archive/{id}/files/{fileId}", s.handleControllerArchiveDeleteFile)
+	mux.HandleFunc("GET /api/controller/archive/{id}/files/{fileId}", s.handleControllerArchiveFile)
+	mux.HandleFunc("PATCH /api/controller/channels/{n}", s.handleControllerChannel)
+	mux.HandleFunc("PATCH /api/controller/proposals/{id}", s.handleControllerUpdateProposal)
+	mux.HandleFunc("DELETE /api/controller/proposals/{id}", s.handleControllerDeleteProposal)
 	mux.HandleFunc("GET /ws/controller", s.handleControllerWS)
 
 	mux.HandleFunc("GET /controller", s.serveControllerIndex)
@@ -88,7 +110,32 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(s.ClientFS))))
 	mux.HandleFunc("GET /{$}", s.serveClientIndex)
 
-	return withJSONHeaders(mux)
+	return s.withPasswordGate(withJSONHeaders(mux))
+}
+
+func (s *Server) withPasswordGate(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.blocksUntilPasswordChange(r) {
+			user, err := s.userFromRequest(r)
+			if err == nil && user.MustChangePassword {
+				writeError(w, http.StatusForbidden, "password change required")
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) blocksUntilPasswordChange(r *http.Request) bool {
+	p := r.URL.Path
+	switch {
+	case strings.HasPrefix(p, "/api/controller"), p == "/api/login", p == "/api/logout", p == "/api/catalog", p == "/api/me", p == "/api/me/password":
+		return false
+	case strings.HasPrefix(p, "/api/"), strings.HasPrefix(p, "/ws/"):
+		return true
+	default:
+		return false
+	}
 }
 
 func withJSONHeaders(next http.Handler) http.Handler {
@@ -178,6 +225,27 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"user": user})
 }
 
+func (s *Server) handleMePassword(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var body struct {
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	user, err = s.Store.ChangeOwnPassword(user.ID, body.Password)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"user": user})
+}
+
 func readUserInfo(r *http.Request) (string, string, string, error) {
 	var body struct {
 		Address  string `json:"address"`
@@ -202,6 +270,38 @@ func (s *Server) handleMeInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, err = s.Store.SetUserInfo(user.ID, address, phone, birthday)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"user": user})
+}
+
+func (s *Server) handleMeChannel(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var n int
+	if _, err := fmt.Sscanf(r.PathValue("n"), "%d", &n); err != nil {
+		writeError(w, http.StatusBadRequest, "unknown channel")
+		return
+	}
+	var body struct {
+		Comment string `json:"comment"`
+		V48     bool   `json:"v48"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if _, err := s.Store.SetChannelComment(user.ID, n, body.Comment, body.V48); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	user, err = s.Store.UserByID(user.ID)
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -342,8 +442,8 @@ func (s *Server) handleDates(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	payload := map[string]any{
-		"year":   rank.Year,
-		"leader": rank.Leader,
+		"year":    rank.Year,
+		"leaders": rank.Leaders,
 	}
 	for _, e := range rank.Entries {
 		if e.UserID == user.ID {
@@ -503,6 +603,25 @@ func (s *Server) handleChatReact(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"message": msg})
 }
 
+func (s *Server) handleChatDelete(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	room := r.PathValue("room")
+	id := r.PathValue("id")
+	if err := s.Store.DeleteChatMessage(user.ID, room, id, false); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.publishChat(room, hub.Envelope{Type: "chatDelete", Data: map[string]any{
+		"room":      room,
+		"messageId": id,
+	}})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
 func (s *Server) handleControllerChatList(w http.ResponseWriter, r *http.Request) {
 	if !s.requireController(w, r) {
 		return
@@ -560,6 +679,23 @@ func (s *Server) handleControllerChatReact(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, map[string]any{"message": msg})
 }
 
+func (s *Server) handleControllerChatDelete(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	room := r.PathValue("room")
+	id := r.PathValue("id")
+	if err := s.Store.DeleteChatMessage("", room, id, true); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.publishChat(room, hub.Envelope{Type: "chatDelete", Data: map[string]any{
+		"room":      room,
+		"messageId": id,
+	}})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
 func (s *Server) handleControllerLogin(w http.ResponseWriter, r *http.Request) {
 	if s.ControllerSecret == "" {
 		writeError(w, http.StatusServiceUnavailable, "CONTROLLER_SECRET not configured")
@@ -612,12 +748,50 @@ func (s *Server) handleControllerState(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	archive, err := s.Store.ListArchive("")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	channels, err := s.Store.ListChannels()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	proposals, err := s.Store.ListProposals()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"users":   users,
-		"dates":   dates,
-		"online":  s.Hub.OnlineCount(),
-		"ranking": rank,
+		"users":      users,
+		"dates":      dates,
+		"online":     s.Hub.OnlineCount(),
+		"ranking":    rank,
+		"adminAlias": s.Store.AdminAlias(),
+		"archive":    archive,
+		"channels":   channels,
+		"proposals":  proposals,
 	})
+}
+
+func (s *Server) handleControllerSettings(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	var body struct {
+		AdminAlias string `json:"adminAlias"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	alias, err := s.Store.SetAdminAlias(body.AdminAlias)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"adminAlias": alias})
 }
 
 func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
@@ -721,9 +895,11 @@ type dateBody struct {
 	EndsAt   string           `json:"endsAt"`
 	Location string           `json:"location"`
 	Notes    string           `json:"notes"`
+	Schedule string           `json:"schedule"`
 	Roles    []string         `json:"roles"`
 	Bring    store.Bring      `json:"bring"`
 	Options  []pollOptionBody `json:"options"`
+	TitleIDs []string         `json:"titleIds"`
 }
 
 func parsePollOptions(raw []pollOptionBody) ([]store.PollOptionInput, error) {
@@ -800,8 +976,12 @@ func (s *Server) handleCreateDate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	d, err := s.Store.CreateDate(body.Title, body.Category, starts, ends, body.Location, body.Notes, body.Roles, body.Bring, options)
+	d, err := s.Store.CreateDate(body.Title, body.Category, starts, ends, body.Location, body.Notes, body.Schedule, body.Roles, body.Bring, options)
 	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if err := s.Store.SetDateTitles(d.ID, body.TitleIDs); err != nil {
 		writeStoreError(w, err)
 		return
 	}
@@ -823,7 +1003,11 @@ func (s *Server) handleUpdateDate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if _, err := s.Store.UpdateDate(r.PathValue("id"), body.Title, body.Category, starts, ends, body.Location, body.Notes, body.Roles, body.Bring, options); err != nil {
+	if _, err := s.Store.UpdateDate(r.PathValue("id"), body.Title, body.Category, starts, ends, body.Location, body.Notes, body.Schedule, body.Roles, body.Bring, options); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if err := s.Store.SetDateTitles(r.PathValue("id"), body.TitleIDs); err != nil {
 		writeStoreError(w, err)
 		return
 	}
@@ -894,6 +1078,362 @@ func (s *Server) handleFreezePoll(w http.ResponseWriter, r *http.Request) {
 	}
 	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
 	writeJSON(w, http.StatusOK, map[string]any{"date": view})
+}
+
+func writeArchiveFile(w http.ResponseWriter, r *http.Request, f store.ArchiveFile) {
+	w.Header().Set("Content-Type", f.MIME)
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+	name := f.Name
+	if name == "" {
+		name = "file"
+	}
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename=%q`, name))
+	http.ServeContent(w, r, name, f.UpdatedAt, bytes.NewReader(f.Data))
+}
+
+func (s *Server) handleArchiveItem(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	id := r.PathValue("id")
+	if err := s.Store.MemberCanAccessArchive(user.ID, id); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	item, err := s.Store.ArchiveItem(id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"item": item})
+}
+
+func (s *Server) handleArchiveFile(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	id := r.PathValue("id")
+	if err := s.Store.MemberCanAccessArchive(user.ID, id); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	f, err := s.Store.GetArchiveFile(id, r.PathValue("fileId"))
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeArchiveFile(w, r, f)
+}
+
+func (s *Server) handleControllerArchiveList(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	items, err := s.Store.ListArchive(r.URL.Query().Get("q"))
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (s *Server) handleControllerArchiveCreate(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	var body struct {
+		Title    string `json:"title"`
+		Composer string `json:"composer"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	item, err := s.Store.CreateArchiveItem(body.Title, body.Composer)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusCreated, map[string]any{"item": item})
+}
+
+func (s *Server) handleControllerArchiveUpdate(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	var body struct {
+		Title    string `json:"title"`
+		Composer string `json:"composer"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	item, err := s.Store.UpdateArchiveItem(r.PathValue("id"), body.Title, body.Composer)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"item": item})
+}
+
+func (s *Server) handleControllerArchiveDelete(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	if err := s.Store.DeleteArchiveItem(r.PathValue("id")); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) readArchiveUpload(w http.ResponseWriter, r *http.Request, kind string) (string, []byte, error) {
+	max := int64(store.ArchiveMaxBytes(kind)) + 512<<10
+	r.Body = http.MaxBytesReader(w, r.Body, max)
+	if err := r.ParseMultipartForm(max); err != nil {
+		return "", nil, fmt.Errorf("file is too large")
+	}
+	f, hdr, err := r.FormFile("file")
+	if err != nil {
+		return "", nil, fmt.Errorf("file is required")
+	}
+	defer f.Close()
+	limit := int64(store.ArchiveMaxBytes(kind)) + 1
+	raw, err := io.ReadAll(io.LimitReader(f, limit))
+	if err != nil {
+		return "", nil, fmt.Errorf("file is required")
+	}
+	if int64(len(raw)) >= limit {
+		return "", nil, fmt.Errorf("file is too large")
+	}
+	name := ""
+	if hdr != nil {
+		name = hdr.Filename
+	}
+	return name, raw, nil
+}
+
+func (s *Server) handleControllerArchiveUpload(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	name, data, err := s.readArchiveUpload(w, r, store.ArchiveKindAudio)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	kind := strings.TrimSpace(r.FormValue("kind"))
+	if kind == "" {
+		kind = strings.TrimSpace(r.URL.Query().Get("kind"))
+	}
+	if label := strings.TrimSpace(r.FormValue("name")); label != "" {
+		name = label
+	}
+	role := strings.TrimSpace(r.FormValue("role"))
+	item, err := s.Store.AddArchiveFile(r.PathValue("id"), kind, role, name, data)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"item": item})
+}
+
+func (s *Server) handleControllerArchiveUpdateFile(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	var body struct {
+		Name string `json:"name"`
+		Role string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	item, err := s.Store.UpdateArchiveFile(r.PathValue("id"), r.PathValue("fileId"), body.Name, body.Role)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"item": item})
+}
+
+func (s *Server) handleControllerArchiveDeleteFile(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	item, err := s.Store.DeleteArchiveFile(r.PathValue("id"), r.PathValue("fileId"))
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"item": item})
+}
+
+func (s *Server) handleControllerArchiveFile(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	f, err := s.Store.GetArchiveFile(r.PathValue("id"), r.PathValue("fileId"))
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeArchiveFile(w, r, f)
+}
+
+func requestBaseURL(r *http.Request) string {
+	scheme := "http"
+	if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+		scheme = "https"
+	}
+	host := r.Host
+	if host == "" {
+		host = "localhost"
+	}
+	return scheme + "://" + host
+}
+
+func (s *Server) handleMeCalendar(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	token, err := s.Store.EnsureCalendarToken(user.ID)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	url := requestBaseURL(r) + "/calendar/" + token + ".ics"
+	webcal := "webcal://" + strings.TrimPrefix(strings.TrimPrefix(url, "https://"), "http://")
+	writeJSON(w, http.StatusOK, map[string]any{"url": url, "webcalUrl": webcal})
+}
+
+func (s *Server) handleCalendarFeed(w http.ResponseWriter, r *http.Request) {
+	user, err := s.Store.UserByCalendarToken(strings.TrimSuffix(r.PathValue("token"), ".ics"))
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	dates, err := s.Store.ListAcceptedDatesForRole(user.Role)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	body := store.RenderICS("New Spirit", dates)
+	w.Header().Set("Content-Type", "text/calendar; charset=utf-8")
+	w.Header().Set("Content-Disposition", `inline; filename="newspirit.ics"`)
+	w.Header().Set("Cache-Control", "public, max-age=300")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(body))
+}
+
+func (s *Server) handleProposals(w http.ResponseWriter, r *http.Request) {
+	if _, err := s.userFromRequest(r); err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	list, err := s.Store.ListProposals()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"proposals": list})
+}
+
+func (s *Server) handleCreateProposal(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var body struct {
+		Title string `json:"title"`
+		URL   string `json:"url"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	p, err := s.Store.CreateProposal(user.ID, body.Title, body.URL)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusCreated, map[string]any{"proposal": p})
+}
+
+func (s *Server) handleControllerUpdateProposal(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	var body struct {
+		Status  *string `json:"status"`
+		Comment *string `json:"comment"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	p, err := s.Store.UpdateProposal(r.PathValue("id"), body.Status, body.Comment)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"proposal": p})
+}
+
+func (s *Server) handleControllerDeleteProposal(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	if err := s.Store.DeleteProposal(r.PathValue("id")); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleControllerChannel(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	var n int
+	if _, err := fmt.Sscanf(r.PathValue("n"), "%d", &n); err != nil {
+		writeError(w, http.StatusBadRequest, "unknown channel")
+		return
+	}
+	var body struct {
+		UserID  string `json:"userId"`
+		Comment string `json:"comment"`
+		V48     bool   `json:"v48"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	ch, err := s.Store.SetChannel(n, body.UserID, body.Comment, body.V48)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"channel": ch})
 }
 
 func (s *Server) handleMemberWS(w http.ResponseWriter, r *http.Request) {

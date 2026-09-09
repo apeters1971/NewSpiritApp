@@ -57,7 +57,11 @@
       <button type="button" class="tab active" data-tab="people" data-i18n="tabPeople">Personen</button>
       <button type="button" class="tab" data-tab="contacts" data-i18n="tabContacts">Kontakte</button>
       <button type="button" class="tab" data-tab="dates" data-i18n="tabDates">Termine</button>
+      <button type="button" class="tab" data-tab="archive" data-i18n="tabArchive">Notenarchiv</button>
+      <button type="button" class="tab" data-tab="channels" data-i18n="tabChannels">Kanäle</button>
+      <button type="button" class="tab" data-tab="proposals" data-i18n="tabProposals">Songvorschläge</button>
       <button type="button" class="tab" data-tab="ranking" data-i18n="tabRanking">Rang</button>
+      <button type="button" class="tab" data-tab="settings" data-i18n="tabSettings">Einstellungen</button>
     </nav>
 
     <div id="tab-people" class="tab-panel">
@@ -78,6 +82,7 @@
         </div>
         <form id="people-form" class="drawer">
           <h2 id="people-form-title">Person hinzufügen</h2>
+          <p id="user-channels" class="user-channels" hidden></p>
           <div class="face-cluster face-cluster-form">
             <button type="button" id="user-photo" class="avatar avatar-form" data-photo-open data-i18n-aria="photoHint">
               <span class="avatar-placeholder">+</span>
@@ -93,6 +98,7 @@
           <input id="user-email" type="email" required />
           <label for="user-password"><span data-i18n="password">Passwort</span> <span class="optional" id="pw-hint"></span></label>
           <input id="user-password" type="password" autocomplete="new-password" />
+          <p class="muted" data-i18n="passwordOnceHint">Einmal-Passwort: beim nächsten Login muss die Person ein eigenes wählen.</p>
           <label for="user-role" data-i18n="role">Rolle</label>
           <select id="user-role" required></select>
           <label for="user-subrole" data-i18n="subrole">Teilrolle</label>
@@ -154,6 +160,8 @@
           <input id="date-location" />
           <label for="date-notes" data-i18n="notes">Notizen</label>
           <textarea id="date-notes" rows="3"></textarea>
+          <label for="date-schedule" data-i18n="schedule">Zeitplan</label>
+          <textarea id="date-schedule" rows="6" maxlength="8000"></textarea>
           <p class="label" data-i18n="whatToBring">Mitbringen</p>
           <div class="checks">
             <label><input type="checkbox" id="bring-mic" /> <span data-i18n="gear.mic">Mikro</span></label>
@@ -169,9 +177,15 @@
           </div>
           <p class="label" data-i18n="rolesForDate">Rollen, die diesen Termin sehen</p>
           <div id="date-roles" class="checks"></div>
+          <p class="label" data-i18n="titleList">Titelliste</p>
+          <label for="inherit-titles" data-i18n="inheritTitles">Von anderem Termin übernehmen</label>
+          <select id="inherit-titles"></select>
+          <label for="archive-pick" data-i18n="addFromArchive">Aus dem Archiv hinzufügen</label>
+          <select id="archive-pick"></select>
+          <div id="date-titles" class="title-picks"></div>
           <p id="date-error" class="error" hidden></p>
           <div class="drawer-actions">
-            <button type="submit" class="btn" data-i18n="save">Speichern</button>
+            <button type="submit" id="btn-date-save" class="btn" data-i18n="save">Speichern</button>
             <button type="button" id="btn-date-new" class="btn ghost" data-i18n="newItem">Neu</button>
             <button type="button" id="btn-date-delete" class="btn ghost danger" data-i18n="delete" disabled>Löschen</button>
           </div>
@@ -185,6 +199,95 @@
           </div>
           <div id="date-detail"></div>
         </form>
+      </div>
+    </div>
+
+    <div id="tab-archive" class="tab-panel" hidden>
+      <div class="archive-search">
+        <label for="archive-search" data-i18n="archiveSearch">Suchen</label>
+        <input id="archive-search" type="search" autocomplete="off" />
+      </div>
+      <div class="layout">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th data-i18n="title">Titel</th>
+                <th data-i18n="archiveComposer">Komponist</th>
+                <th data-i18n="archiveAudio">Audio</th>
+                <th data-i18n="archiveLyrics">Text</th>
+                <th data-i18n="archiveSheet">Noten</th>
+              </tr>
+            </thead>
+            <tbody id="archive-body"></tbody>
+          </table>
+          <p id="archive-empty" class="muted" hidden data-i18n="archiveNoItems">Noch keine Einträge.</p>
+        </div>
+        <form id="archive-form" class="drawer">
+          <h2 id="archive-form-title">Titel hinzufügen</h2>
+          <input type="hidden" id="archive-id" />
+          <label for="archive-title" data-i18n="title">Titel</label>
+          <input id="archive-title" required />
+          <label for="archive-composer" data-i18n="archiveComposerOpt">Komponist (optional)</label>
+          <input id="archive-composer" />
+          <div id="archive-files" class="archive-files" hidden></div>
+          <p id="archive-files-hint" class="muted" data-i18n="archiveSaveFirst">Zuerst speichern, dann Dateien anhängen.</p>
+          <input id="archive-file" type="file" hidden />
+          <p id="archive-error" class="error" hidden></p>
+          <div class="drawer-actions">
+            <button type="submit" class="btn" data-i18n="save">Speichern</button>
+            <button type="button" id="btn-archive-new" class="btn ghost" data-i18n="newItem">Neu</button>
+            <button type="button" id="btn-archive-delete" class="btn ghost danger" data-i18n="delete" disabled>Löschen</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="tab-channels" class="tab-panel" hidden>
+      <h2 data-i18n="tabChannels">Kanäle</h2>
+      <p class="lede" data-i18n="channelsHint">Kanäle 1–96 für Chor, Band und Orchester. Jeder Kanal kann einer Person und einem Kommentar zugeordnet werden.</p>
+      <div class="archive-search">
+        <label for="channel-search" data-i18n="archiveSearch">Suchen</label>
+        <input id="channel-search" type="search" autocomplete="off" />
+      </div>
+      <p id="channels-error" class="error" hidden></p>
+      <div class="table-wrap channel-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th data-i18n="channel">Kanal</th>
+              <th data-i18n="person">Person</th>
+              <th data-i18n="notes">Notizen</th>
+              <th data-i18n="channel48v">48V</th>
+            </tr>
+          </thead>
+          <tbody id="channels-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="tab-proposals" class="tab-panel" hidden>
+      <h2 data-i18n="tabProposals">Songvorschläge</h2>
+      <p class="lede" data-i18n="proposalsHint">Annehmen, ablehnen oder löschen. Der Kommentar ist für alle sichtbar.</p>
+      <div class="archive-search">
+        <label for="proposal-search" data-i18n="archiveSearch">Suchen</label>
+        <input id="proposal-search" type="search" autocomplete="off" />
+      </div>
+      <p id="proposals-error" class="error" hidden></p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th data-i18n="songName">Songname</th>
+              <th data-i18n="songURL">URL</th>
+              <th data-i18n="person">Person</th>
+              <th data-i18n="status">Status</th>
+              <th data-i18n="adminComment">Kommentar der Verwaltung</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="proposals-body"></tbody>
+        </table>
       </div>
     </div>
 
@@ -210,6 +313,19 @@
           <tbody id="ranking-body"></tbody>
         </table>
       </div>
+    </div>
+
+    <div id="tab-settings" class="tab-panel" hidden>
+      <h2 data-i18n="tabSettings">Einstellungen</h2>
+      <form id="settings-form" class="drawer settings-form">
+        <label for="admin-alias" data-i18n="adminAlias">Chat-Name der Verwaltung</label>
+        <p class="muted" data-i18n="adminAliasHint">So erscheint die Verwaltung in den Chats, statt „Admin“.</p>
+        <input id="admin-alias" maxlength="40" autocomplete="off" />
+        <p id="settings-error" class="error" hidden></p>
+        <div class="drawer-actions">
+          <button type="submit" class="btn" data-i18n="save">Speichern</button>
+        </div>
+      </form>
     </div>
   </section>
 

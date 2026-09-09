@@ -7,32 +7,32 @@ import (
 )
 
 type RankingEntry struct {
-	UserID     string `json:"userId"`
-	Nickname   string `json:"nickname"`
-	Subrole    string `json:"subrole"`
-	Score      int    `json:"score"`
-	Yes        int    `json:"yes"`
-	Maybe      int    `json:"maybe"`
-	No         int    `json:"no"`
-	Unknown    int    `json:"unknown"`
-	Flipped    int    `json:"flipped"`
-	Events     int    `json:"events"`
+	UserID   string `json:"userId"`
+	Nickname string `json:"nickname"`
+	Subrole  string `json:"subrole"`
+	Score    int    `json:"score"`
+	Yes      int    `json:"yes"`
+	Maybe    int    `json:"maybe"`
+	No       int    `json:"no"`
+	Unknown  int    `json:"unknown"`
+	Flipped  int    `json:"flipped"`
+	Events   int    `json:"events"`
 }
 
 type SubroleStat struct {
-	Subrole   string  `json:"subrole"`
-	Members   int     `json:"members"`
-	Score     int     `json:"score"`
-	AvgScore  float64 `json:"avgScore"`
-	Yes       int     `json:"yes"`
-	Maybe     int     `json:"maybe"`
-	No        int     `json:"no"`
-	Flipped   int     `json:"flipped"`
+	Subrole  string  `json:"subrole"`
+	Members  int     `json:"members"`
+	Score    int     `json:"score"`
+	AvgScore float64 `json:"avgScore"`
+	Yes      int     `json:"yes"`
+	Maybe    int     `json:"maybe"`
+	No       int     `json:"no"`
+	Flipped  int     `json:"flipped"`
 }
 
 type Ranking struct {
 	Year          int            `json:"year"`
-	Leader        *RankingEntry  `json:"leader,omitempty"`
+	Leaders       []RankingEntry `json:"leaders,omitempty"`
 	Entries       []RankingEntry `json:"entries"`
 	Events        int            `json:"events"`
 	Members       int            `json:"members"`
@@ -147,9 +147,10 @@ func (s *Store) ChoirRanking(year int) (Ranking, error) {
 			st.No += e.No
 			st.Flipped += e.Flipped
 		}
-		if e.Score > 0 && (out.Leader == nil || e.Score > out.Leader.Score) {
-			cp := e
-			out.Leader = &cp
+		if e.Score > 0 && (len(out.Leaders) == 0 || e.Score > out.Leaders[0].Score) {
+			out.Leaders = []RankingEntry{e}
+		} else if e.Score > 0 && e.Score == out.Leaders[0].Score {
+			out.Leaders = append(out.Leaders, e)
 		}
 	}
 	if out.Members > 0 {

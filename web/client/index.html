@@ -27,6 +27,25 @@
     </form>
   </section>
 
+  <section id="pw-view" class="gate" hidden>
+    <form id="pw-form" class="gate-card">
+      <div class="lang-switch" role="group" data-i18n-aria="lang">
+        <button type="button" class="lang-btn" data-lang="de">DE</button>
+        <button type="button" class="lang-btn" data-lang="en">EN</button>
+      </div>
+      <img class="logo logo-login" src="/static/nsgc-symbol.png" alt="New Spirit Gospel Choir" />
+      <p class="brand" data-i18n="brand">New Spirit</p>
+      <h1 data-i18n="changePassword">Passwort ändern</h1>
+      <p class="lede" data-i18n="changePasswordLede">Bitte wähle ein neues Passwort. Das von der Verwaltung gesetzte Passwort kannst du nicht wiederverwenden.</p>
+      <label for="pw-new" data-i18n="newPassword">Neues Passwort</label>
+      <input id="pw-new" type="password" required minlength="6" autocomplete="new-password" />
+      <label for="pw-confirm" data-i18n="confirmPassword">Passwort bestätigen</label>
+      <input id="pw-confirm" type="password" required minlength="6" autocomplete="new-password" />
+      <button type="submit" data-i18n="save">Speichern</button>
+      <p id="pw-error" class="error" hidden></p>
+    </form>
+  </section>
+
   <section id="app-view" class="app" hidden>
     <header class="top">
       <div class="top-brand">
@@ -42,6 +61,7 @@
           <p class="brand" data-i18n="brand">New Spirit</p>
           <h1 id="who-name">Termine</h1>
           <p id="who-meta" class="muted"></p>
+          <p id="who-channels" class="who-channels" hidden></p>
         </div>
       </div>
       <div class="top-actions">
@@ -50,6 +70,9 @@
           <button type="button" class="btn ghost chat-tab" data-chat="band" hidden>Band</button>
           <button type="button" class="btn ghost chat-tab" data-chat="orchestra" hidden>Orchester</button>
         </div>
+        <button type="button" id="btn-calendar" class="btn calendar" data-i18n="subscribeCalendar">Kalender</button>
+        <button type="button" id="btn-propose" class="btn song" data-i18n="proposeSong">Song vorschlagen</button>
+        <button type="button" id="btn-proposals" class="btn song" data-i18n="songProposals">Songvorschläge</button>
         <div class="lang-switch" role="group" data-i18n-aria="lang">
           <button type="button" class="lang-btn" data-lang="de">DE</button>
           <button type="button" class="lang-btn" data-lang="en">EN</button>
@@ -57,25 +80,12 @@
         <button type="button" id="btn-logout" class="btn ghost" data-i18n="signOut">Abmelden</button>
       </div>
     </header>
+    <section id="my-channels" class="my-channels" hidden></section>
     <section id="spirit" class="spirit" hidden></section>
+    <section id="next-up" class="next-up" hidden></section>
     <section id="overview" class="overview" hidden>
-      <h2 data-i18n="nextMonths">Nächste drei Monate</h2>
-      <div class="table-wrap">
-        <table class="overview-table">
-          <thead>
-            <tr>
-              <th data-i18n="when">Wann</th>
-              <th data-i18n="category">Kategorie</th>
-              <th data-i18n="event">Termin</th>
-              <th data-i18n="bring">Mitbringen</th>
-              <th data-i18n="status">Status</th>
-              <th data-i18n="yourVote">Deine Stimme</th>
-            </tr>
-          </thead>
-          <tbody id="overview-body"></tbody>
-        </table>
-      </div>
-      <p id="overview-empty" class="muted" hidden data-i18n="noUpcoming">Keine Termine in den nächsten drei Monaten.</p>
+      <div id="overview-list" class="overview-box"></div>
+      <p id="overview-empty" class="muted" hidden data-i18n="noUpcoming">Keine kommenden Termine.</p>
     </section>
     <div id="dates" class="dates"></div>
     <p id="empty" class="lede empty" hidden data-i18n="noDatesRole">Noch keine Termine für deine Rolle.</p>
@@ -134,6 +144,74 @@
       <p id="info-error" class="error" hidden></p>
       <button type="submit" data-i18n="save">Speichern</button>
     </form>
+  </dialog>
+  <dialog id="calendar-dialog" class="dialog">
+    <div class="dialog-head">
+      <div>
+        <p class="brand" data-i18n="subscribeCalendar">Kalender</p>
+        <h2 data-i18n="calendarTitle">Kalender abonnieren</h2>
+      </div>
+      <button type="button" id="calendar-close" class="btn ghost" data-i18n="close">Schließen</button>
+    </div>
+    <p class="muted" data-i18n="calendarLede">Nur angenommene Termine deiner Rolle. Neue oder geänderte Termine erscheinen später von selbst — bei Google oft mit Verzögerung.</p>
+    <p class="muted" data-i18n="calendarGoogle">Google Kalender: Einstellungen → Kalender hinzufügen → Per URL, dann den Link einfügen.</p>
+    <p class="muted" data-i18n="calendarApple">iPhone, iPad oder Mac: Abonnieren öffnet die Kalender-App.</p>
+    <label for="calendar-url" data-i18n="copyLink">Link kopieren</label>
+    <input id="calendar-url" type="text" readonly />
+    <p id="calendar-error" class="error" hidden></p>
+    <div class="photo-actions">
+      <button type="button" id="calendar-copy" class="btn" data-i18n="copyLink">Link kopieren</button>
+      <a id="calendar-open" class="btn ghost" data-i18n="openSubscribe">Abonnieren</a>
+    </div>
+  </dialog>
+  <dialog id="propose-dialog" class="dialog">
+    <div class="dialog-head">
+      <div>
+        <p class="brand" data-i18n="proposeSong">Song vorschlagen</p>
+        <h2 data-i18n="songName">Songname</h2>
+      </div>
+      <button type="button" id="propose-close" class="btn ghost" data-i18n="close">Schließen</button>
+    </div>
+    <p class="muted" data-i18n="proposeSongLede">Schlage einen Song vor. Eine URL zu Noten oder einem Video ist optional.</p>
+    <form id="propose-form" class="info-form">
+      <label for="propose-title" data-i18n="songName">Songname</label>
+      <input id="propose-title" type="text" required maxlength="200" autocomplete="off" />
+      <label for="propose-url" data-i18n="songURLOptional">URL (optional)</label>
+      <input id="propose-url" type="url" maxlength="500" autocomplete="off" placeholder="https://" />
+      <p id="propose-error" class="error" hidden></p>
+      <button type="submit" data-i18n="proposeSubmit">Vorschlagen</button>
+    </form>
+  </dialog>
+  <dialog id="proposals-dialog" class="dialog">
+    <div class="dialog-head">
+      <div>
+        <p class="brand" data-i18n="songProposals">Songvorschläge</p>
+        <h2 data-i18n="tabProposals">Songvorschläge</h2>
+      </div>
+      <button type="button" id="proposals-close" class="btn ghost" data-i18n="close">Schließen</button>
+    </div>
+    <div id="proposals-list" class="proposals-list"></div>
+  </dialog>
+  <dialog id="schedule-dialog" class="dialog">
+    <div class="dialog-head">
+      <div>
+        <p class="brand" data-i18n="schedule">Zeitplan</p>
+        <h2 id="schedule-heading">Termin</h2>
+      </div>
+      <button type="button" id="schedule-close" class="btn ghost" data-i18n="close">Schließen</button>
+    </div>
+    <div id="schedule-body" class="schedule-body"></div>
+  </dialog>
+  <dialog id="titles-dialog" class="dialog">
+    <div class="dialog-head">
+      <div>
+        <p class="brand" data-i18n="titlesBrand">Titelliste</p>
+        <h2 id="titles-heading">Termin</h2>
+      </div>
+      <button type="button" id="titles-close" class="btn ghost" data-i18n="close">Schließen</button>
+    </div>
+    <div id="titles-list" class="titles-list"></div>
+    <div id="title-detail" class="title-detail" hidden></div>
   </dialog>
   <dialog id="chat-dialog" class="dialog chat-dialog">
     <div class="dialog-head">

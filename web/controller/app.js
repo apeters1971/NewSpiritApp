@@ -6,9 +6,12 @@ const peopleError = document.getElementById("people-error");
 const dateError = document.getElementById("date-error");
 
 let catalog = { roles: [], categories: [] };
-let state = { users: [], dates: [], online: 0, ranking: { entries: [], bySubrole: [] } };
+let state = { users: [], dates: [], online: 0, ranking: { entries: [], bySubrole: [] }, archive: [], channels: [], proposals: [] };
 let selectedUser = "";
 let selectedDate = "";
+let selectedArchive = "";
+let dateTitleIDs = [];
+let dateFormClean = "";
 let pollRows = [];
 let pollFrozen = false;
 let pendingPhoto = null;
@@ -110,6 +113,31 @@ function readBringForm() {
     stand: document.getElementById("bring-stand").checked,
     dress: document.querySelector("input[name=dress]:checked")?.value || "",
   };
+}
+
+function dateFormSnapshot() {
+  return JSON.stringify({
+    title: document.getElementById("date-title").value,
+    category: document.getElementById("date-category").value,
+    start: document.getElementById("date-start").value,
+    end: document.getElementById("date-end").value,
+    location: document.getElementById("date-location").value,
+    notes: document.getElementById("date-notes").value,
+    schedule: document.getElementById("date-schedule").value,
+    roles: [...document.querySelectorAll("#date-roles input:checked")].map((el) => el.value).sort(),
+    bring: readBringForm(),
+    options: pollRows.map((r) => ({ id: r.id || "", startsAt: r.startsAt || "", endsAt: r.endsAt || "" })),
+    titleIds: dateTitleIDs.slice(),
+  });
+}
+
+function paintDateSave() {
+  document.getElementById("btn-date-save")?.classList.toggle("dirty", dateFormSnapshot() !== dateFormClean);
+}
+
+function captureDateForm() {
+  dateFormClean = dateFormSnapshot();
+  paintDateSave();
 }
 
 function voteLabel(choice) {
@@ -254,7 +282,11 @@ function showTab(name) {
   document.getElementById("tab-people").hidden = name !== "people";
   document.getElementById("tab-contacts").hidden = name !== "contacts";
   document.getElementById("tab-dates").hidden = name !== "dates";
+  document.getElementById("tab-archive").hidden = name !== "archive";
+  document.getElementById("tab-channels").hidden = name !== "channels";
+  document.getElementById("tab-proposals").hidden = name !== "proposals";
   document.getElementById("tab-ranking").hidden = name !== "ranking";
+  document.getElementById("tab-settings").hidden = name !== "settings";
 }
 
 function renderDates() {
@@ -320,6 +352,7 @@ function renderDateDetail() {
     ${voteBlock}
     <div class="drawer-actions">
       <button type="button" class="btn ghost" id="btn-comments">${I18N.t("comments")}${commentCount ? ` (${commentCount})` : ""}</button>
+      <button type="button" class="btn ghost" id="btn-titles">${I18N.t("titles")}${(d.titles || []).length ? ` (${d.titles.length})` : ""}</button>
       ${d.chatOpen ? `<button type="button" class="btn ghost" id="btn-event-chat">${I18N.t("eventChat")}</button>` : ""}
     </div>`;
 }
@@ -346,6 +379,7 @@ function resetUserForm() {
   fillSubroles();
   renderPeople();
   paintPersonPhoto();
+  paintUserChannels();
   showError(peopleError, "");
 }
 
@@ -359,13 +393,14 @@ function fillUserForm(u) {
   document.getElementById("user-email").value = u.email;
   document.getElementById("user-password").value = "";
   document.getElementById("user-password").required = false;
-  document.getElementById("pw-hint").textContent = I18N.t("passwordKeep");
+  document.getElementById("pw-hint").textContent = u.mustChangePassword ? I18N.t("passwordPending") : I18N.t("passwordKeep");
   document.getElementById("user-role").value = u.role;
   fillSubroles();
   document.getElementById("user-subrole").value = u.subrole;
   document.getElementById("btn-user-delete").disabled = false;
   renderPeople();
   paintPersonPhoto();
+  paintUserChannels();
 }
 
 function resetDateForm() {
@@ -378,12 +413,16 @@ function resetDateForm() {
   document.getElementById("date-end").value = "";
   document.getElementById("date-location").value = "";
   document.getElementById("date-notes").value = "";
+  document.getElementById("date-schedule").value = "";
   document.querySelectorAll("#date-roles input").forEach((el) => { el.checked = false; });
   setBringForm();
   setPollRows([], false);
+  dateTitleIDs = [];
   document.getElementById("btn-date-delete").disabled = true;
   renderDates();
+  renderDateTitles();
   showError(dateError, "");
+  captureDateForm();
 }
 
 function fillDateForm(d) {
@@ -396,13 +435,17 @@ function fillDateForm(d) {
   document.getElementById("date-end").value = toLocalInput(d.endsAt);
   document.getElementById("date-location").value = d.location || "";
   document.getElementById("date-notes").value = d.notes || "";
+  document.getElementById("date-schedule").value = d.schedule || "";
   document.querySelectorAll("#date-roles input").forEach((el) => {
     el.checked = (d.roles || []).includes(el.value);
   });
   setBringForm(d.bring);
   setPollRows(d.options, !d.pollOpen && (d.options || []).length >= 2);
+  dateTitleIDs = (d.titles || []).map((t) => t.id);
   document.getElementById("btn-date-delete").disabled = false;
   renderDates();
+  renderDateTitles();
+  captureDateForm();
 }
 
 function escapeHtml(s) {
@@ -421,19 +464,358 @@ async function loadState() {
   }
   renderContacts();
   renderRanking();
+  renderArchive();
+  renderChannels();
+  renderProposals();
+  fillSettingsForm();
   paintPersonPhoto();
+  paintUserChannels();
+}
+
+function fillSettingsForm() {
+  const input = document.getElementById("admin-alias");
+  if (!input) return;
+  input.value = state.adminAlias || "Admin";
+  showError(document.getElementById("settings-error"), "");
+}
+
+function channelPeople() {
+  return (state.users || []).filter((u) => ["choir", "band", "orchestra"].includes(u.role));
+}
+
+function paintUserChannels() {
+  const el = document.getElementById("user-channels");
+  if (!el) return;
+  const user = state.users.find((u) => u.id === selectedUser);
+  const channels = user?.channels || [];
+  el.hidden = channels.length === 0;
+  el.textContent = channels.map((ch) => {
+    const note = ch.comment ? ` · ${ch.comment}` : "";
+    const v48 = ch.v48 ? ` · ${I18N.t("channel48v")}` : "";
+    return `${I18N.t("channel")} ${ch.number}${note}${v48}`;
+  }).join(" · ");
+}
+
+function renderChannels() {
+  const body = document.getElementById("channels-body");
+  if (!body) return;
+  const q = (document.getElementById("channel-search")?.value || "").trim().toLowerCase();
+  const people = channelPeople();
+  const channels = state.channels || [];
+  body.innerHTML = channels.filter((ch) => {
+    if (!q) return true;
+    const hay = `${ch.number} ${ch.nickname || ""} ${ch.comment || ""} ${I18N.role(ch.role || "")}${ch.v48 ? " 48v" : ""}`.toLowerCase();
+    return hay.includes(q);
+  }).map((ch) => {
+    const opts = [`<option value="">${I18N.t("channelNone")}</option>`]
+      .concat(people.map((u) => `<option value="${u.id}" ${u.id === ch.userId ? "selected" : ""}>${escapeHtml(u.nickname)} · ${escapeHtml(I18N.role(u.role))}</option>`))
+      .join("");
+    return `<tr>
+      <td>${ch.number}</td>
+      <td><select data-channel-user="${ch.number}">${opts}</select></td>
+      <td><input data-channel-comment="${ch.number}" value="${escapeHtml(ch.comment || "")}" maxlength="200" /></td>
+      <td><button type="button" class="btn ghost v48-btn${ch.v48 ? " on" : ""}" data-channel-v48="${ch.number}" aria-pressed="${ch.v48 ? "true" : "false"}">${I18N.t("channel48v")}</button></td>
+    </tr>`;
+  }).join("");
+}
+
+async function saveChannel(number, v48) {
+  const userEl = document.querySelector(`[data-channel-user="${number}"]`);
+  const commentEl = document.querySelector(`[data-channel-comment="${number}"]`);
+  const v48El = document.querySelector(`[data-channel-v48="${number}"]`);
+  if (!userEl || !commentEl) return;
+  const phantom = typeof v48 === "boolean" ? v48 : v48El?.getAttribute("aria-pressed") === "true";
+  showError(document.getElementById("channels-error"), "");
+  try {
+    const data = await api(`/api/controller/channels/${number}`, {
+      method: "PATCH",
+      body: JSON.stringify({ userId: userEl.value, comment: commentEl.value, v48: !!phantom }),
+    });
+    const idx = (state.channels || []).findIndex((c) => c.number === number);
+    if (idx >= 0) state.channels[idx] = data.channel;
+    (state.users || []).forEach((u) => {
+      u.channels = (u.channels || []).filter((c) => c.number !== number);
+    });
+    if (data.channel?.userId) {
+      const u = state.users.find((x) => x.id === data.channel.userId);
+      if (u) {
+        u.channels = [...(u.channels || []), data.channel].sort((a, b) => a.number - b.number);
+      }
+    }
+    if (v48El) {
+      v48El.classList.toggle("on", !!data.channel.v48);
+      v48El.setAttribute("aria-pressed", data.channel.v48 ? "true" : "false");
+    }
+    paintUserChannels();
+  } catch (err) {
+    showError(document.getElementById("channels-error"), err.message);
+  }
+}
+
+function proposalBadge(status) {
+  if (status === "accepted") return "accepted";
+  if (status === "declined") return "cancelled";
+  return "voting";
+}
+
+function proposalLink(url) {
+  if (!url) return "—";
+  return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a>`;
+}
+
+function renderProposals() {
+  const body = document.getElementById("proposals-body");
+  if (!body) return;
+  const q = (document.getElementById("proposal-search")?.value || "").trim().toLowerCase();
+  const items = (state.proposals || []).filter((p) => {
+    if (!q) return true;
+    const hay = `${p.title} ${p.url || ""} ${p.nickname} ${p.status} ${I18N.status(p.status)} ${p.comment || ""}`.toLowerCase();
+    return hay.includes(q);
+  });
+  if (!items.length) {
+    body.innerHTML = `<tr><td colspan="6" class="muted">${I18N.t("noProposals")}</td></tr>`;
+    return;
+  }
+  body.innerHTML = items.map((p) => `
+    <tr data-proposal="${p.id}">
+      <td>${escapeHtml(p.title)}</td>
+      <td class="proposal-url">${proposalLink(p.url)}</td>
+      <td>${escapeHtml(p.nickname)}</td>
+      <td><span class="badge ${proposalBadge(p.status)}">${escapeHtml(I18N.status(p.status))}</span></td>
+      <td><input data-proposal-comment="${p.id}" value="${escapeHtml(p.comment || "")}" maxlength="2000" /></td>
+      <td class="proposal-actions">
+        ${p.status !== "accepted" ? `<button type="button" class="btn ghost" data-proposal-status="accepted">${I18N.t("acceptProposal")}</button>` : ""}
+        ${p.status !== "declined" ? `<button type="button" class="btn ghost" data-proposal-status="declined">${I18N.t("declineProposal")}</button>` : ""}
+        <button type="button" class="btn ghost danger" data-proposal-delete>${I18N.t("delete")}</button>
+      </td>
+    </tr>
+  `).join("");
+}
+
+async function patchProposal(id, body) {
+  showError(document.getElementById("proposals-error"), "");
+  try {
+    await api(`/api/controller/proposals/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+    await loadState();
+  } catch (err) {
+    showError(document.getElementById("proposals-error"), err.message);
+  }
+}
+
+function archiveItems() {
+  return state.archive || [];
+}
+
+function archiveByID(id) {
+  return archiveItems().find((x) => x.id === id);
+}
+
+function archiveFileURL(id, file) {
+  if (!file?.id) return "#";
+  const q = new URLSearchParams();
+  if (file.updatedAt) q.set("v", file.updatedAt);
+  const qs = q.toString();
+  return `/api/controller/archive/${encodeURIComponent(id)}/files/${encodeURIComponent(file.id)}${qs ? `?${qs}` : ""}`;
+}
+
+function archiveRoleLabel(role) {
+  const id = String(role || "").trim();
+  if (!id) return "";
+  if (["choir", "band", "orchestra", "technician"].includes(id)) return I18N.role(id);
+  return id;
+}
+
+function archiveKindAccept(kind) {
+  if (kind === "audio") return "audio/*";
+  if (kind === "lyrics") return "application/pdf,text/plain,image/*";
+  return "application/pdf,image/*";
+}
+
+function archiveFilesOf(item, kind) {
+  return (item.files || []).filter((f) => f.kind === kind);
+}
+
+function archiveQuery() {
+  return (document.getElementById("archive-search")?.value || "").trim().toLowerCase();
+}
+
+function renderArchive() {
+  const q = archiveQuery();
+  const rows = archiveItems().filter((item) => {
+    if (!q) return true;
+    return `${item.title} ${item.composer || ""}`.toLowerCase().includes(q);
+  });
+  const body = document.getElementById("archive-body");
+  const empty = document.getElementById("archive-empty");
+  empty.hidden = rows.length > 0;
+  body.innerHTML = rows.map((item) => {
+    const sheetRoles = archiveFilesOf(item, "sheet").map((f) => archiveRoleLabel(f.role) || f.name).filter(Boolean).join(", ") || "—";
+    const count = (kind) => {
+      const n = archiveFilesOf(item, kind).length;
+      return n ? String(n) : "—";
+    };
+    return `<tr data-id="${item.id}" class="${item.id === selectedArchive ? "active" : ""}">
+      <td>${escapeHtml(item.title)}</td>
+      <td>${escapeHtml(item.composer || "")}</td>
+      <td>${count("audio")}</td>
+      <td>${count("lyrics")}</td>
+      <td>${escapeHtml(sheetRoles)}</td>
+    </tr>`;
+  }).join("");
+  renderArchiveFiles();
+  renderDateTitleSelects();
+}
+
+function resetArchiveForm() {
+  selectedArchive = "";
+  document.getElementById("archive-form-title").textContent = I18N.t("newItem");
+  document.getElementById("archive-id").value = "";
+  document.getElementById("archive-title").value = "";
+  document.getElementById("archive-composer").value = "";
+  document.getElementById("btn-archive-delete").disabled = true;
+  showError(document.getElementById("archive-error"), "");
+  renderArchive();
+}
+
+function fillArchiveForm(item) {
+  selectedArchive = item.id;
+  document.getElementById("archive-form-title").textContent = item.title;
+  document.getElementById("archive-id").value = item.id;
+  document.getElementById("archive-title").value = item.title;
+  document.getElementById("archive-composer").value = item.composer || "";
+  document.getElementById("btn-archive-delete").disabled = false;
+  showError(document.getElementById("archive-error"), "");
+  renderArchive();
+}
+
+function renderArchiveFiles() {
+  const box = document.getElementById("archive-files");
+  const hint = document.getElementById("archive-files-hint");
+  const item = archiveByID(selectedArchive);
+  if (!item) {
+    box.hidden = true;
+    hint.hidden = false;
+    box.innerHTML = "";
+    return;
+  }
+  hint.hidden = true;
+  box.hidden = false;
+  const kinds = [
+    { kind: "audio", label: I18N.t("archiveAudio") },
+    { kind: "lyrics", label: I18N.t("archiveLyrics") },
+    { kind: "sheet", label: I18N.t("archiveSheet") },
+  ];
+  box.innerHTML = kinds.map((slot) => {
+    const files = archiveFilesOf(item, slot.kind);
+    const rows = files.length
+      ? files.map((file) => `
+        <div class="archive-file" data-file="${file.id}">
+          <div class="archive-file-fields">
+            <label>
+              <span>${I18N.t("archiveFileName")}</span>
+              <input data-file-name value="${escapeHtml(file.name || "")}" maxlength="120" />
+            </label>
+            <label>
+              <span>${I18N.t("archiveFileRole")}</span>
+              <input data-file-role value="${escapeHtml(file.role || "")}" maxlength="40" placeholder="${escapeHtml(I18N.t("archiveRoleHint"))}" />
+            </label>
+          </div>
+          <div class="archive-file-actions">
+            <a class="btn ghost" href="${archiveFileURL(item.id, file)}" target="_blank" rel="noopener">${I18N.t("fileOpen")}</a>
+            <button type="button" class="btn ghost danger" data-clear-file="${file.id}">${I18N.t("delete")}</button>
+          </div>
+        </div>`).join("")
+      : `<p class="muted">${I18N.t("archiveNoFile")}</p>`;
+    return `<section class="archive-kind">
+      <p>${escapeHtml(slot.label)}</p>
+      ${rows}
+      <button type="button" class="btn ghost" data-upload="${slot.kind}" data-accept="${archiveKindAccept(slot.kind)}">${I18N.t("archiveAddFile")}</button>
+    </section>`;
+  }).join("");
+}
+
+function renderDateTitleSelects() {
+  const inherit = document.getElementById("inherit-titles");
+  const pick = document.getElementById("archive-pick");
+  if (!inherit || !pick) return;
+  inherit.innerHTML = `<option value="">${I18N.t("inheritTitlesPick")}</option>` +
+    state.dates
+      .filter((d) => d.id !== selectedDate && (d.titles || []).length)
+      .map((d) => `<option value="${d.id}">${escapeHtml(d.title)}</option>`)
+      .join("");
+  pick.innerHTML = `<option value="">${I18N.t("addFromArchive")}</option>` +
+    archiveItems()
+      .filter((item) => !dateTitleIDs.includes(item.id))
+      .map((item) => `<option value="${item.id}">${escapeHtml(item.title)}${item.composer ? ` · ${escapeHtml(item.composer)}` : ""}</option>`)
+      .join("");
+}
+
+function renderDateTitles() {
+  const box = document.getElementById("date-titles");
+  if (!box) return;
+  box.innerHTML = dateTitleIDs.map((id, i) => {
+    const item = archiveByID(id);
+    const title = item?.title || id;
+    const composer = item?.composer || "";
+    return `<div class="title-pick" data-title="${id}">
+      <div>
+        <strong>${escapeHtml(title)}</strong>
+        ${composer ? `<span>${escapeHtml(composer)}</span>` : ""}
+      </div>
+      <div class="title-pick-actions">
+        <button type="button" class="btn ghost" data-move="-1" ${i === 0 ? "disabled" : ""}>↑</button>
+        <button type="button" class="btn ghost" data-move="1" ${i === dateTitleIDs.length - 1 ? "disabled" : ""}>↓</button>
+        <button type="button" class="btn ghost danger" data-remove-title>${I18N.t("removeTitle")}</button>
+      </div>
+    </div>`;
+  }).join("");
+  renderDateTitleSelects();
+}
+
+async function uploadArchiveFile(file, kind, role) {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("kind", kind);
+  if (role) fd.append("role", role);
+  const res = await fetch(`/api/controller/archive/${encodeURIComponent(selectedArchive)}/files`, {
+    method: "POST",
+    credentials: "same-origin",
+    body: fd,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(I18N.error(data.error || res.statusText));
+  return data;
+}
+
+async function saveArchiveFileMeta(fileId, name, role) {
+  return api(`/api/controller/archive/${encodeURIComponent(selectedArchive)}/files/${encodeURIComponent(fileId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name, role }),
+  });
 }
 
 function pct(n) {
   return `${Math.round((n || 0) * 100)}%`;
 }
 
+function rankingLeaders(rank) {
+  if (rank?.leaders?.length) return rank.leaders;
+  return rank?.leader ? [rank.leader] : [];
+}
+
 function renderRanking() {
   const rank = state.ranking || { entries: [], bySubrole: [] };
-  const leader = rank.leader;
+  const leaders = rankingLeaders(rank);
+  const leaderIds = new Set(leaders.map((l) => l.userId));
+  const leaderLine = leaders.length
+    ? `${leaders.map((l) => escapeHtml(l.nickname)).join(" · ")} · ${leaders[0].score} ${I18N.t("spiritPoints")}`
+    : I18N.t("spiritEmpty");
   document.getElementById("ranking-stats").innerHTML = `
     <div class="rank-stat"><span>${rank.year || "—"}</span><label>${I18N.t("spiritOfTheYear")}</label>
-      <p>${leader ? `${escapeHtml(leader.nickname)} · ${leader.score} ${I18N.t("spiritPoints")}` : I18N.t("spiritEmpty")}</p></div>
+      <p>${leaderLine}</p></div>
     <div class="rank-stat"><span>${rank.events || 0}</span><label data-i18n="choirEvents">${I18N.t("choirEvents")}</label></div>
     <div class="rank-stat"><span>${rank.members || 0}</span><label data-i18n="people">${I18N.t("people")}</label></div>
     <div class="rank-stat"><span>${(rank.avgScore || 0).toFixed(1)}</span><label data-i18n="avgScore">${I18N.t("avgScore")}</label></div>
@@ -458,7 +840,7 @@ function renderRanking() {
       lastRank = i + 1;
       lastScore = e.score;
     }
-    return `<tr class="${leader && e.userId === leader.userId ? "active" : ""}">
+    return `<tr class="${leaderIds.has(e.userId) ? "active" : ""}">
       <td>${lastRank}</td>
       <td>${escapeHtml(e.nickname)}</td>
       <td>${escapeHtml(I18N.subrole(e.subrole))}</td>
@@ -479,6 +861,7 @@ async function boot() {
     await loadState();
     document.getElementById("people-form-title").textContent = selectedUser ? I18N.t("editPerson") : I18N.t("addPerson");
     document.getElementById("date-form-title").textContent = selectedDate ? I18N.t("editDate") : I18N.t("addDate");
+    if (!selectedDate) captureDateForm();
     gate.hidden = true;
     dash.hidden = false;
     renderChatTabs();
@@ -586,6 +969,9 @@ document.getElementById("date-list").addEventListener("click", (e) => {
 
 document.getElementById("btn-date-new").addEventListener("click", resetDateForm);
 
+document.getElementById("date-form").addEventListener("input", paintDateSave);
+document.getElementById("date-form").addEventListener("change", paintDateSave);
+
 document.getElementById("date-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   showError(dateError, "");
@@ -598,9 +984,11 @@ document.getElementById("date-form").addEventListener("submit", async (e) => {
     endsAt: toISO(document.getElementById("date-end").value),
     location: document.getElementById("date-location").value,
     notes: document.getElementById("date-notes").value,
+    schedule: document.getElementById("date-schedule").value,
     roles: [...document.querySelectorAll("#date-roles input:checked")].map((el) => el.value),
     bring: readBringForm(),
     options: readPollRows(),
+    titleIds: dateTitleIDs,
   };
   try {
     const data = id
@@ -647,6 +1035,7 @@ document.getElementById("btn-add-poll").addEventListener("click", () => {
   if (pollFrozen) return;
   pollRows.push({ id: "", startsAt: "", endsAt: "" });
   renderPollRows();
+  paintDateSave();
 });
 
 document.getElementById("poll-options").addEventListener("input", (e) => {
@@ -665,6 +1054,7 @@ document.getElementById("poll-options").addEventListener("click", (e) => {
   if (!btn || pollFrozen) return;
   pollRows.splice(Number(btn.dataset.removePoll), 1);
   renderPollRows();
+  paintDateSave();
 });
 
 document.getElementById("date-detail").addEventListener("click", async (e) => {
@@ -681,6 +1071,10 @@ document.getElementById("date-detail").addEventListener("click", async (e) => {
     } catch (err) {
       showError(dateError, err.message);
     }
+    return;
+  }
+  if (e.target.closest("#btn-titles")) {
+    document.getElementById("date-titles")?.scrollIntoView({ behavior: "smooth", block: "center" });
     return;
   }
   if (e.target.closest("#btn-event-chat") && selectedDate) {
@@ -761,11 +1155,11 @@ function chatMessageHTML(m, stacked) {
     hasPhoto: m.hasPhoto,
     photoUpdatedAt: m.photoUpdatedAt,
   }, "sm");
-  return `<article class="chat-row ${mine ? "mine" : "theirs"}${stacked ? " stack" : ""}">
+  return `<article class="chat-row ${mine ? "mine" : "theirs"}${stacked ? " stack" : ""}" data-msg="${m.id}">
     ${face}
     <div class="chat-col">
-      <div class="chat-bubble">
-        <p class="chat-name" style="color:${color}">${escapeHtml(m.isAdmin ? I18N.t("chatAdmin") : m.nickname)}</p>
+      <div class="chat-bubble" data-msg="${m.id}">
+        <p class="chat-name" style="color:${color}">${escapeHtml(m.nickname)}</p>
         <p class="chat-text">${escapeHtml(m.text)}</p>
         <span class="chat-time">${escapeHtml(formatChatWhen(m.createdAt))}</span>
       </div>
@@ -798,6 +1192,14 @@ function appendChat(msg) {
   if (!msg?.id || chatMessages.some((m) => m.id === msg.id)) return;
   chatMessages.push(msg);
   renderChat();
+}
+
+function removeChat(id) {
+  const next = chatMessages.filter((m) => m.id !== id);
+  if (next.length === chatMessages.length) return;
+  const list = document.getElementById("chat-list");
+  chatMessages = next;
+  renderChat(list.scrollTop);
 }
 
 function closeChat() {
@@ -865,6 +1267,10 @@ function connectWS() {
       if (chatRoom && msg.data?.room === chatRoom) applyReactions(msg.data.messageId, msg.data.reactions);
       return;
     }
+    if (msg.type === "chatDelete") {
+      if (chatRoom && msg.data?.room === chatRoom) removeChat(msg.data.messageId);
+      return;
+    }
     loadState().catch(() => {});
   };
   ws.onclose = () => { if (!dash.hidden) setTimeout(connectWS, 2000); };
@@ -899,6 +1305,19 @@ document.getElementById("chat-text").addEventListener("keydown", (e) => {
   if (e.key !== "Enter" || e.shiftKey) return;
   e.preventDefault();
   sendChat();
+});
+
+document.getElementById("chat-list").addEventListener("dblclick", async (e) => {
+  if (e.target.closest(".chat-reacts")) return;
+  const bubble = e.target.closest("[data-msg]");
+  if (!bubble || !chatRoom) return;
+  if (!confirm(I18N.t("confirmDeleteMessage"))) return;
+  try {
+    await api(`/api/controller/chats/${encodeURIComponent(chatRoom)}/messages/${encodeURIComponent(bubble.dataset.msg)}`, { method: "DELETE" });
+    removeChat(bubble.dataset.msg);
+  } catch (err) {
+    showError(document.getElementById("chat-error"), err.message);
+  }
 });
 
 document.getElementById("chat-list").addEventListener("click", async (e) => {
@@ -986,6 +1405,222 @@ Photo.bind({
   },
 });
 
+document.getElementById("settings-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById("settings-error");
+  showError(errEl, "");
+  try {
+    const data = await api("/api/controller/settings", {
+      method: "PATCH",
+      body: JSON.stringify({ adminAlias: document.getElementById("admin-alias").value }),
+    });
+    state.adminAlias = data.adminAlias || "Admin";
+    fillSettingsForm();
+    chatMessages.forEach((m) => {
+      if (m.isAdmin) m.nickname = state.adminAlias;
+    });
+    if (document.getElementById("chat-dialog").open) {
+      renderChat(document.getElementById("chat-list").scrollTop);
+    }
+  } catch (err) {
+    showError(errEl, err.message);
+  }
+});
+
+document.getElementById("channel-search").addEventListener("input", () => renderChannels());
+document.getElementById("proposal-search").addEventListener("input", () => renderProposals());
+
+document.getElementById("proposals-body").addEventListener("change", (e) => {
+  const input = e.target.closest("[data-proposal-comment]");
+  if (!input) return;
+  patchProposal(input.dataset.proposalComment, { comment: input.value });
+});
+
+document.getElementById("proposals-body").addEventListener("click", async (e) => {
+  const row = e.target.closest("tr[data-proposal]");
+  if (!row) return;
+  const id = row.dataset.proposal;
+  const statusBtn = e.target.closest("[data-proposal-status]");
+  if (statusBtn) {
+    const comment = row.querySelector("[data-proposal-comment]")?.value ?? "";
+    await patchProposal(id, { status: statusBtn.dataset.proposalStatus, comment });
+    return;
+  }
+  if (e.target.closest("[data-proposal-delete]")) {
+    if (!confirm(I18N.t("confirmDeleteProposal"))) return;
+    showError(document.getElementById("proposals-error"), "");
+    try {
+      await api(`/api/controller/proposals/${encodeURIComponent(id)}`, { method: "DELETE" });
+      await loadState();
+    } catch (err) {
+      showError(document.getElementById("proposals-error"), err.message);
+    }
+  }
+});
+
+document.getElementById("channels-body").addEventListener("change", (e) => {
+  const userEl = e.target.closest("[data-channel-user]");
+  if (userEl) {
+    saveChannel(Number(userEl.dataset.channelUser));
+    return;
+  }
+  const commentEl = e.target.closest("[data-channel-comment]");
+  if (commentEl) saveChannel(Number(commentEl.dataset.channelComment));
+});
+
+document.getElementById("channels-body").addEventListener("click", (e) => {
+  const v48El = e.target.closest("[data-channel-v48]");
+  if (!v48El) return;
+  saveChannel(Number(v48El.dataset.channelV48), v48El.getAttribute("aria-pressed") !== "true");
+});
+
+document.getElementById("archive-search").addEventListener("input", () => renderArchive());
+
+document.getElementById("archive-body").addEventListener("click", (e) => {
+  const row = e.target.closest("[data-id]");
+  const item = row && archiveByID(row.dataset.id);
+  if (item) fillArchiveForm(item);
+});
+
+document.getElementById("btn-archive-new").addEventListener("click", resetArchiveForm);
+
+document.getElementById("archive-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById("archive-error");
+  showError(errEl, "");
+  const id = document.getElementById("archive-id").value;
+  const body = {
+    title: document.getElementById("archive-title").value,
+    composer: document.getElementById("archive-composer").value,
+  };
+  try {
+    const data = id
+      ? await api(`/api/controller/archive/${id}`, { method: "PATCH", body: JSON.stringify(body) })
+      : await api("/api/controller/archive", { method: "POST", body: JSON.stringify(body) });
+    await loadState();
+    fillArchiveForm(data.item);
+  } catch (err) {
+    showError(errEl, err.message);
+  }
+});
+
+document.getElementById("btn-archive-delete").addEventListener("click", async () => {
+  const id = document.getElementById("archive-id").value;
+  if (!id || !confirm(I18N.t("confirmDeleteArchive"))) return;
+  try {
+    await api(`/api/controller/archive/${id}`, { method: "DELETE" });
+    dateTitleIDs = dateTitleIDs.filter((x) => x !== id);
+    resetArchiveForm();
+    await loadState();
+    renderDateTitles();
+  } catch (err) {
+    showError(document.getElementById("archive-error"), err.message);
+  }
+});
+
+document.getElementById("archive-files").addEventListener("click", (e) => {
+  const upload = e.target.closest("[data-upload]");
+  if (upload && selectedArchive) {
+    const input = document.getElementById("archive-file");
+    input.dataset.kind = upload.dataset.upload;
+    input.dataset.role = upload.dataset.role || "";
+    input.accept = upload.dataset.accept || "";
+    input.value = "";
+    input.click();
+    return;
+  }
+  const clear = e.target.closest("[data-clear-file]");
+  if (!clear || !selectedArchive) return;
+  if (!confirm(I18N.t("confirmDeleteFile"))) return;
+  api(`/api/controller/archive/${encodeURIComponent(selectedArchive)}/files/${encodeURIComponent(clear.dataset.clearFile)}`, { method: "DELETE" })
+    .then(async (data) => {
+      await loadState();
+      fillArchiveForm(data.item);
+    })
+    .catch((err) => showError(document.getElementById("archive-error"), err.message));
+});
+
+document.getElementById("archive-files").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" || !e.target.closest("[data-file-name], [data-file-role]")) return;
+  e.preventDefault();
+  e.target.blur();
+});
+
+document.getElementById("archive-files").addEventListener("change", async (e) => {
+  const row = e.target.closest("[data-file]");
+  if (!row || !selectedArchive || !e.target.closest("[data-file-name], [data-file-role]")) return;
+  showError(document.getElementById("archive-error"), "");
+  try {
+    const data = await saveArchiveFileMeta(
+      row.dataset.file,
+      row.querySelector("[data-file-name]")?.value || "",
+      row.querySelector("[data-file-role]")?.value || "",
+    );
+    await loadState();
+    fillArchiveForm(data.item);
+    const next = document.querySelector(`[data-file="${row.dataset.file}"] ${e.target.matches("[data-file-role]") ? "[data-file-role]" : "[data-file-name]"}`);
+    next?.focus();
+  } catch (err) {
+    showError(document.getElementById("archive-error"), err.message);
+  }
+});
+
+document.getElementById("archive-file").addEventListener("change", async (e) => {
+  const file = e.target.files?.[0];
+  const kind = e.target.dataset.kind;
+  if (!file || !kind || !selectedArchive) return;
+  showError(document.getElementById("archive-error"), "");
+  try {
+    const data = await uploadArchiveFile(file, kind, e.target.dataset.role || "");
+    await loadState();
+    fillArchiveForm(data.item);
+  } catch (err) {
+    showError(document.getElementById("archive-error"), err.message);
+  }
+  e.target.value = "";
+});
+
+document.getElementById("inherit-titles").addEventListener("change", (e) => {
+  const d = state.dates.find((x) => x.id === e.target.value);
+  e.target.value = "";
+  if (!d) return;
+  dateTitleIDs = (d.titles || []).map((t) => t.id);
+  renderDateTitles();
+  paintDateSave();
+});
+
+document.getElementById("archive-pick").addEventListener("change", (e) => {
+  const id = e.target.value;
+  e.target.value = "";
+  if (!id || dateTitleIDs.includes(id)) return;
+  dateTitleIDs.push(id);
+  renderDateTitles();
+  paintDateSave();
+});
+
+document.getElementById("date-titles").addEventListener("click", (e) => {
+  const row = e.target.closest("[data-title]");
+  if (!row) return;
+  const id = row.dataset.title;
+  const idx = dateTitleIDs.indexOf(id);
+  if (idx < 0) return;
+  if (e.target.closest("[data-remove-title]")) {
+    dateTitleIDs.splice(idx, 1);
+    renderDateTitles();
+    paintDateSave();
+    return;
+  }
+  const move = e.target.closest("[data-move]");
+  if (!move) return;
+  const next = idx + Number(move.dataset.move);
+  if (next < 0 || next >= dateTitleIDs.length) return;
+  const swap = dateTitleIDs[next];
+  dateTitleIDs[next] = dateTitleIDs[idx];
+  dateTitleIDs[idx] = swap;
+  renderDateTitles();
+  paintDateSave();
+});
+
 I18N.onChange(() => {
   I18N.apply();
   if (catalog.roles.length) fillRoleSelects();
@@ -994,7 +1629,10 @@ I18N.onChange(() => {
   peopleTitle.textContent = selectedUser ? I18N.t("editPerson") : I18N.t("addPerson");
   dateTitle.textContent = selectedDate ? I18N.t("editDate") : I18N.t("addDate");
   const pwHint = document.getElementById("pw-hint");
-  if (selectedUser) pwHint.textContent = I18N.t("passwordKeep");
+  if (selectedUser) {
+    const u = state.users.find((x) => x.id === selectedUser);
+    pwHint.textContent = u?.mustChangePassword ? I18N.t("passwordPending") : I18N.t("passwordKeep");
+  }
   renderPollRows();
   renderChatTabs();
   if (document.getElementById("chat-dialog").open && chatRoom) {
@@ -1010,6 +1648,12 @@ I18N.onChange(() => {
     renderContacts();
     renderDates();
     renderRanking();
+    renderArchive();
+    renderChannels();
+    renderProposals();
+    renderDateTitles();
+    fillSettingsForm();
+    paintUserChannels();
     paintPersonPhoto();
     const dialog = document.getElementById("comment-dialog");
     if (dialog.open && selectedDate) {

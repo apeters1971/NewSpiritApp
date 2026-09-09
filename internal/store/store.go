@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite"
@@ -26,17 +27,19 @@ type Store struct {
 }
 
 type User struct {
-	ID             string     `json:"id"`
-	Nickname       string     `json:"nickname"`
-	Email          string     `json:"email"`
-	Role           string     `json:"role"`
-	Subrole        string     `json:"subrole"`
-	Address        string     `json:"address"`
-	Phone          string     `json:"phone"`
-	Birthday       string     `json:"birthday"`
-	HasPhoto       bool       `json:"hasPhoto"`
-	PhotoUpdatedAt *time.Time `json:"photoUpdatedAt,omitempty"`
-	CreatedAt      time.Time  `json:"createdAt"`
+	ID                 string     `json:"id"`
+	Nickname           string     `json:"nickname"`
+	Email              string     `json:"email"`
+	Role               string     `json:"role"`
+	Subrole            string     `json:"subrole"`
+	Address            string     `json:"address"`
+	Phone              string     `json:"phone"`
+	Birthday           string     `json:"birthday"`
+	HasPhoto           bool       `json:"hasPhoto"`
+	PhotoUpdatedAt     *time.Time `json:"photoUpdatedAt,omitempty"`
+	Channels           []Channel  `json:"channels,omitempty"`
+	MustChangePassword bool       `json:"mustChangePassword,omitempty"`
+	CreatedAt          time.Time  `json:"createdAt"`
 }
 
 type Date struct {
@@ -47,6 +50,7 @@ type Date struct {
 	EndsAt         *time.Time   `json:"endsAt,omitempty"`
 	Location       string       `json:"location,omitempty"`
 	Notes          string       `json:"notes,omitempty"`
+	Schedule       string       `json:"schedule,omitempty"`
 	Status         string       `json:"status"`
 	Roles          []string     `json:"roles"`
 	Bring          Bring        `json:"bring"`
@@ -100,6 +104,7 @@ type DateView struct {
 	SubroleCounts []SubroleCount `json:"subroleCounts"`
 	Comments      []Comment      `json:"comments"`
 	ChatOpen      bool           `json:"chatOpen"`
+	Titles        []ArchiveItem  `json:"titles"`
 }
 
 func Open(path string) (*Store, error) {
@@ -125,6 +130,7 @@ CREATE TABLE IF NOT EXISTS users (
   nickname TEXT NOT NULL UNIQUE,
   email TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
+  must_change_password INTEGER NOT NULL DEFAULT 0,
   role TEXT NOT NULL,
   subrole TEXT NOT NULL,
   created_at TEXT NOT NULL
@@ -148,6 +154,7 @@ CREATE TABLE IF NOT EXISTS dates (
   ends_at TEXT,
   location TEXT NOT NULL DEFAULT '',
   notes TEXT NOT NULL DEFAULT '',
+  schedule TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL,
   bring_mic INTEGER NOT NULL DEFAULT 0,
   bring_cable INTEGER NOT NULL DEFAULT 0,
@@ -217,6 +224,10 @@ CREATE TABLE IF NOT EXISTS chat_reactions (
   created_at TEXT NOT NULL,
   PRIMARY KEY (message_id, user_id, emoji)
 );
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 `)
 	if err != nil {
 		return err
@@ -227,9 +238,11 @@ CREATE TABLE IF NOT EXISTS chat_reactions (
 	_, _ = s.db.Exec(`ALTER TABLE dates ADD COLUMN bring_stand INTEGER NOT NULL DEFAULT 0`)
 	_, _ = s.db.Exec(`ALTER TABLE dates ADD COLUMN bring_dress TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE dates ADD COLUMN frozen_option_id TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE dates ADD COLUMN schedule TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN address TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN phone TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN birthday TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0`)
 	_, _ = s.db.Exec(`
 CREATE TABLE IF NOT EXISTS chat_reactions (
   message_id TEXT NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
@@ -238,7 +251,24 @@ CREATE TABLE IF NOT EXISTS chat_reactions (
   created_at TEXT NOT NULL,
   PRIMARY KEY (message_id, user_id, emoji)
 )`)
-	return s.allowAdminChatMessages()
+	_, _ = s.db.Exec(`
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+)`)
+	if err := s.allowAdminChatMessages(); err != nil {
+		return err
+	}
+	if err := s.migrateArchive(); err != nil {
+		return err
+	}
+	if err := s.migrateChannels(); err != nil {
+		return err
+	}
+	if err := s.migrateProposals(); err != nil {
+		return err
+	}
+	return s.migrateCalendar()
 }
 
 func (s *Store) allowAdminChatMessages() error {
@@ -347,9 +377,9 @@ func (s *Store) CreateUser(nickname, email, password, role, subrole string) (Use
 	if err != nil {
 		return User{}, err
 	}
-	u := User{ID: newID(), Nickname: nickname, Email: email, Role: role, Subrole: subrole, CreatedAt: now()}
+	u := User{ID: newID(), Nickname: nickname, Email: email, Role: role, Subrole: subrole, MustChangePassword: true, CreatedAt: now()}
 	_, err = s.db.Exec(
-		`INSERT INTO users(id, nickname, email, password_hash, role, subrole, created_at) VALUES(?,?,?,?,?,?,?)`,
+		`INSERT INTO users(id, nickname, email, password_hash, must_change_password, role, subrole, created_at) VALUES(?,?,?,?,1,?,?,?)`,
 		u.ID, u.Nickname, u.Email, hash, u.Role, u.Subrole, fmtTime(u.CreatedAt),
 	)
 	if err != nil {
@@ -395,7 +425,7 @@ func (s *Store) UpdateUser(id, nickname, email, password, role, subrole string) 
 			return User{}, err
 		}
 		_, err = s.db.Exec(
-			`UPDATE users SET nickname=?, email=?, password_hash=?, role=?, subrole=? WHERE id=?`,
+			`UPDATE users SET nickname=?, email=?, password_hash=?, must_change_password=1, role=?, subrole=? WHERE id=?`,
 			nickname, email, hash, role, subrole, id,
 		)
 		if err != nil {
@@ -415,6 +445,36 @@ func (s *Store) UpdateUser(id, nickname, email, password, role, subrole string) 
 			}
 			return User{}, err
 		}
+	}
+	if !CanHaveChannel(role) {
+		if err := s.ClearChannelsForUser(id); err != nil {
+			return User{}, err
+		}
+	}
+	return s.UserByID(id)
+}
+
+func (s *Store) ChangeOwnPassword(id, password string) (User, error) {
+	if len(password) < 6 {
+		return User{}, fmt.Errorf("password must be at least 6 characters")
+	}
+	var hash string
+	err := s.db.QueryRow(`SELECT password_hash FROM users WHERE id=?`, id).Scan(&hash)
+	if errors.Is(err, sql.ErrNoRows) {
+		return User{}, ErrNotFound
+	}
+	if err != nil {
+		return User{}, err
+	}
+	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil {
+		return User{}, fmt.Errorf("choose a different password")
+	}
+	next, err := hashPassword(password)
+	if err != nil {
+		return User{}, err
+	}
+	if _, err := s.db.Exec(`UPDATE users SET password_hash=?, must_change_password=0 WHERE id=?`, next, id); err != nil {
+		return User{}, err
 	}
 	return s.UserByID(id)
 }
@@ -466,7 +526,7 @@ func (s *Store) DeleteUser(id string) error {
 }
 
 func (s *Store) ListUsers() ([]User, error) {
-	rows, err := s.db.Query(`SELECT id, nickname, email, role, subrole, address, phone, birthday, created_at FROM users ORDER BY nickname COLLATE NOCASE`)
+	rows, err := s.db.Query(`SELECT id, nickname, email, role, subrole, address, phone, birthday, must_change_password, created_at FROM users ORDER BY nickname COLLATE NOCASE`)
 	if err != nil {
 		return nil, err
 	}
@@ -485,15 +545,21 @@ func (s *Store) ListUsers() ([]User, error) {
 	if err := s.attachPhotos(out); err != nil {
 		return nil, err
 	}
+	if err := s.attachChannels(out); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
 func (s *Store) UserByID(id string) (User, error) {
-	u, err := scanUserRow(s.db.QueryRow(`SELECT id, nickname, email, role, subrole, address, phone, birthday, created_at FROM users WHERE id=?`, id))
+	u, err := scanUserRow(s.db.QueryRow(`SELECT id, nickname, email, role, subrole, address, phone, birthday, must_change_password, created_at FROM users WHERE id=?`, id))
 	if err != nil {
 		return User{}, err
 	}
 	if err := s.attachPhoto(&u); err != nil {
+		return User{}, err
+	}
+	if err := s.attachChannelPtr(&u); err != nil {
 		return User{}, err
 	}
 	return u, nil
@@ -506,10 +572,11 @@ func (s *Store) Login(email, password string) (User, string, error) {
 	}
 	var u User
 	var hash, created string
+	var mustChange int
 	err := s.db.QueryRow(
-		`SELECT id, nickname, email, password_hash, role, subrole, address, phone, birthday, created_at FROM users WHERE email=?`,
+		`SELECT id, nickname, email, password_hash, role, subrole, address, phone, birthday, must_change_password, created_at FROM users WHERE email=?`,
 		email,
-	).Scan(&u.ID, &u.Nickname, &u.Email, &hash, &u.Role, &u.Subrole, &u.Address, &u.Phone, &u.Birthday, &created)
+	).Scan(&u.ID, &u.Nickname, &u.Email, &hash, &u.Role, &u.Subrole, &u.Address, &u.Phone, &u.Birthday, &mustChange, &created)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, "", ErrUnauthorized
 	}
@@ -520,11 +587,15 @@ func (s *Store) Login(email, password string) (User, string, error) {
 		return User{}, "", ErrUnauthorized
 	}
 	u.CreatedAt = parseTime(created)
+	u.MustChangePassword = mustChange != 0
 	sid := newID()
 	if _, err := s.db.Exec(`INSERT INTO sessions(id, user_id, created_at) VALUES(?,?,?)`, sid, u.ID, fmtTime(now())); err != nil {
 		return User{}, "", err
 	}
 	if err := s.attachPhoto(&u); err != nil {
+		return User{}, "", err
+	}
+	if err := s.attachChannelPtr(&u); err != nil {
 		return User{}, "", err
 	}
 	return u, sid, nil
@@ -535,7 +606,7 @@ func (s *Store) UserBySession(sessionID string) (User, error) {
 		return User{}, ErrUnauthorized
 	}
 	u, err := scanUserRow(s.db.QueryRow(`
-SELECT u.id, u.nickname, u.email, u.role, u.subrole, u.address, u.phone, u.birthday, u.created_at
+SELECT u.id, u.nickname, u.email, u.role, u.subrole, u.address, u.phone, u.birthday, u.must_change_password, u.created_at
 FROM sessions s
 JOIN users u ON u.id = s.user_id
 WHERE s.id=? AND s.revoked_at IS NULL`, sessionID))
@@ -546,6 +617,9 @@ WHERE s.id=? AND s.revoked_at IS NULL`, sessionID))
 		return User{}, err
 	}
 	if err := s.attachPhoto(&u); err != nil {
+		return User{}, err
+	}
+	if err := s.attachChannelPtr(&u); err != nil {
 		return User{}, err
 	}
 	return u, nil
@@ -580,7 +654,17 @@ func (s *Store) RevokeControllerSession(sessionID string) {
 	_, _ = s.db.Exec(`UPDATE controller_sessions SET revoked_at=? WHERE id=? AND revoked_at IS NULL`, fmtTime(now()), sessionID)
 }
 
-func (s *Store) CreateDate(title, category string, startsAt time.Time, endsAt *time.Time, location, notes string, roles []string, bring Bring, options []PollOptionInput) (Date, error) {
+const dateScheduleMax = 8000
+
+func prepareDateSchedule(text string) (string, error) {
+	text = strings.TrimSpace(strings.ReplaceAll(text, "\r\n", "\n"))
+	if utf8.RuneCountInString(text) > dateScheduleMax {
+		return "", fmt.Errorf("schedule is too long")
+	}
+	return text, nil
+}
+
+func (s *Store) CreateDate(title, category string, startsAt time.Time, endsAt *time.Time, location, notes, schedule string, roles []string, bring Bring, options []PollOptionInput) (Date, error) {
 	title = NormalizeName(title)
 	if title == "" {
 		return Date{}, fmt.Errorf("title is required")
@@ -601,6 +685,10 @@ func (s *Store) CreateDate(title, category string, startsAt time.Time, endsAt *t
 	if err != nil {
 		return Date{}, err
 	}
+	schedule, err = prepareDateSchedule(schedule)
+	if err != nil {
+		return Date{}, err
+	}
 	d := Date{
 		ID:        newID(),
 		Title:     title,
@@ -609,6 +697,7 @@ func (s *Store) CreateDate(title, category string, startsAt time.Time, endsAt *t
 		EndsAt:    endsAt,
 		Location:  NormalizeName(location),
 		Notes:     strings.TrimSpace(notes),
+		Schedule:  schedule,
 		Status:    StatusVoting,
 		Roles:     roles,
 		Bring:     bring,
@@ -625,8 +714,8 @@ func (s *Store) CreateDate(title, category string, startsAt time.Time, endsAt *t
 		ends = fmtTime(*d.EndsAt)
 	}
 	if _, err := tx.Exec(
-		`INSERT INTO dates(id, title, category, starts_at, ends_at, location, notes, status, bring_mic, bring_cable, bring_stand, bring_dress, frozen_option_id, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		d.ID, d.Title, d.Category, fmtTime(d.StartsAt), ends, d.Location, d.Notes, d.Status, boolInt(d.Bring.Mic), boolInt(d.Bring.Cable), boolInt(d.Bring.Stand), d.Bring.Dress, "", fmtTime(d.CreatedAt),
+		`INSERT INTO dates(id, title, category, starts_at, ends_at, location, notes, schedule, status, bring_mic, bring_cable, bring_stand, bring_dress, frozen_option_id, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		d.ID, d.Title, d.Category, fmtTime(d.StartsAt), ends, d.Location, d.Notes, d.Schedule, d.Status, boolInt(d.Bring.Mic), boolInt(d.Bring.Cable), boolInt(d.Bring.Stand), d.Bring.Dress, "", fmtTime(d.CreatedAt),
 	); err != nil {
 		return Date{}, err
 	}
@@ -642,7 +731,7 @@ func (s *Store) CreateDate(title, category string, startsAt time.Time, endsAt *t
 	return s.dateRow(d.ID)
 }
 
-func (s *Store) UpdateDate(id, title, category string, startsAt time.Time, endsAt *time.Time, location, notes string, roles []string, bring Bring, options []PollOptionInput) (Date, error) {
+func (s *Store) UpdateDate(id, title, category string, startsAt time.Time, endsAt *time.Time, location, notes, schedule string, roles []string, bring Bring, options []PollOptionInput) (Date, error) {
 	cur, err := s.dateRow(id)
 	if err != nil {
 		return Date{}, err
@@ -672,6 +761,10 @@ func (s *Store) UpdateDate(id, title, category string, startsAt time.Time, endsA
 	if err != nil {
 		return Date{}, err
 	}
+	schedule, err = prepareDateSchedule(schedule)
+	if err != nil {
+		return Date{}, err
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return Date{}, err
@@ -682,8 +775,8 @@ func (s *Store) UpdateDate(id, title, category string, startsAt time.Time, endsA
 		ends = fmtTime(endsAt.UTC())
 	}
 	if _, err := tx.Exec(
-		`UPDATE dates SET title=?, category=?, starts_at=?, ends_at=?, location=?, notes=?, bring_mic=?, bring_cable=?, bring_stand=?, bring_dress=? WHERE id=?`,
-		title, category, fmtTime(startsAt.UTC()), ends, NormalizeName(location), strings.TrimSpace(notes), boolInt(bring.Mic), boolInt(bring.Cable), boolInt(bring.Stand), bring.Dress, id,
+		`UPDATE dates SET title=?, category=?, starts_at=?, ends_at=?, location=?, notes=?, schedule=?, bring_mic=?, bring_cable=?, bring_stand=?, bring_dress=? WHERE id=?`,
+		title, category, fmtTime(startsAt.UTC()), ends, NormalizeName(location), strings.TrimSpace(notes), schedule, boolInt(bring.Mic), boolInt(bring.Cable), boolInt(bring.Stand), bring.Dress, id,
 	); err != nil {
 		return Date{}, err
 	}
@@ -849,7 +942,11 @@ func (s *Store) DateView(id string, viewer *User) (DateView, error) {
 	if err != nil {
 		return DateView{}, err
 	}
-	return s.attachView(d, viewer, commentsByDate[id])
+	titlesByDate, err := s.titlesForDates([]string{id})
+	if err != nil {
+		return DateView{}, err
+	}
+	return s.attachView(d, viewer, commentsByDate[id], titlesByDate[id])
 }
 
 func (s *Store) ListDateViews(viewer *User) ([]DateView, error) {
@@ -868,12 +965,16 @@ func (s *Store) ListDateViews(viewer *User) ([]DateView, error) {
 	if err != nil {
 		return nil, err
 	}
+	titlesByDate, err := s.titlesForDates(ids)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]DateView, 0, len(ids))
 	for _, d := range dates {
 		if viewer != nil && !slicesContains(d.Roles, viewer.Role) {
 			continue
 		}
-		v, err := s.attachView(d, viewer, commentsByDate[d.ID])
+		v, err := s.attachView(d, viewer, commentsByDate[d.ID], titlesByDate[d.ID])
 		if err != nil {
 			return nil, err
 		}
@@ -882,13 +983,16 @@ func (s *Store) ListDateViews(viewer *User) ([]DateView, error) {
 	return out, nil
 }
 
-func (s *Store) attachView(d Date, viewer *User, comments []Comment) (DateView, error) {
+func (s *Store) attachView(d Date, viewer *User, comments []Comment, titles []ArchiveItem) (DateView, error) {
 	roster, err := s.roster(d)
 	if err != nil {
 		return DateView{}, err
 	}
 	if comments == nil {
 		comments = []Comment{}
+	}
+	if titles == nil {
+		titles = []ArchiveItem{}
 	}
 	optionIDs := make([]string, 0, len(d.Options))
 	for _, o := range d.Options {
@@ -907,6 +1011,7 @@ func (s *Store) attachView(d Date, viewer *User, comments []Comment) (DateView, 
 		SubroleCounts: countsFor(d.Roles, roster),
 		Comments:      comments,
 		ChatOpen:      EventChatIsOpen(d, now()),
+		Titles:        titles,
 	}
 	if viewer != nil {
 		for _, entry := range roster {
@@ -921,7 +1026,7 @@ func (s *Store) attachView(d Date, viewer *User, comments []Comment) (DateView, 
 }
 
 func (s *Store) listDates() ([]Date, error) {
-	rows, err := s.db.Query(`SELECT id, title, category, starts_at, ends_at, location, notes, status, bring_mic, bring_cable, bring_stand, bring_dress, frozen_option_id, created_at FROM dates ORDER BY starts_at`)
+	rows, err := s.db.Query(`SELECT id, title, category, starts_at, ends_at, location, notes, schedule, status, bring_mic, bring_cable, bring_stand, bring_dress, frozen_option_id, created_at FROM dates ORDER BY starts_at`)
 	if err != nil {
 		return nil, err
 	}
@@ -947,7 +1052,7 @@ func (s *Store) listDates() ([]Date, error) {
 
 func (s *Store) dateRow(id string) (Date, error) {
 	d, err := scanDateRow(s.db.QueryRow(
-		`SELECT id, title, category, starts_at, ends_at, location, notes, status, bring_mic, bring_cable, bring_stand, bring_dress, frozen_option_id, created_at FROM dates WHERE id=?`, id,
+		`SELECT id, title, category, starts_at, ends_at, location, notes, schedule, status, bring_mic, bring_cable, bring_stand, bring_dress, frozen_option_id, created_at FROM dates WHERE id=?`, id,
 	))
 	if err != nil {
 		return Date{}, err
@@ -1099,13 +1204,15 @@ type rowScanner interface {
 func scanUser(rs rowScanner) (User, error) {
 	var u User
 	var created string
-	if err := rs.Scan(&u.ID, &u.Nickname, &u.Email, &u.Role, &u.Subrole, &u.Address, &u.Phone, &u.Birthday, &created); err != nil {
+	var mustChange int
+	if err := rs.Scan(&u.ID, &u.Nickname, &u.Email, &u.Role, &u.Subrole, &u.Address, &u.Phone, &u.Birthday, &mustChange, &created); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return User{}, ErrNotFound
 		}
 		return User{}, err
 	}
 	u.CreatedAt = parseTime(created)
+	u.MustChangePassword = mustChange != 0
 	return u, nil
 }
 
@@ -1116,7 +1223,7 @@ func scanDate(rs rowScanner) (Date, error) {
 	var starts, created string
 	var ends sql.NullString
 	var mic, cable, stand int
-	if err := rs.Scan(&d.ID, &d.Title, &d.Category, &starts, &ends, &d.Location, &d.Notes, &d.Status, &mic, &cable, &stand, &d.Bring.Dress, &d.FrozenOptionID, &created); err != nil {
+	if err := rs.Scan(&d.ID, &d.Title, &d.Category, &starts, &ends, &d.Location, &d.Notes, &d.Schedule, &d.Status, &mic, &cable, &stand, &d.Bring.Dress, &d.FrozenOptionID, &created); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Date{}, ErrNotFound
 		}

@@ -8,6 +8,7 @@ import (
 
 const (
 	RoleChoir       = "choir"
+	RoleChorleiter  = "chorleiter"
 	RoleBand        = "band"
 	RoleOrchestra   = "orchestra"
 	RoleTechnician  = "technician"
@@ -20,20 +21,37 @@ const (
 	VoteUnknown     = "unknown"
 )
 
-var Roles = []string{RoleChoir, RoleBand, RoleOrchestra, RoleTechnician}
+var Roles = []string{RoleChoir, RoleChorleiter, RoleBand, RoleOrchestra, RoleTechnician}
 
 var Subroles = map[string][]string{
-	RoleChoir:      {"Sopran", "Alt", "Tenor/Bass"},
-	RoleBand:       {"Drums", "Percussion", "Guitar", "Hammond", "E-Bass", "Trumpet", "Sax", "Trombone", "Piano"},
-	RoleOrchestra:  {"Strings", "Woodbrass", "Brass", "Percussion", "Harp"},
-	RoleTechnician: {"Sound", "Light", "Stage"},
+	RoleChoir:       {"Sopran", "Alt", "Tenor/Bass"},
+	RoleChorleiter:  {"Chorleiter"},
+	RoleBand:        {"Drums", "Percussion", "Guitar", "Hammond", "E-Bass", "Trumpet", "Sax", "Trombone", "Piano"},
+	RoleOrchestra:   {"Strings", "Woodbrass", "Brass", "Percussion", "Harp"},
+	RoleTechnician:  {"Sound", "Light", "Stage"},
 }
 
 var RoleLabels = map[string]string{
-	RoleChoir:      "Choir",
-	RoleBand:       "Band",
-	RoleOrchestra:  "Orchestra",
-	RoleTechnician: "Technician",
+	RoleChoir:       "Choir",
+	RoleChorleiter:  "Choir Director",
+	RoleBand:        "Band",
+	RoleOrchestra:   "Orchestra",
+	RoleTechnician:  "Technician",
+}
+
+func RoleSeesDate(role string, dateRoles []string) bool {
+	if slicesContains(dateRoles, role) {
+		return true
+	}
+	return role == RoleChorleiter && slicesContains(dateRoles, RoleChoir)
+}
+
+func DateAudienceRoles(roles []string) []string {
+	out := append([]string{}, roles...)
+	if slicesContains(roles, RoleChoir) && !slicesContains(roles, RoleChorleiter) {
+		out = append(out, RoleChorleiter)
+	}
+	return out
 }
 
 const (

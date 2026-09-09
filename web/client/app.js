@@ -1,6 +1,7 @@
 const CHOICES = ["yes", "maybe", "no", "unknown"];
 
 const loginView = document.getElementById("login-view");
+const pwView = document.getElementById("pw-view");
 const appView = document.getElementById("app-view");
 const loginForm = document.getElementById("login-form");
 const loginError = document.getElementById("login-error");
@@ -9,8 +10,10 @@ const emptyEl = document.getElementById("empty");
 
 let me = null;
 let dates = [];
-let ranking = { year: 0, leader: null };
+let ranking = { year: 0, leaders: [] };
+let proposals = [];
 let commentDateId = "";
+let titlesDateId = "";
 let chatRoom = "";
 let chatMessages = [];
 
@@ -177,6 +180,8 @@ function renderDate(date) {
     ${pollOpen(date) ? "" : `<div class="vote-row">${buttons}</div>${mine}`}
     <div class="card-actions">
       <button type="button" class="btn ghost" data-comments="${date.id}">${I18N.t("comments")}${commentCount ? ` (${commentCount})` : ""}</button>
+      ${date.schedule ? `<button type="button" class="btn ghost" data-schedule="${date.id}">${I18N.t("schedule")}</button>` : ""}
+      <button type="button" class="btn ghost" data-titles="${date.id}">${I18N.t("titles")}${(date.titles || []).length ? ` (${date.titles.length})` : ""}</button>
       ${date.chatOpen ? `<button type="button" class="btn ghost" data-event-chat="${date.id}">${I18N.t("eventChat")}</button>` : ""}
     </div>
     ${pollOpen(date) ? "" : renderCounts(date)}
@@ -196,39 +201,148 @@ function overviewPollVote(d) {
   return `${voted}/${options.length}`;
 }
 
-function upcomingDates() {
+function dateIsUpcoming(d) {
+  if (!d || d.status === "cancelled") return false;
   const start = new Date();
   start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setMonth(end.getMonth() + 3);
-  return dates.filter((d) => {
-    const t = new Date(d.startsAt);
-    return t >= start && t < end;
-  });
+  return new Date(d.startsAt) >= start;
+}
+
+function userParticipates(d) {
+  if (pollOpen(d)) {
+    return (d.options || []).some((o) => o.myChoice === "yes" || o.myChoice === "maybe");
+  }
+  return d.myChoice === "yes" || d.myChoice === "maybe";
+}
+
+function upcomingDates() {
+  return dates.filter(dateIsUpcoming).slice(0, 8);
+}
+
+function nextParticipatingDate() {
+  return dates.find((d) => dateIsUpcoming(d) && d.status === "accepted" && userParticipates(d)) || null;
+}
+
+function mapsSearchURL(location) {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(String(location || "").trim())}`;
+}
+
+function paintMyChannels() {
+  const header = document.getElementById("who-channels");
+  const box = document.getElementById("my-channels");
+  const channels = me?.channels || [];
+  const dirty = {};
+  if (box) {
+    box.querySelectorAll("form[data-channel] input[name=comment].dirty").forEach((input) => {
+      const n = Number(input.closest("form").dataset.channel);
+      if (input.value !== savedChannelComment(n)) dirty[String(n)] = input.value;
+    });
+  }
+  if (header) {
+    header.hidden = channels.length === 0;
+    header.textContent = channels.map((ch) => {
+      const note = ch.comment ? ` · ${ch.comment}` : "";
+      const v48 = ch.v48 ? ` · ${I18N.t("channel48v")}` : "";
+      return `${I18N.t("channel")} ${ch.number}${note}${v48}`;
+    }).join(" · ");
+  }
+  if (box) {
+    box.hidden = channels.length === 0;
+    box.innerHTML = channels.length
+      ? `<p class="brand">${I18N.t("channels")}</p>` + channels.map((ch) => {
+        const draft = Object.hasOwn(dirty, String(ch.number));
+        const value = draft ? dirty[String(ch.number)] : (ch.comment || "");
+        return `
+          <form class="my-channel" data-channel="${ch.number}">
+            <strong>${I18N.t("channel")} ${ch.number}</strong>
+            <label>
+              <span class="visually-hidden">${I18N.t("channelComment")}</span>
+              <input name="comment" maxlength="200" value="${escapeHtml(value)}" placeholder="${escapeHtml(I18N.t("channelComment"))}" class="${draft ? "dirty" : ""}" />
+            </label>
+            <button type="button" class="btn ghost v48-btn${ch.v48 ? " on" : ""}" data-channel-v48="${ch.number}" aria-pressed="${ch.v48 ? "true" : "false"}">${I18N.t("channel48v")}</button>
+          </form>`;
+      }).join("") + `<p id="channel-error" class="error" hidden></p>`
+      : "";
+  }
+}
+
+function jumpToDate(id) {
+  const card = document.getElementById(`date-${id}`);
+  if (!card) return;
+  card.closest(".card")?.classList.add("flash");
+  card.scrollIntoView({ behavior: "smooth", block: "start" });
+  setTimeout(() => card.closest(".card")?.classList.remove("flash"), 1600);
+}
+
+function renderNextUp() {
+  const box = document.getElementById("next-up");
+  const next = nextParticipatingDate();
+  if (!next) {
+    box.hidden = true;
+    box.innerHTML = "";
+    return;
+  }
+  const when = pollOpen(next)
+    ? I18N.t("severalTimes") + (next.location ? " · " + next.location : "")
+    : formatRange(next);
+  box.hidden = false;
+  box.innerHTML = `
+    <p class="brand">${I18N.t("nextUp")}</p>
+    <div class="next-up-row">
+      <div>
+        <strong>${escapeHtml(next.title)}</strong>
+        <p class="when">${escapeHtml(when)}</p>
+        <p class="muted">${escapeHtml(I18N.category(next.category))}</p>
+      </div>
+      <div class="next-up-actions">
+        <button type="button" class="btn ghost" data-jump="${next.id}">${I18N.t("toDate")}</button>
+        ${next.location ? `<a class="btn ghost" href="${mapsSearchURL(next.location)}" target="_blank" rel="noopener noreferrer">${I18N.t("directions")}</a>` : ""}
+        <button type="button" class="btn ghost" data-comments="${next.id}">${I18N.t("comments")}</button>
+        <button type="button" class="btn ghost" data-titles="${next.id}">${I18N.t("titles")}</button>
+        <button type="button" class="btn ghost" data-event-chat="${next.id}">${I18N.t("chatBrand")}</button>
+      </div>
+    </div>
+    ${next.schedule ? `<div class="schedule-box">
+      <p class="label">${I18N.t("schedule")}</p>
+      <p class="schedule-text">${escapeHtml(next.schedule)}</p>
+    </div>` : ""}`;
 }
 
 function renderOverview() {
   const overview = document.getElementById("overview");
-  const body = document.getElementById("overview-body");
+  const list = document.getElementById("overview-list");
   const empty = document.getElementById("overview-empty");
   overview.hidden = false;
   const rows = upcomingDates();
   empty.hidden = rows.length > 0;
-  body.innerHTML = rows.map((d) => `
-    <tr data-jump="${d.id}">
-      <td>${escapeHtml(pollOpen(d) ? `${formatWhen(d.startsAt)} · ${I18N.t("poll")}` : formatWhen(d.startsAt))}</td>
-      <td>${escapeHtml(I18N.category(d.category))}</td>
-      <td>${escapeHtml(d.title)}</td>
-      <td>${escapeHtml(bringList(d.bring).join(", ") || "—")}</td>
-      <td><span class="badge ${d.status}">${I18N.status(d.status)}</span></td>
-      <td>${pollOpen(d) ? escapeHtml(overviewPollVote(d)) : `<span class="badge ${d.myChoice}">${voteLabel(d.myChoice)}</span>`}</td>
-    </tr>`).join("");
+  list.hidden = rows.length === 0;
+  list.innerHTML = rows.map((d) => {
+    const when = pollOpen(d) ? `${formatWhen(d.startsAt)} · ${I18N.t("poll")}` : formatWhen(d.startsAt);
+    const vote = pollOpen(d)
+      ? `<span class="badge voting">${escapeHtml(overviewPollVote(d))}</span>`
+      : `<span class="badge ${d.myChoice}">${voteLabel(d.myChoice)}</span>`;
+    return `<button type="button" class="overview-item" data-jump="${d.id}">
+      <div>
+        <strong>${escapeHtml(d.title)}</strong>
+        <p>${escapeHtml(when)} · ${escapeHtml(I18N.category(d.category))}</p>
+      </div>
+      <div class="overview-item-meta">
+        <span class="badge ${d.status}">${I18N.status(d.status)}</span>
+        ${vote}
+      </div>
+    </button>`;
+  }).join("");
+}
+
+function spiritLeaders(rank) {
+  if (rank?.leaders?.length) return rank.leaders;
+  return rank?.leader ? [rank.leader] : [];
 }
 
 function renderSpirit() {
   const box = document.getElementById("spirit");
-  const leader = ranking.leader;
-  if (!leader) {
+  const leaders = spiritLeaders(ranking);
+  if (!leaders.length) {
     box.hidden = true;
     box.innerHTML = "";
     return;
@@ -239,14 +353,18 @@ function renderSpirit() {
         <strong class="spirit-score">${ranking.myScore}</strong>
       </div>`
     : "";
+  const people = leaders.map((leader) => `
+      <div class="spirit-person">
+        <strong>${escapeHtml(leader.nickname)}</strong>
+        <span>${escapeHtml(I18N.subrole(leader.subrole))}</span>
+      </div>`).join("");
   box.hidden = false;
   box.innerHTML = `
     <p class="brand" data-i18n="spiritOfTheYear">${I18N.t("spiritOfTheYear")}</p>
     <div class="spirit-row">
       <div class="spirit-leader">
-        <strong>${escapeHtml(leader.nickname)}</strong>
-        <span>${escapeHtml(I18N.subrole(leader.subrole))}</span>
-        <span class="spirit-score">${leader.score} ${I18N.t("spiritPoints")}</span>
+        ${people}
+        <span class="spirit-score">${leaders[0].score} ${I18N.t("spiritPoints")}</span>
       </div>
       ${mine}
     </div>`;
@@ -254,6 +372,7 @@ function renderSpirit() {
 
 function render() {
   renderSpirit();
+  renderNextUp();
   renderOverview();
   datesEl.innerHTML = dates.map(renderDate).join("");
   emptyEl.hidden = dates.length > 0;
@@ -279,6 +398,134 @@ function fillCommentDialog(date) {
     : `<p class="muted">${I18N.t("noComments")}</p>`;
 }
 
+function archiveFileURL(id, file) {
+  if (!file?.id) return "#";
+  const q = new URLSearchParams();
+  if (file.updatedAt) q.set("v", file.updatedAt);
+  const qs = q.toString();
+  return `/api/archive/${encodeURIComponent(id)}/files/${encodeURIComponent(file.id)}${qs ? `?${qs}` : ""}`;
+}
+
+function archiveRoleLabel(role) {
+  const id = String(role || "").trim();
+  if (!id) return "";
+  if (["choir", "band", "orchestra", "technician"].includes(id)) return I18N.role(id);
+  return id;
+}
+
+function archiveFileLabel(file, kindLabel) {
+  const bits = [kindLabel];
+  const role = archiveRoleLabel(file.role);
+  if (role) bits.push(role);
+  if (file.name) bits.push(file.name);
+  return bits.join(" · ");
+}
+
+function titleMaterialHTML(item) {
+  const files = item.files || [];
+  const audios = files.filter((f) => f.kind === "audio");
+  const lyrics = files.filter((f) => f.kind === "lyrics");
+  const sheets = files.filter((f) => f.kind === "sheet");
+  const preferred = sheets.filter((f) => f.role && f.role === me?.role);
+  const rest = sheets.filter((f) => !preferred.includes(f));
+  let html = `
+    <button type="button" class="btn ghost" data-titles-back>${I18N.t("backToTitles")}</button>
+    <div>
+      <strong>${escapeHtml(item.title)}</strong>
+      ${item.composer ? `<p class="muted">${escapeHtml(item.composer)}</p>` : ""}
+    </div>`;
+  audios.forEach((audio) => {
+    html += `<div><p class="label">${escapeHtml(archiveFileLabel(audio, I18N.t("archiveAudio")))}</p><audio controls src="${archiveFileURL(item.id, audio)}"></audio></div>`;
+  });
+  lyrics.forEach((f) => {
+    html += filePreviewHTML(item.id, f, archiveFileLabel(f, I18N.t("archiveLyrics")));
+  });
+  [...preferred, ...rest].forEach((f) => {
+    html += filePreviewHTML(item.id, f, archiveFileLabel(f, I18N.t("archiveSheet")));
+  });
+  if (!audios.length && !lyrics.length && !sheets.length) {
+    html += `<p class="muted">${I18N.t("archiveNoFile")}</p>`;
+  }
+  return html;
+}
+
+function filePreviewHTML(id, file, label) {
+  const url = archiveFileURL(id, file);
+  let body = "";
+  if ((file.mime || "").startsWith("image/")) {
+    body = `<img class="title-preview-img" src="${url}" alt="" />`;
+  } else if ((file.mime || "").startsWith("text/")) {
+    body = `<pre class="title-preview-text" data-text-src="${url}"></pre>`;
+  } else {
+    body = `<iframe class="title-preview" src="${url}" title="${escapeHtml(label)}"></iframe>`;
+  }
+  return `<div>
+    <p class="label">${escapeHtml(label)}</p>
+    ${body}
+    <p><a class="btn ghost" href="${url}" target="_blank" rel="noopener">${I18N.t("fileOpen")}</a></p>
+  </div>`;
+}
+
+function showTitlesList() {
+  const date = dates.find((d) => d.id === titlesDateId);
+  const list = document.getElementById("titles-list");
+  const detail = document.getElementById("title-detail");
+  detail.hidden = true;
+  detail.innerHTML = "";
+  list.hidden = false;
+  const items = date?.titles || [];
+  list.innerHTML = items.length
+    ? items.map((item) => `
+      <button type="button" class="title-item" data-title="${item.id}">
+        <div>
+          <strong>${escapeHtml(item.title)}</strong>
+          ${item.composer ? `<p>${escapeHtml(item.composer)}</p>` : ""}
+        </div>
+      </button>`).join("")
+    : `<p class="muted">${I18N.t("noTitles")}</p>`;
+}
+
+function openTitles(id) {
+  const date = dates.find((d) => d.id === id);
+  if (!date) return;
+  titlesDateId = id;
+  document.getElementById("titles-heading").textContent = date.title;
+  showTitlesList();
+  document.getElementById("titles-dialog").showModal();
+}
+
+async function openTitleDetail(itemId) {
+  const list = document.getElementById("titles-list");
+  const detail = document.getElementById("title-detail");
+  try {
+    const data = await api(`/api/archive/${encodeURIComponent(itemId)}`);
+    list.hidden = true;
+    detail.hidden = false;
+    detail.innerHTML = titleMaterialHTML(data.item);
+    for (const el of detail.querySelectorAll("[data-text-src]")) {
+      try {
+        const res = await fetch(el.dataset.textSrc, { credentials: "same-origin" });
+        el.textContent = await res.text();
+      } catch {
+        el.textContent = "";
+      }
+    }
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+function openSchedule(id) {
+  const date = dates.find((d) => d.id === id);
+  if (!date) return;
+  document.getElementById("schedule-heading").textContent = date.title;
+  const body = document.getElementById("schedule-body");
+  body.innerHTML = date.schedule
+    ? `<p class="schedule-text">${escapeHtml(date.schedule)}</p>`
+    : `<p class="muted">${I18N.t("noSchedule")}</p>`;
+  document.getElementById("schedule-dialog").showModal();
+}
+
 function openComments(id) {
   const date = dates.find((d) => d.id === id);
   if (!date) return;
@@ -292,28 +539,67 @@ function openComments(id) {
 async function loadDates() {
   const data = await api("/api/dates");
   dates = data.dates || [];
-  ranking = data.ranking || { year: 0, leader: null };
+  ranking = data.ranking || { year: 0, leaders: [] };
   render();
+}
+
+function showGate(which) {
+  loginView.hidden = which !== "login";
+  pwView.hidden = which !== "password";
+  appView.hidden = which !== "app";
+}
+
+async function enterApp() {
+  showGate("app");
+  document.getElementById("who-name").textContent = me.nickname;
+  document.getElementById("who-meta").textContent = `${I18N.role(me.role)} · ${I18N.subrole(me.subrole)} · ${me.email}`;
+  Photo.paint(document.getElementById("who-photo"), me);
+  paintInfoButton(document.getElementById("who-info"), me);
+  paintMyChannels();
+  renderChatTabs();
+  await loadDates();
+  connectWS();
 }
 
 async function boot() {
   try {
     const data = await api("/api/me");
     me = data.user;
-    loginView.hidden = true;
-    appView.hidden = false;
-    document.getElementById("who-name").textContent = me.nickname;
-    document.getElementById("who-meta").textContent = `${I18N.role(me.role)} · ${I18N.subrole(me.subrole)} · ${me.email}`;
-    Photo.paint(document.getElementById("who-photo"), me);
-    paintInfoButton(document.getElementById("who-info"), me);
-    renderChatTabs();
-    await loadDates();
-    connectWS();
+    if (me.mustChangePassword) {
+      showGate("password");
+      document.getElementById("pw-new").value = "";
+      document.getElementById("pw-confirm").value = "";
+      showError(document.getElementById("pw-error"), "");
+      return;
+    }
+    await enterApp();
   } catch {
-    loginView.hidden = false;
-    appView.hidden = true;
+    me = null;
+    showGate("login");
   }
 }
+
+document.getElementById("pw-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById("pw-error");
+  showError(errEl, "");
+  const next = document.getElementById("pw-new").value;
+  const confirm = document.getElementById("pw-confirm").value;
+  if (next !== confirm) {
+    showError(errEl, I18N.t("errPasswordMismatch"));
+    return;
+  }
+  try {
+    const data = await api("/api/me/password", {
+      method: "PATCH",
+      body: JSON.stringify({ password: next }),
+    });
+    me = data.user;
+    await enterApp();
+  } catch (err) {
+    showError(errEl, err.message);
+  }
+});
 
 loginForm.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -338,16 +624,112 @@ document.getElementById("btn-logout").addEventListener("click", async () => {
   await boot();
 });
 
-document.getElementById("overview-body").addEventListener("click", (e) => {
-  const row = e.target.closest("tr[data-jump]");
+async function saveMyChannel(n, comment, v48) {
+  const errEl = document.getElementById("channel-error");
+  showError(errEl, "");
+  const data = await api(`/api/me/channels/${n}`, {
+    method: "PATCH",
+    body: JSON.stringify({ comment, v48: !!v48 }),
+  });
+  me = data.user;
+  paintMyChannels();
+}
+
+function savedChannelComment(n) {
+  return (me?.channels || []).find((ch) => ch.number === n)?.comment || "";
+}
+
+function paintChannelDirty(input) {
+  if (!input) return;
+  const form = input.closest("form[data-channel]");
+  if (!form) return;
+  input.classList.toggle("dirty", input.value !== savedChannelComment(Number(form.dataset.channel)));
+}
+
+document.getElementById("my-channels").addEventListener("input", (e) => {
+  const input = e.target.closest("input[name=comment]");
+  if (input) paintChannelDirty(input);
+});
+
+document.getElementById("my-channels").addEventListener("submit", async (e) => {
+  const form = e.target.closest("form[data-channel]");
+  if (!form) return;
+  e.preventDefault();
+  const n = Number(form.dataset.channel);
+  const comment = form.querySelector("[name=comment]")?.value || "";
+  const v48 = form.querySelector("[data-channel-v48]")?.getAttribute("aria-pressed") === "true";
+  try {
+    await saveMyChannel(n, comment, v48);
+  } catch (err) {
+    showError(document.getElementById("channel-error"), err.message);
+  }
+});
+
+document.getElementById("my-channels").addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-channel-v48]");
+  if (!btn) return;
+  const form = btn.closest("form[data-channel]");
+  if (!form) return;
+  const n = Number(form.dataset.channel);
+  try {
+    await saveMyChannel(n, savedChannelComment(n), btn.getAttribute("aria-pressed") !== "true");
+  } catch (err) {
+    showError(document.getElementById("channel-error"), err.message);
+  }
+});
+
+document.getElementById("overview-list").addEventListener("click", (e) => {
+  const row = e.target.closest("[data-jump]");
   if (!row) return;
-  document.getElementById(`date-${row.dataset.jump}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  jumpToDate(row.dataset.jump);
+});
+
+document.getElementById("next-up").addEventListener("click", async (e) => {
+  const jump = e.target.closest("[data-jump]");
+  if (jump) {
+    jumpToDate(jump.dataset.jump);
+    return;
+  }
+  const commentsBtn = e.target.closest("[data-comments]");
+  if (commentsBtn) {
+    openComments(commentsBtn.dataset.comments);
+    return;
+  }
+  const scheduleBtn = e.target.closest("[data-schedule]");
+  if (scheduleBtn) {
+    openSchedule(scheduleBtn.dataset.schedule);
+    return;
+  }
+  const titlesBtn = e.target.closest("[data-titles]");
+  if (titlesBtn) {
+    openTitles(titlesBtn.dataset.titles);
+    return;
+  }
+  const eventChat = e.target.closest("[data-event-chat]");
+  if (!eventChat) return;
+  const date = dates.find((d) => d.id === eventChat.dataset.eventChat);
+  if (!date) return;
+  try {
+    await openChat(`event:${date.id}`, date.title);
+  } catch (err) {
+    alert(err.message);
+  }
 });
 
 datesEl.addEventListener("click", async (e) => {
   const commentsBtn = e.target.closest("button[data-comments]");
   if (commentsBtn) {
     openComments(commentsBtn.dataset.comments);
+    return;
+  }
+  const scheduleBtn = e.target.closest("button[data-schedule]");
+  if (scheduleBtn) {
+    openSchedule(scheduleBtn.dataset.schedule);
+    return;
+  }
+  const titlesBtn = e.target.closest("button[data-titles]");
+  if (titlesBtn) {
+    openTitles(titlesBtn.dataset.titles);
     return;
   }
   const eventChat = e.target.closest("button[data-event-chat]");
@@ -454,15 +836,15 @@ function chatMessageHTML(m, stacked) {
   const color = m.isAdmin ? "#f0a35e" : memberColor(m.userId);
   const face = mine ? "" : Photo.html({
     id: m.isAdmin ? "" : m.userId,
-    nickname: m.isAdmin ? I18N.t("chatAdmin") : m.nickname,
+    nickname: m.nickname,
     hasPhoto: !m.isAdmin && m.hasPhoto,
     photoUpdatedAt: m.photoUpdatedAt,
   }, "sm");
-  return `<article class="chat-row ${mine ? "mine" : "theirs"}${stacked ? " stack" : ""}">
+  return `<article class="chat-row ${mine ? "mine" : "theirs"}${stacked ? " stack" : ""}" data-msg="${m.id}">
     ${face}
     <div class="chat-col">
-      <div class="chat-bubble">
-        <p class="chat-name" style="color:${color}">${escapeHtml(m.isAdmin ? I18N.t("chatAdmin") : m.nickname)}</p>
+      <div class="chat-bubble" data-msg="${m.id}">
+        <p class="chat-name" style="color:${color}">${escapeHtml(m.nickname)}</p>
         <p class="chat-text">${escapeHtml(m.text)}</p>
         <span class="chat-time">${escapeHtml(formatChatWhen(m.createdAt))}</span>
       </div>
@@ -495,6 +877,18 @@ function appendChat(msg) {
   if (!msg?.id || chatMessages.some((m) => m.id === msg.id)) return;
   chatMessages.push(msg);
   renderChat();
+}
+
+function removeChat(id) {
+  const next = chatMessages.filter((m) => m.id !== id);
+  if (next.length === chatMessages.length) return;
+  const list = document.getElementById("chat-list");
+  chatMessages = next;
+  renderChat(list.scrollTop);
+}
+
+function canDeleteChat(m) {
+  return !!(me && m && !m.isAdmin && m.userId === me.id);
 }
 
 function chatTitle(room, title) {
@@ -534,18 +928,36 @@ function connectWS() {
       if (chatRoom && msg.data?.room === chatRoom) applyReactions(msg.data.messageId, msg.data.reactions);
       return;
     }
-    if (msg.type === "changed") loadDates().catch(() => {});
+    if (msg.type === "chatDelete") {
+      if (chatRoom && msg.data?.room === chatRoom) removeChat(msg.data.messageId);
+      return;
+    }
+    if (msg.type === "changed") {
+      api("/api/me").then((data) => {
+        me = data.user;
+        if (me.mustChangePassword) {
+          showGate("password");
+          return;
+        }
+        paintMyChannels();
+      }).catch(() => {});
+      if (!me?.mustChangePassword) {
+        loadDates().catch(() => {});
+        if (document.getElementById("proposals-dialog").open) loadProposals().catch(() => {});
+      }
+    }
   };
   ws.onclose = () => setTimeout(connectWS, 2000);
 }
 
 I18N.onChange(() => {
   I18N.apply();
-  if (me) {
+  if (me && !me.mustChangePassword) {
     document.getElementById("who-name").textContent = me.nickname;
     document.getElementById("who-meta").textContent = `${I18N.role(me.role)} · ${I18N.subrole(me.subrole)} · ${me.email}`;
     Photo.paint(document.getElementById("who-photo"), me);
     paintInfoButton(document.getElementById("who-info"), me);
+    paintMyChannels();
     renderChatTabs();
     if (document.getElementById("chat-dialog").open && chatRoom) {
       const date = chatRoom.startsWith("event:")
@@ -555,6 +967,7 @@ I18N.onChange(() => {
       document.getElementById("chat-text").placeholder = I18N.t("chatWrite");
       renderChat(document.getElementById("chat-list").scrollTop);
     }
+    if (document.getElementById("proposals-dialog").open) renderProposalList();
     render();
   }
 });
@@ -611,6 +1024,45 @@ document.getElementById("chat-text").addEventListener("keydown", (e) => {
   if (e.key !== "Enter" || e.shiftKey) return;
   e.preventDefault();
   sendChat();
+});
+
+document.getElementById("schedule-close").addEventListener("click", () => {
+  document.getElementById("schedule-dialog").close();
+});
+
+document.getElementById("titles-close").addEventListener("click", () => {
+  document.getElementById("titles-dialog").close();
+});
+
+document.getElementById("titles-dialog").addEventListener("close", () => {
+  titlesDateId = "";
+  document.getElementById("title-detail").innerHTML = "";
+});
+
+document.getElementById("titles-list").addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-title]");
+  if (!btn) return;
+  await openTitleDetail(btn.dataset.title);
+});
+
+document.getElementById("title-detail").addEventListener("click", (e) => {
+  if (!e.target.closest("[data-titles-back]")) return;
+  showTitlesList();
+});
+
+document.getElementById("chat-list").addEventListener("dblclick", async (e) => {
+  if (e.target.closest(".chat-reacts")) return;
+  const bubble = e.target.closest("[data-msg]");
+  if (!bubble || !chatRoom) return;
+  const m = chatMessages.find((x) => x.id === bubble.dataset.msg);
+  if (!canDeleteChat(m)) return;
+  if (!confirm(I18N.t("confirmDeleteMessage"))) return;
+  try {
+    await api(`/api/chats/${encodeURIComponent(chatRoom)}/messages/${encodeURIComponent(m.id)}`, { method: "DELETE" });
+    removeChat(m.id);
+  } catch (err) {
+    showError(document.getElementById("chat-error"), err.message);
+  }
 });
 
 document.getElementById("chat-list").addEventListener("click", async (e) => {
@@ -680,6 +1132,84 @@ document.getElementById("info-form").addEventListener("submit", async (e) => {
   } catch (err) {
     showError(errEl, err.message);
   }
+});
+
+function proposalBadge(status) {
+  if (status === "accepted") return "accepted";
+  if (status === "declined") return "cancelled";
+  return "voting";
+}
+
+function proposalLink(url) {
+  if (!url) return "";
+  return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a>`;
+}
+
+async function loadProposals() {
+  const data = await api("/api/proposals");
+  proposals = data.proposals || [];
+  renderProposalList();
+}
+
+function renderProposalList() {
+  const list = document.getElementById("proposals-list");
+  if (!proposals.length) {
+    list.innerHTML = `<p class="muted">${I18N.t("noProposals")}</p>`;
+    return;
+  }
+  list.innerHTML = proposals.map((p) => `
+    <article class="proposal-card">
+      <div class="proposal-head">
+        <strong>${escapeHtml(p.title)}</strong>
+        <span class="badge ${proposalBadge(p.status)}">${escapeHtml(I18N.status(p.status))}</span>
+      </div>
+      <p class="meta">${escapeHtml(I18N.t("proposedBy"))} ${escapeHtml(p.nickname)} · ${escapeHtml(formatWhen(p.createdAt))}</p>
+      ${p.url ? `<p class="proposal-url">${proposalLink(p.url)}</p>` : ""}
+      ${p.comment ? `<p class="proposal-comment"><span class="label">${escapeHtml(I18N.t("adminComment"))}</span>${escapeHtml(p.comment)}</p>` : ""}
+    </article>
+  `).join("");
+}
+
+document.getElementById("btn-propose").addEventListener("click", () => {
+  document.getElementById("propose-form").reset();
+  showError(document.getElementById("propose-error"), "");
+  document.getElementById("propose-dialog").showModal();
+  document.getElementById("propose-title").focus();
+});
+
+document.getElementById("propose-close").addEventListener("click", () => {
+  document.getElementById("propose-dialog").close();
+});
+
+document.getElementById("propose-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById("propose-error");
+  showError(errEl, "");
+  try {
+    await api("/api/proposals", {
+      method: "POST",
+      body: JSON.stringify({
+        title: document.getElementById("propose-title").value,
+        url: document.getElementById("propose-url").value,
+      }),
+    });
+    document.getElementById("propose-dialog").close();
+  } catch (err) {
+    showError(errEl, err.message);
+  }
+});
+
+document.getElementById("btn-proposals").addEventListener("click", async () => {
+  try {
+    await loadProposals();
+    document.getElementById("proposals-dialog").showModal();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+document.getElementById("proposals-close").addEventListener("click", () => {
+  document.getElementById("proposals-dialog").close();
 });
 
 Photo.bind({

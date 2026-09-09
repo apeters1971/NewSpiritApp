@@ -187,7 +187,7 @@ func (s *Store) AddAdminChatMessage(room, text string) (ChatMessage, error) {
 	msg := ChatMessage{
 		ID:        newID(),
 		Room:      room,
-		Nickname:  ChatAdminName,
+		Nickname:  s.AdminAlias(),
 		IsAdmin:   true,
 		Text:      text,
 		CreatedAt: now(),
@@ -247,7 +247,44 @@ LIMIT 200`, room)
 	for i := len(rev) - 1; i >= 0; i-- {
 		out = append(out, rev[i])
 	}
-	return s.attachReactions(out, ids, viewerID, admin)
+	out, err = s.attachReactions(out, ids, viewerID, admin)
+	if err != nil {
+		return nil, err
+	}
+	return s.withAdminAlias(out), nil
+}
+
+func (s *Store) DeleteChatMessage(userID, room, messageID string, admin bool) error {
+	role := ""
+	if !admin {
+		u, err := s.UserByID(userID)
+		if err != nil {
+			return err
+		}
+		role = u.Role
+	}
+	if err := s.resolveChatRoom(room, role, true); err != nil {
+		return err
+	}
+	var foundRoom string
+	var owner sql.NullString
+	err := s.db.QueryRow(`SELECT room, user_id FROM chat_messages WHERE id=?`, messageID).Scan(&foundRoom, &owner)
+	if err == sql.ErrNoRows {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if foundRoom != room {
+		return ErrNotFound
+	}
+	if !admin {
+		if !owner.Valid || owner.String != userID {
+			return fmt.Errorf("%w: you can only delete your own messages", ErrForbidden)
+		}
+	}
+	_, err = s.db.Exec(`DELETE FROM chat_messages WHERE id=?`, messageID)
+	return err
 }
 
 func (s *Store) ToggleChatReaction(userID, room, messageID, emoji string, admin bool) (ChatMessage, error) {
@@ -321,6 +358,7 @@ WHERE c.id=?`, id)
 	if err != nil {
 		return ChatMessage{}, err
 	}
+	out = s.withAdminAlias(out)
 	return out[0], nil
 }
 
