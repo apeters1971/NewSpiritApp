@@ -288,6 +288,8 @@ async function boot() {
     appView.hidden = false;
     document.getElementById("who-name").textContent = me.nickname;
     document.getElementById("who-meta").textContent = `${I18N.role(me.role)} · ${I18N.subrole(me.subrole)} · ${me.email}`;
+    Photo.paint(document.getElementById("who-photo"), me);
+    paintInfoButton(document.getElementById("who-info"), me);
     await loadDates();
     connectWS();
   } catch {
@@ -384,8 +386,74 @@ I18N.onChange(() => {
   if (me) {
     document.getElementById("who-name").textContent = me.nickname;
     document.getElementById("who-meta").textContent = `${I18N.role(me.role)} · ${I18N.subrole(me.subrole)} · ${me.email}`;
+    Photo.paint(document.getElementById("who-photo"), me);
+    paintInfoButton(document.getElementById("who-info"), me);
     render();
   }
+});
+
+function hasInfo(user) {
+  return !!(user?.address || user?.phone || user?.birthday);
+}
+
+function paintInfoButton(btn, user) {
+  if (!btn) return;
+  btn.classList.toggle("has-info", hasInfo(user));
+}
+
+function fillInfoForm(user = {}) {
+  document.getElementById("info-address").value = user.address || "";
+  document.getElementById("info-phone").value = user.phone || "";
+  document.getElementById("info-birthday").value = user.birthday || "";
+  showError(document.getElementById("info-error"), "");
+}
+
+function readInfoForm() {
+  return {
+    address: document.getElementById("info-address").value,
+    phone: document.getElementById("info-phone").value,
+    birthday: document.getElementById("info-birthday").value,
+  };
+}
+
+document.getElementById("who-info").addEventListener("click", () => {
+  fillInfoForm(me || {});
+  document.getElementById("info-dialog").showModal();
+});
+
+document.getElementById("info-close").addEventListener("click", () => {
+  document.getElementById("info-dialog").close();
+});
+
+document.getElementById("info-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById("info-error");
+  showError(errEl, "");
+  try {
+    const data = await api("/api/me/info", { method: "PATCH", body: JSON.stringify(readInfoForm()) });
+    me = data.user;
+    Photo.paint(document.getElementById("who-photo"), me);
+    paintInfoButton(document.getElementById("who-info"), me);
+    document.getElementById("info-dialog").close();
+  } catch (err) {
+    showError(errEl, err.message);
+  }
+});
+
+Photo.bind({
+  canRemove: () => !!(me && me.hasPhoto),
+  onFile: async (blob) => {
+    const data = await Photo.upload("/api/me/photo", blob);
+    me = data.user;
+    Photo.paint(document.getElementById("who-photo"), me);
+    paintInfoButton(document.getElementById("who-info"), me);
+  },
+  onRemove: async () => {
+    const data = await Photo.remove("/api/me/photo");
+    me = data.user;
+    Photo.paint(document.getElementById("who-photo"), me);
+    paintInfoButton(document.getElementById("who-info"), me);
+  },
 });
 
 boot();

@@ -1,11 +1,13 @@
 package main
 
 import (
+	"flag"
 	"io/fs"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/apeters/newspirit/internal/api"
@@ -15,6 +17,10 @@ import (
 )
 
 func main() {
+	certFile := flag.String("cert", os.Getenv("TLS_CERT"), "TLS certificate PEM; enables HTTPS on :8443")
+	keyFile := flag.String("key", os.Getenv("TLS_KEY"), "TLS private key PEM (defaults next to -cert)")
+	flag.Parse()
+
 	dataDir := env("DATA_DIR", "data")
 	secret := os.Getenv("CONTROLLER_SECRET")
 	if secret == "" {
@@ -40,19 +46,65 @@ func main() {
 	}
 
 	srv := api.New(st, hub.New(), secret, clientFS, controllerFS)
-	addr := env("ADDR", ":8080")
+	cert := strings.TrimSpace(*certFile)
+	key := strings.TrimSpace(*keyFile)
+	tls := cert != ""
+	if tls && key == "" {
+		key = inferKey(cert)
+		if key == "" {
+			log.Fatal("TLS key is required: pass -key or set TLS_KEY")
+		}
+	}
+	addr := os.Getenv("ADDR")
+	if addr == "" {
+		if tls {
+			addr = ":8443"
+		} else {
+			addr = ":8080"
+		}
+	}
+	scheme := "http"
+	if tls {
+		scheme = "https"
+	}
 	log.Printf("New Spirit listening on %s", addr)
-	log.Printf("member UI:      http://localhost%s/", addr)
-	log.Printf("controller UI:  http://localhost%s/controller", addr)
+	if tls {
+		log.Printf("TLS certificate: %s", cert)
+	}
+	log.Printf("member UI:      %s://localhost%s/", scheme, addr)
+	log.Printf("controller UI:  %s://localhost%s/controller", scheme, addr)
 	httpSrv := &http.Server{
 		Addr:              addr,
 		Handler:           srv.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
-	if err := httpSrv.ListenAndServe(); err != nil {
+	if tls {
+		err = httpSrv.ListenAndServeTLS(cert, key)
+	} else {
+		err = httpSrv.ListenAndServe()
+	}
+	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func inferKey(cert string) string {
+	ext := filepath.Ext(cert)
+	base := strings.TrimSuffix(cert, ext)
+	dir := filepath.Dir(cert)
+	candidates := []string{
+		base + ".key",
+		base + "-key" + ext,
+		filepath.Join(dir, "key.pem"),
+		filepath.Join(dir, "privkey.pem"),
+	}
+	for _, p := range candidates {
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			return p
+		}
+	}
+	return ""
 }
 
 func env(k, def string) string {

@@ -14,15 +14,24 @@ make run
 - Member UI: [http://localhost:8080/](http://localhost:8080/)
 - Controller UI: [http://localhost:8080/controller](http://localhost:8080/controller)
 
+HTTPS on port 8443 (certificate + private key):
+
+```bash
+go run ./cmd/server -cert /path/to/cert.pem -key /path/to/key.pem
+# or: make run TLS_CERT=/path/to/cert.pem TLS_KEY=/path/to/key.pem
+```
+
 Create people and dates in the controller first. Members cannot self-register.
 
 ## Environment
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `ADDR` | `:8080` | HTTP listen address |
+| `ADDR` | `:8080` (`:8443` with TLS) | Listen address |
 | `CONTROLLER_SECRET` | _(empty)_ | Shared secret for `/controller` |
 | `DATA_DIR` | `data` | SQLite directory |
+| `TLS_CERT` | _(empty)_ | Certificate PEM; enables HTTPS |
+| `TLS_KEY` | _(empty)_ | Private key PEM (or a sibling of `TLS_CERT`) |
 
 ## Date lifecycle
 

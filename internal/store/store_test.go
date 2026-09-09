@@ -1,6 +1,9 @@
 package store
 
 import (
+	"bytes"
+	"image"
+	"image/jpeg"
 	"path/filepath"
 	"testing"
 	"time"
@@ -202,5 +205,79 @@ func TestChoirRanking(t *testing.T) {
 	}
 	if rank.Entries[1].Nickname != "Ada" || rank.Entries[1].Score != 1 || rank.Entries[1].Flipped != 1 {
 		t.Fatalf("ada %+v", rank.Entries[1])
+	}
+}
+
+func TestUserPhoto(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "photo.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	u, err := st.CreateUser("Ada", "ada@example.com", "secret1", RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.HasPhoto {
+		t.Fatal("new user should have no photo")
+	}
+
+	img := image.NewRGBA(image.Rect(0, 0, 24, 12))
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, nil); err != nil {
+		t.Fatal(err)
+	}
+	data, err := NormalizePhoto(buf.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetPhoto(u.ID, data); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.UserByID(u.ID)
+	if err != nil || !got.HasPhoto || got.PhotoUpdatedAt == nil {
+		t.Fatalf("has photo %+v %v", got, err)
+	}
+	photo, err := st.Photo(u.ID)
+	if err != nil || photo.MIME != "image/jpeg" || len(photo.Data) == 0 {
+		t.Fatalf("photo %+v %v", photo, err)
+	}
+	list, err := st.ListUsers()
+	if err != nil || len(list) != 1 || !list[0].HasPhoto {
+		t.Fatalf("list %+v %v", list, err)
+	}
+	if err := st.DeletePhoto(u.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, err = st.UserByID(u.ID)
+	if err != nil || got.HasPhoto {
+		t.Fatalf("deleted %+v %v", got, err)
+	}
+	if _, err := NormalizePhoto([]byte("not-an-image")); err == nil {
+		t.Fatal("expected invalid picture")
+	}
+}
+
+func TestUserInfo(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "info.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	u, err := st.CreateUser("Ada", "ada@example.com", "secret1", RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.SetUserInfo(u.ID, "Hall Street 1", "+49 30 1234", "1990-05-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Address != "Hall Street 1" || got.Phone != "+49 30 1234" || got.Birthday != "1990-05-01" {
+		t.Fatalf("info %+v", got)
+	}
+	if _, err := st.SetUserInfo(u.ID, "Hall", "123", "13.05.1990"); err == nil {
+		t.Fatal("expected invalid birthday")
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
@@ -49,6 +50,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/login", s.handleLogin)
 	mux.HandleFunc("POST /api/logout", s.handleLogout)
 	mux.HandleFunc("GET /api/me", s.handleMe)
+	mux.HandleFunc("PATCH /api/me/info", s.handleMeInfo)
+	mux.HandleFunc("POST /api/me/photo", s.handleMePhoto)
+	mux.HandleFunc("DELETE /api/me/photo", s.handleDeleteMePhoto)
+	mux.HandleFunc("GET /api/photos/{id}", s.handleGetPhoto)
 	mux.HandleFunc("GET /api/dates", s.handleDates)
 	mux.HandleFunc("POST /api/dates/{id}/vote", s.handleVote)
 	mux.HandleFunc("POST /api/dates/{id}/poll", s.handlePollVote)
@@ -60,7 +65,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/controller/state", s.handleControllerState)
 	mux.HandleFunc("POST /api/controller/users", s.handleCreateUser)
 	mux.HandleFunc("PATCH /api/controller/users/{id}", s.handleUpdateUser)
+	mux.HandleFunc("PATCH /api/controller/users/{id}/info", s.handleControllerUserInfo)
 	mux.HandleFunc("DELETE /api/controller/users/{id}", s.handleDeleteUser)
+	mux.HandleFunc("POST /api/controller/users/{id}/photo", s.handleControllerPhoto)
+	mux.HandleFunc("DELETE /api/controller/users/{id}/photo", s.handleDeleteControllerPhoto)
 	mux.HandleFunc("POST /api/controller/dates", s.handleCreateDate)
 	mux.HandleFunc("PATCH /api/controller/dates/{id}", s.handleUpdateDate)
 	mux.HandleFunc("DELETE /api/controller/dates/{id}", s.handleDeleteDate)
@@ -161,6 +169,153 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
+	writeJSON(w, http.StatusOK, map[string]any{"user": user})
+}
+
+func readUserInfo(r *http.Request) (string, string, string, error) {
+	var body struct {
+		Address  string `json:"address"`
+		Phone    string `json:"phone"`
+		Birthday string `json:"birthday"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		return "", "", "", err
+	}
+	return body.Address, body.Phone, body.Birthday, nil
+}
+
+func (s *Server) handleMeInfo(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	address, phone, birthday, err := readUserInfo(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	user, err = s.Store.SetUserInfo(user.ID, address, phone, birthday)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"user": user})
+}
+
+func (s *Server) canViewPhoto(r *http.Request) bool {
+	if _, err := s.userFromRequest(r); err == nil {
+		return true
+	}
+	c, err := r.Cookie(controllerCookie)
+	return err == nil && s.Store.ValidControllerSession(c.Value)
+}
+
+func (s *Server) readNormalizedPhoto(w http.ResponseWriter, r *http.Request) ([]byte, error) {
+	r.Body = http.MaxBytesReader(w, r.Body, store.PhotoMaxUpload)
+	if err := r.ParseMultipartForm(store.PhotoMaxUpload); err != nil {
+		return nil, fmt.Errorf("picture is too large")
+	}
+	f, _, err := r.FormFile("photo")
+	if err != nil {
+		return nil, fmt.Errorf("picture is required")
+	}
+	defer f.Close()
+	raw, err := io.ReadAll(io.LimitReader(f, store.PhotoMaxUpload+1))
+	if err != nil {
+		return nil, fmt.Errorf("picture is required")
+	}
+	if len(raw) > store.PhotoMaxUpload {
+		return nil, fmt.Errorf("picture is too large")
+	}
+	return store.NormalizePhoto(raw)
+}
+
+func (s *Server) writeUserPhoto(w http.ResponseWriter, r *http.Request, userID string) {
+	data, err := s.readNormalizedPhoto(w, r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := s.Store.SetPhoto(userID, data); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	user, err := s.Store.UserByID(userID)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"user": user})
+}
+
+func (s *Server) handleMePhoto(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	s.writeUserPhoto(w, r, user.ID)
+}
+
+func (s *Server) handleDeleteMePhoto(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if err := s.Store.DeletePhoto(user.ID); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	user, err = s.Store.UserByID(user.ID)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"user": user})
+}
+
+func (s *Server) handleGetPhoto(w http.ResponseWriter, r *http.Request) {
+	if !s.canViewPhoto(r) {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	photo, err := s.Store.Photo(r.PathValue("id"))
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", photo.MIME)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(photo.Data)
+}
+
+func (s *Server) handleControllerPhoto(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	s.writeUserPhoto(w, r, r.PathValue("id"))
+}
+
+func (s *Server) handleDeleteControllerPhoto(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	id := r.PathValue("id")
+	if err := s.Store.DeletePhoto(id); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	user, err := s.Store.UserByID(id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
 	writeJSON(w, http.StatusOK, map[string]any{"user": user})
 }
 
@@ -321,10 +476,10 @@ func (s *Server) handleControllerState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"users":    users,
-		"dates":    dates,
-		"online":   s.Hub.OnlineCount(),
-		"ranking":  rank,
+		"users":   users,
+		"dates":   dates,
+		"online":  s.Hub.OnlineCount(),
+		"ranking": rank,
 	})
 }
 
@@ -338,6 +493,9 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 		Role     string `json:"role"`
 		Subrole  string `json:"subrole"`
+		Address  string `json:"address"`
+		Phone    string `json:"phone"`
+		Birthday string `json:"birthday"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json")
@@ -347,6 +505,13 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeStoreError(w, err)
 		return
+	}
+	if body.Address != "" || body.Phone != "" || body.Birthday != "" {
+		user, err = s.Store.SetUserInfo(user.ID, body.Address, body.Phone, body.Birthday)
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
 	}
 	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
 	writeJSON(w, http.StatusCreated, map[string]any{"user": user})
@@ -376,6 +541,24 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"user": user})
 }
 
+func (s *Server) handleControllerUserInfo(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	address, phone, birthday, err := readUserInfo(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	user, err := s.Store.SetUserInfo(r.PathValue("id"), address, phone, birthday)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"user": user})
+}
+
 func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	if !s.requireController(w, r) {
 		return
@@ -395,15 +578,15 @@ type pollOptionBody struct {
 }
 
 type dateBody struct {
-	Title    string            `json:"title"`
-	Category string            `json:"category"`
-	StartsAt string            `json:"startsAt"`
-	EndsAt   string            `json:"endsAt"`
-	Location string            `json:"location"`
-	Notes    string            `json:"notes"`
-	Roles    []string          `json:"roles"`
-	Bring    store.Bring       `json:"bring"`
-	Options  []pollOptionBody  `json:"options"`
+	Title    string           `json:"title"`
+	Category string           `json:"category"`
+	StartsAt string           `json:"startsAt"`
+	EndsAt   string           `json:"endsAt"`
+	Location string           `json:"location"`
+	Notes    string           `json:"notes"`
+	Roles    []string         `json:"roles"`
+	Bring    store.Bring      `json:"bring"`
+	Options  []pollOptionBody `json:"options"`
 }
 
 func parsePollOptions(raw []pollOptionBody) ([]store.PollOptionInput, error) {

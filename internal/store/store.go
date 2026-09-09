@@ -26,29 +26,34 @@ type Store struct {
 }
 
 type User struct {
-	ID        string    `json:"id"`
-	Nickname  string    `json:"nickname"`
-	Email     string    `json:"email"`
-	Role      string    `json:"role"`
-	Subrole   string    `json:"subrole"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID             string     `json:"id"`
+	Nickname       string     `json:"nickname"`
+	Email          string     `json:"email"`
+	Role           string     `json:"role"`
+	Subrole        string     `json:"subrole"`
+	Address        string     `json:"address"`
+	Phone          string     `json:"phone"`
+	Birthday       string     `json:"birthday"`
+	HasPhoto       bool       `json:"hasPhoto"`
+	PhotoUpdatedAt *time.Time `json:"photoUpdatedAt,omitempty"`
+	CreatedAt      time.Time  `json:"createdAt"`
 }
 
 type Date struct {
-	ID        string     `json:"id"`
-	Title     string     `json:"title"`
-	Category  string     `json:"category"`
-	StartsAt  time.Time  `json:"startsAt"`
-	EndsAt    *time.Time `json:"endsAt,omitempty"`
-	Location  string     `json:"location,omitempty"`
-	Notes     string     `json:"notes,omitempty"`
-	Status    string     `json:"status"`
-	Roles     []string   `json:"roles"`
-	Bring           Bring        `json:"bring"`
-	FrozenOptionID  string       `json:"frozenOptionId,omitempty"`
-	PollOpen        bool         `json:"pollOpen"`
-	Options         []PollOption `json:"options"`
-	CreatedAt       time.Time    `json:"createdAt"`
+	ID             string       `json:"id"`
+	Title          string       `json:"title"`
+	Category       string       `json:"category"`
+	StartsAt       time.Time    `json:"startsAt"`
+	EndsAt         *time.Time   `json:"endsAt,omitempty"`
+	Location       string       `json:"location,omitempty"`
+	Notes          string       `json:"notes,omitempty"`
+	Status         string       `json:"status"`
+	Roles          []string     `json:"roles"`
+	Bring          Bring        `json:"bring"`
+	FrozenOptionID string       `json:"frozenOptionId,omitempty"`
+	PollOpen       bool         `json:"pollOpen"`
+	Options        []PollOption `json:"options"`
+	CreatedAt      time.Time    `json:"createdAt"`
 }
 
 type Bring struct {
@@ -190,6 +195,12 @@ CREATE TABLE IF NOT EXISTS poll_votes (
 );
 CREATE INDEX IF NOT EXISTS idx_poll_options_date ON poll_options(date_id, sort_order);
 CREATE INDEX IF NOT EXISTS idx_poll_votes_option ON poll_votes(option_id);
+CREATE TABLE IF NOT EXISTS user_photos (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  mime TEXT NOT NULL,
+  data BLOB NOT NULL,
+  updated_at TEXT NOT NULL
+);
 `)
 	if err != nil {
 		return err
@@ -200,6 +211,9 @@ CREATE INDEX IF NOT EXISTS idx_poll_votes_option ON poll_votes(option_id);
 	_, _ = s.db.Exec(`ALTER TABLE dates ADD COLUMN bring_stand INTEGER NOT NULL DEFAULT 0`)
 	_, _ = s.db.Exec(`ALTER TABLE dates ADD COLUMN bring_dress TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE dates ADD COLUMN frozen_option_id TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN address TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN phone TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN birthday TEXT NOT NULL DEFAULT ''`)
 	return nil
 }
 
@@ -344,6 +358,40 @@ func (s *Store) UpdateUser(id, nickname, email, password, role, subrole string) 
 	return s.UserByID(id)
 }
 
+func (s *Store) SetUserInfo(id, address, phone, birthday string) (User, error) {
+	if _, err := s.UserByID(id); err != nil {
+		return User{}, err
+	}
+	address = strings.TrimSpace(spaceRe.ReplaceAllString(address, " "))
+	phone = strings.TrimSpace(phone)
+	birthday, err := normalizeBirthday(birthday)
+	if err != nil {
+		return User{}, err
+	}
+	if len(address) > 500 {
+		return User{}, fmt.Errorf("address is too long")
+	}
+	if len(phone) > 80 {
+		return User{}, fmt.Errorf("phone is too long")
+	}
+	if _, err := s.db.Exec(`UPDATE users SET address=?, phone=?, birthday=? WHERE id=?`, address, phone, birthday, id); err != nil {
+		return User{}, err
+	}
+	return s.UserByID(id)
+}
+
+func normalizeBirthday(s string) (string, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", nil
+	}
+	t, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		return "", fmt.Errorf("invalid birthday")
+	}
+	return t.Format("2006-01-02"), nil
+}
+
 func (s *Store) DeleteUser(id string) error {
 	res, err := s.db.Exec(`DELETE FROM users WHERE id=?`, id)
 	if err != nil {
@@ -357,7 +405,7 @@ func (s *Store) DeleteUser(id string) error {
 }
 
 func (s *Store) ListUsers() ([]User, error) {
-	rows, err := s.db.Query(`SELECT id, nickname, email, role, subrole, created_at FROM users ORDER BY nickname COLLATE NOCASE`)
+	rows, err := s.db.Query(`SELECT id, nickname, email, role, subrole, address, phone, birthday, created_at FROM users ORDER BY nickname COLLATE NOCASE`)
 	if err != nil {
 		return nil, err
 	}
@@ -370,11 +418,24 @@ func (s *Store) ListUsers() ([]User, error) {
 		}
 		out = append(out, u)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := s.attachPhotos(out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (s *Store) UserByID(id string) (User, error) {
-	return scanUserRow(s.db.QueryRow(`SELECT id, nickname, email, role, subrole, created_at FROM users WHERE id=?`, id))
+	u, err := scanUserRow(s.db.QueryRow(`SELECT id, nickname, email, role, subrole, address, phone, birthday, created_at FROM users WHERE id=?`, id))
+	if err != nil {
+		return User{}, err
+	}
+	if err := s.attachPhoto(&u); err != nil {
+		return User{}, err
+	}
+	return u, nil
 }
 
 func (s *Store) Login(email, password string) (User, string, error) {
@@ -385,9 +446,9 @@ func (s *Store) Login(email, password string) (User, string, error) {
 	var u User
 	var hash, created string
 	err := s.db.QueryRow(
-		`SELECT id, nickname, email, password_hash, role, subrole, created_at FROM users WHERE email=?`,
+		`SELECT id, nickname, email, password_hash, role, subrole, address, phone, birthday, created_at FROM users WHERE email=?`,
 		email,
-	).Scan(&u.ID, &u.Nickname, &u.Email, &hash, &u.Role, &u.Subrole, &created)
+	).Scan(&u.ID, &u.Nickname, &u.Email, &hash, &u.Role, &u.Subrole, &u.Address, &u.Phone, &u.Birthday, &created)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, "", ErrUnauthorized
 	}
@@ -402,6 +463,9 @@ func (s *Store) Login(email, password string) (User, string, error) {
 	if _, err := s.db.Exec(`INSERT INTO sessions(id, user_id, created_at) VALUES(?,?,?)`, sid, u.ID, fmtTime(now())); err != nil {
 		return User{}, "", err
 	}
+	if err := s.attachPhoto(&u); err != nil {
+		return User{}, "", err
+	}
 	return u, sid, nil
 }
 
@@ -410,14 +474,20 @@ func (s *Store) UserBySession(sessionID string) (User, error) {
 		return User{}, ErrUnauthorized
 	}
 	u, err := scanUserRow(s.db.QueryRow(`
-SELECT u.id, u.nickname, u.email, u.role, u.subrole, u.created_at
+SELECT u.id, u.nickname, u.email, u.role, u.subrole, u.address, u.phone, u.birthday, u.created_at
 FROM sessions s
 JOIN users u ON u.id = s.user_id
 WHERE s.id=? AND s.revoked_at IS NULL`, sessionID))
 	if errors.Is(err, ErrNotFound) {
 		return User{}, ErrUnauthorized
 	}
-	return u, err
+	if err != nil {
+		return User{}, err
+	}
+	if err := s.attachPhoto(&u); err != nil {
+		return User{}, err
+	}
+	return u, nil
 }
 
 func (s *Store) RevokeSession(sessionID string) {
@@ -967,7 +1037,7 @@ type rowScanner interface {
 func scanUser(rs rowScanner) (User, error) {
 	var u User
 	var created string
-	if err := rs.Scan(&u.ID, &u.Nickname, &u.Email, &u.Role, &u.Subrole, &created); err != nil {
+	if err := rs.Scan(&u.ID, &u.Nickname, &u.Email, &u.Role, &u.Subrole, &u.Address, &u.Phone, &u.Birthday, &created); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return User{}, ErrNotFound
 		}

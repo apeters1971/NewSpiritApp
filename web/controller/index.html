@@ -60,6 +60,7 @@
           <table>
             <thead>
               <tr>
+                <th class="photo-col" data-i18n="photo">Foto</th>
                 <th data-i18n="nickname">Spitzname</th>
                 <th data-i18n="email">E-Mail</th>
                 <th data-i18n="role">Rolle</th>
@@ -71,6 +72,14 @@
         </div>
         <form id="people-form" class="drawer">
           <h2 id="people-form-title">Person hinzufügen</h2>
+          <div class="face-cluster face-cluster-form">
+            <button type="button" id="user-photo" class="avatar avatar-form" data-photo-open data-i18n-aria="photoHint">
+              <span class="avatar-placeholder">+</span>
+              <img alt="" hidden />
+            </button>
+            <button type="button" id="user-info" class="btn ghost info-btn" data-i18n="addInfo">Info hinzufügen</button>
+          </div>
+          <p class="muted photo-hint" data-i18n="photoLede">Wähle ein Bild oder nimm eines mit der Kamera auf.</p>
           <input type="hidden" id="user-id" />
           <label for="user-nickname" data-i18n="nickname">Spitzname</label>
           <input id="user-nickname" required />
@@ -189,7 +198,46 @@
     </div>
     <div id="comment-list" class="comment-list"></div>
   </dialog>
+  <dialog id="photo-dialog" class="dialog">
+    <div class="dialog-head">
+      <div>
+        <p class="brand" data-i18n="photo">Foto</p>
+        <h2 data-i18n="photoTitle">Profilbild</h2>
+      </div>
+      <button type="button" id="photo-close" class="btn ghost" data-i18n="close">Schließen</button>
+    </div>
+    <p class="muted" data-i18n="photoLede">Wähle ein Bild oder nimm eines mit der Kamera auf.</p>
+    <video id="photo-video" class="photo-video" playsinline autoplay muted hidden></video>
+    <div class="photo-actions">
+      <button type="button" id="photo-choose" class="btn" data-i18n="photoChoose">Foto wählen</button>
+      <button type="button" id="photo-take" class="btn ghost" data-i18n="photoTake">Foto aufnehmen</button>
+      <button type="button" id="photo-snap" class="btn" hidden data-i18n="photoCapture">Aufnehmen</button>
+      <button type="button" id="photo-remove" class="btn ghost danger" hidden data-i18n="photoRemove">Foto entfernen</button>
+    </div>
+    <input id="photo-file" type="file" accept="image/*" hidden />
+    <p id="photo-error" class="error" hidden></p>
+  </dialog>
+  <dialog id="info-dialog" class="dialog">
+    <div class="dialog-head">
+      <div>
+        <p class="brand" data-i18n="addInfo">Info hinzufügen</p>
+        <h2 data-i18n="infoTitle">Persönliche Daten</h2>
+      </div>
+      <button type="button" id="info-close" class="btn ghost" data-i18n="close">Schließen</button>
+    </div>
+    <form id="info-form" class="info-form">
+      <label for="info-address" data-i18n="address">Adresse</label>
+      <textarea id="info-address" rows="3" maxlength="500" autocomplete="street-address"></textarea>
+      <label for="info-phone" data-i18n="phone">Telefon</label>
+      <input id="info-phone" type="tel" maxlength="80" autocomplete="tel" />
+      <label for="info-birthday" data-i18n="birthday">Geburtstag</label>
+      <input id="info-birthday" type="date" />
+      <p id="info-error" class="error" hidden></p>
+      <button type="submit" data-i18n="save">Speichern</button>
+    </form>
+  </dialog>
   <script src="/static/i18n.js"></script>
+  <script src="/static/photo.js"></script>
   <script src="/controller/static/app.js"></script>
 </body>
 </html>

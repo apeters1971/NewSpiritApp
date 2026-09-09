@@ -11,6 +11,41 @@ let selectedUser = "";
 let selectedDate = "";
 let pollRows = [];
 let pollFrozen = false;
+let pendingPhoto = null;
+let pendingPhotoURL = "";
+let pendingInfo = { address: "", phone: "", birthday: "" };
+
+function currentPerson() {
+  return state.users.find((u) => u.id === selectedUser) || {
+    nickname: document.getElementById("user-nickname")?.value || "",
+    ...pendingInfo,
+  };
+}
+
+function hasInfo(user) {
+  return !!(user?.address || user?.phone || user?.birthday);
+}
+
+function paintPersonPhoto() {
+  const person = currentPerson();
+  Photo.paint(document.getElementById("user-photo"), person, pendingPhotoURL);
+  document.getElementById("user-info")?.classList.toggle("has-info", hasInfo(person));
+}
+
+function fillInfoForm(user = {}) {
+  document.getElementById("info-address").value = user.address || "";
+  document.getElementById("info-phone").value = user.phone || "";
+  document.getElementById("info-birthday").value = user.birthday || "";
+  showError(document.getElementById("info-error"), "");
+}
+
+function readInfoForm() {
+  return {
+    address: document.getElementById("info-address").value,
+    phone: document.getElementById("info-phone").value,
+    birthday: document.getElementById("info-birthday").value,
+  };
+}
 
 async function api(path, opts = {}) {
   const res = await fetch(path, {
@@ -166,6 +201,7 @@ function renderPeople() {
   document.getElementById("stat-people").textContent = state.users.length;
   document.getElementById("people-body").innerHTML = state.users.map((u) => `
     <tr data-id="${u.id}" class="${u.id === selectedUser ? "active" : ""}">
+      <td>${Photo.html(u, "sm")}</td>
       <td>${escapeHtml(u.nickname)}</td>
       <td>${escapeHtml(u.email)}</td>
       <td>${escapeHtml(I18N.role(u.role))}</td>
@@ -240,8 +276,16 @@ function renderDateDetail() {
     </div>`;
 }
 
+function clearPendingPhoto() {
+  if (pendingPhotoURL) URL.revokeObjectURL(pendingPhotoURL);
+  pendingPhoto = null;
+  pendingPhotoURL = "";
+}
+
 function resetUserForm() {
   selectedUser = "";
+  pendingInfo = { address: "", phone: "", birthday: "" };
+  clearPendingPhoto();
   document.getElementById("people-form-title").textContent = I18N.t("addPerson");
   document.getElementById("user-id").value = "";
   document.getElementById("user-nickname").value = "";
@@ -253,11 +297,14 @@ function resetUserForm() {
   if (catalog.roles[0]) document.getElementById("user-role").value = catalog.roles[0].id;
   fillSubroles();
   renderPeople();
+  paintPersonPhoto();
   showError(peopleError, "");
 }
 
 function fillUserForm(u) {
   selectedUser = u.id;
+  pendingInfo = { address: u.address || "", phone: u.phone || "", birthday: u.birthday || "" };
+  clearPendingPhoto();
   document.getElementById("people-form-title").textContent = I18N.t("editPerson");
   document.getElementById("user-id").value = u.id;
   document.getElementById("user-nickname").value = u.nickname;
@@ -270,6 +317,7 @@ function fillUserForm(u) {
   document.getElementById("user-subrole").value = u.subrole;
   document.getElementById("btn-user-delete").disabled = false;
   renderPeople();
+  paintPersonPhoto();
 }
 
 function resetDateForm() {
@@ -324,6 +372,7 @@ async function loadState() {
     renderDates();
   }
   renderRanking();
+  paintPersonPhoto();
 }
 
 function pct(n) {
@@ -442,8 +491,20 @@ document.getElementById("people-form").addEventListener("submit", async (e) => {
     const data = id
       ? await api(`/api/controller/users/${id}`, { method: "PATCH", body: JSON.stringify(body) })
       : await api("/api/controller/users", { method: "POST", body: JSON.stringify(body) });
+    let user = data.user;
+    if (!id && user?.id && hasInfo(pendingInfo)) {
+      const info = await api(`/api/controller/users/${user.id}/info`, {
+        method: "PATCH",
+        body: JSON.stringify(pendingInfo),
+      });
+      user = info.user;
+    }
+    if (pendingPhoto && user?.id) {
+      const photo = await Photo.upload(`/api/controller/users/${user.id}/photo`, pendingPhoto);
+      user = photo.user;
+    }
     await loadState();
-    fillUserForm(data.user);
+    fillUserForm(user);
   } catch (err) {
     showError(peopleError, err.message);
   }
@@ -593,6 +654,71 @@ function connectWS() {
   ws.onclose = () => { if (!dash.hidden) setTimeout(connectWS, 2000); };
 }
 
+document.getElementById("user-nickname").addEventListener("input", () => {
+  if (!selectedUser && !pendingPhotoURL) paintPersonPhoto();
+});
+
+document.getElementById("user-info").addEventListener("click", () => {
+  fillInfoForm(selectedUser ? currentPerson() : pendingInfo);
+  document.getElementById("info-dialog").showModal();
+});
+
+document.getElementById("info-close").addEventListener("click", () => {
+  document.getElementById("info-dialog").close();
+});
+
+document.getElementById("info-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById("info-error");
+  showError(errEl, "");
+  const info = readInfoForm();
+  const id = document.getElementById("user-id").value;
+  try {
+    if (id) {
+      const data = await api(`/api/controller/users/${id}/info`, {
+        method: "PATCH",
+        body: JSON.stringify(info),
+      });
+      await loadState();
+      fillUserForm(data.user);
+    } else {
+      pendingInfo = info;
+      paintPersonPhoto();
+    }
+    document.getElementById("info-dialog").close();
+  } catch (err) {
+    showError(errEl, err.message);
+  }
+});
+
+Photo.bind({
+  canRemove: () => !!(pendingPhoto || currentPerson().hasPhoto),
+  onFile: async (blob) => {
+    const id = document.getElementById("user-id").value;
+    if (id) {
+      const data = await Photo.upload(`/api/controller/users/${id}/photo`, blob);
+      await loadState();
+      fillUserForm(data.user);
+      return;
+    }
+    clearPendingPhoto();
+    pendingPhoto = blob;
+    pendingPhotoURL = URL.createObjectURL(blob);
+    paintPersonPhoto();
+  },
+  onRemove: async () => {
+    const id = document.getElementById("user-id").value;
+    if (id) {
+      const data = await Photo.remove(`/api/controller/users/${id}/photo`);
+      await loadState();
+      fillUserForm(data.user);
+      return;
+    }
+    clearPendingPhoto();
+    paintPersonPhoto();
+  },
+});
+
 I18N.onChange(() => {
   I18N.apply();
   if (catalog.roles.length) fillRoleSelects();
@@ -607,6 +733,7 @@ I18N.onChange(() => {
     renderPeople();
     renderDates();
     renderRanking();
+    paintPersonPhoto();
     const dialog = document.getElementById("comment-dialog");
     if (dialog.open && selectedDate) {
       const d = state.dates.find((x) => x.id === selectedDate);
