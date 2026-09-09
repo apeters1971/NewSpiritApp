@@ -139,3 +139,68 @@ func TestPollFreeze(t *testing.T) {
 		t.Fatal("poll vote should lock after freeze")
 	}
 }
+
+func TestChoirRanking(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "rank.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	ada, err := st.CreateUser("Ada", "ada@example.com", "secret1", RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ben, err := st.CreateUser("Ben", "ben@example.com", "secret1", RoleChoir, "Alt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateUser("Cara", "cara@example.com", "secret1", RoleBand, "Drums"); err != nil {
+		t.Fatal(err)
+	}
+
+	d1, err := st.CreateDate("One", CategoryRehearsal, time.Date(2026, 3, 1, 18, 0, 0, 0, time.UTC), nil, "", "", []string{RoleChoir}, Bring{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d2, err := st.CreateDate("Two", CategoryConcert, time.Date(2026, 4, 1, 18, 0, 0, 0, time.UTC), nil, "", "", []string{RoleChoir}, Bring{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old, err := st.CreateDate("Old", CategoryEvent, time.Date(2025, 4, 1, 18, 0, 0, 0, time.UTC), nil, "", "", []string{RoleChoir}, Bring{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetVote(ada.ID, d1.ID, VoteYes); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetVote(ben.ID, d1.ID, VoteMaybe); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetVote(ada.ID, d2.ID, VoteYes); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetVote(ada.ID, d2.ID, VoteNo); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetVote(ben.ID, d2.ID, VoteYes); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetVote(ada.ID, old.ID, VoteYes); err != nil {
+		t.Fatal(err)
+	}
+
+	rank, err := st.ChoirRanking(2026)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rank.Events != 2 || rank.Members != 2 {
+		t.Fatalf("scope %+v", rank)
+	}
+	if rank.Leader == nil || rank.Leader.Nickname != "Ben" || rank.Leader.Score != 3 {
+		t.Fatalf("leader %+v", rank.Leader)
+	}
+	if rank.Entries[1].Nickname != "Ada" || rank.Entries[1].Score != 1 || rank.Entries[1].Flipped != 1 {
+		t.Fatalf("ada %+v", rank.Entries[1])
+	}
+}

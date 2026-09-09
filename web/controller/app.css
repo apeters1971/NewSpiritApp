@@ -249,6 +249,25 @@ tbody tr:hover, tbody tr.active, .date-item.active { background: rgba(61, 214, 1
 .count span { color: var(--muted); }
 .changed { color: var(--muted); font-size: 0.78rem; }
 .finalize { margin-top: 1rem; padding-top: 0.6rem; border-top: 1px solid var(--line); }
+.rank-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.65rem;
+  margin: 0 0 1rem;
+}
+.rank-stat {
+  border: 1px solid var(--line);
+  background: rgba(24, 34, 44, 0.9);
+  padding: 0.7rem 0.8rem;
+}
+.rank-stat span {
+  display: block;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+.rank-stat label { color: var(--muted); font-size: 0.78rem; }
+.rank-stat p { margin: 0.25rem 0 0; color: var(--ink); font-size: 0.85rem; }
 .poll-rows { display: grid; gap: 0.65rem; margin: 0.45rem 0 0.55rem; }
 .poll-row {
   display: grid;

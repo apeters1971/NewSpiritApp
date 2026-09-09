@@ -6,7 +6,7 @@ const peopleError = document.getElementById("people-error");
 const dateError = document.getElementById("date-error");
 
 let catalog = { roles: [], categories: [] };
-let state = { users: [], dates: [], online: 0 };
+let state = { users: [], dates: [], online: 0, ranking: { entries: [], bySubrole: [] } };
 let selectedUser = "";
 let selectedDate = "";
 let pollRows = [];
@@ -323,6 +323,55 @@ async function loadState() {
     renderPeople();
     renderDates();
   }
+  renderRanking();
+}
+
+function pct(n) {
+  return `${Math.round((n || 0) * 100)}%`;
+}
+
+function renderRanking() {
+  const rank = state.ranking || { entries: [], bySubrole: [] };
+  const leader = rank.leader;
+  document.getElementById("ranking-stats").innerHTML = `
+    <div class="rank-stat"><span>${rank.year || "—"}</span><label>${I18N.t("spiritOfTheYear")}</label>
+      <p>${leader ? `${escapeHtml(leader.nickname)} · ${leader.score} ${I18N.t("spiritPoints")}` : I18N.t("spiritEmpty")}</p></div>
+    <div class="rank-stat"><span>${rank.events || 0}</span><label data-i18n="choirEvents">${I18N.t("choirEvents")}</label></div>
+    <div class="rank-stat"><span>${rank.members || 0}</span><label data-i18n="people">${I18N.t("people")}</label></div>
+    <div class="rank-stat"><span>${(rank.avgScore || 0).toFixed(1)}</span><label data-i18n="avgScore">${I18N.t("avgScore")}</label></div>
+    <div class="rank-stat"><span>${pct(rank.participation)}</span><label data-i18n="participation">${I18N.t("participation")}</label></div>
+    <div class="rank-stat"><span>${rank.totalFlipped || 0}</span><label data-i18n="flipped">${I18N.t("flipped")}</label></div>
+    ${(rank.bySubrole || []).map((s) => `
+      <div class="rank-stat">
+        <span>${escapeHtml(I18N.subrole(s.subrole))}</span>
+        <label>${s.members} · ${(s.avgScore || 0).toFixed(1)} ${I18N.t("spiritPoints")}</label>
+        <p>${I18N.t("yes")} ${s.yes} · ${I18N.t("maybe")} ${s.maybe} · ${I18N.t("no")} ${s.no}</p>
+      </div>`).join("")}`;
+  const body = document.getElementById("ranking-body");
+  const rows = rank.entries || [];
+  if (!rows.length) {
+    body.innerHTML = `<tr><td colspan="9" class="muted">${I18N.t("noChoirMembers")}</td></tr>`;
+    return;
+  }
+  let lastScore = null;
+  let lastRank = 0;
+  body.innerHTML = rows.map((e, i) => {
+    if (e.score !== lastScore) {
+      lastRank = i + 1;
+      lastScore = e.score;
+    }
+    return `<tr class="${leader && e.userId === leader.userId ? "active" : ""}">
+      <td>${lastRank}</td>
+      <td>${escapeHtml(e.nickname)}</td>
+      <td>${escapeHtml(I18N.subrole(e.subrole))}</td>
+      <td><strong>${e.score}</strong></td>
+      <td>${e.yes}</td>
+      <td>${e.maybe}</td>
+      <td>${e.no}</td>
+      <td>${e.unknown}</td>
+      <td>${e.flipped || 0}</td>
+    </tr>`;
+  }).join("");
 }
 
 async function boot() {
@@ -365,6 +414,7 @@ document.querySelectorAll(".tab").forEach((tab) => {
     document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === tab));
     document.getElementById("tab-people").hidden = tab.dataset.tab !== "people";
     document.getElementById("tab-dates").hidden = tab.dataset.tab !== "dates";
+    document.getElementById("tab-ranking").hidden = tab.dataset.tab !== "ranking";
   });
 });
 
@@ -556,6 +606,7 @@ I18N.onChange(() => {
   if (!dash.hidden) {
     renderPeople();
     renderDates();
+    renderRanking();
     const dialog = document.getElementById("comment-dialog");
     if (dialog.open && selectedDate) {
       const d = state.dates.find((x) => x.id === selectedDate);

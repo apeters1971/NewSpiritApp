@@ -175,7 +175,18 @@ func (s *Server) handleDates(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"dates": dates})
+	rank, err := s.Store.ChoirRanking(time.Now().Year())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"dates": dates,
+		"ranking": map[string]any{
+			"year":   rank.Year,
+			"leader": rank.Leader,
+		},
+	})
 }
 
 func (s *Server) handleVote(w http.ResponseWriter, r *http.Request) {
@@ -304,10 +315,16 @@ func (s *Server) handleControllerState(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	rank, err := s.Store.ChoirRanking(time.Now().Year())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"users":  users,
-		"dates":  dates,
-		"online": s.Hub.OnlineCount(),
+		"users":    users,
+		"dates":    dates,
+		"online":   s.Hub.OnlineCount(),
+		"ranking":  rank,
 	})
 }
 

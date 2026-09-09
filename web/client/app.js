@@ -9,6 +9,7 @@ const emptyEl = document.getElementById("empty");
 
 let me = null;
 let dates = [];
+let ranking = { year: 0, leader: null };
 let commentDateId = "";
 
 async function api(path, opts = {}) {
@@ -217,7 +218,26 @@ function renderOverview() {
     </tr>`).join("");
 }
 
+function renderSpirit() {
+  const box = document.getElementById("spirit");
+  const leader = ranking.leader;
+  if (!leader) {
+    box.hidden = true;
+    box.innerHTML = "";
+    return;
+  }
+  box.hidden = false;
+  box.innerHTML = `
+    <p class="brand" data-i18n="spiritOfTheYear">${I18N.t("spiritOfTheYear")}</p>
+    <div class="spirit-row">
+      <strong>${escapeHtml(leader.nickname)}</strong>
+      <span>${escapeHtml(I18N.subrole(leader.subrole))}</span>
+      <span class="spirit-score">${leader.score} ${I18N.t("spiritPoints")}</span>
+    </div>`;
+}
+
 function render() {
+  renderSpirit();
   renderOverview();
   datesEl.innerHTML = dates.map(renderDate).join("");
   emptyEl.hidden = dates.length > 0;
@@ -256,6 +276,7 @@ function openComments(id) {
 async function loadDates() {
   const data = await api("/api/dates");
   dates = data.dates || [];
+  ranking = data.ranking || { year: 0, leader: null };
   render();
 }
 

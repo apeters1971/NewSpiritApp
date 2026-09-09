@@ -51,6 +51,7 @@
     <nav class="tabs" role="tablist">
       <button type="button" class="tab active" data-tab="people" data-i18n="tabPeople">Personen</button>
       <button type="button" class="tab" data-tab="dates" data-i18n="tabDates">Termine</button>
+      <button type="button" class="tab" data-tab="ranking" data-i18n="tabRanking">Rang</button>
     </nav>
 
     <div id="tab-people" class="tab-panel">
@@ -150,6 +151,30 @@
           </div>
           <div id="date-detail"></div>
         </form>
+      </div>
+    </div>
+
+    <div id="tab-ranking" class="tab-panel" hidden>
+      <h2 data-i18n="rankingTitle">Chor-Rangliste</h2>
+      <p class="lede" data-i18n="rankingHint">Ja = 2, Vielleicht = 1, Nein = 0. Wer zuerst Ja sagt und später auf Nein wechselt, bekommt −1. Offene Umfragen und Absagen zählen nicht.</p>
+      <div id="ranking-stats" class="rank-stats"></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th data-i18n="rank">Rang</th>
+              <th data-i18n="name">Name</th>
+              <th data-i18n="subrole">Teilrolle</th>
+              <th data-i18n="score">Punkte</th>
+              <th data-i18n="yes">Ja</th>
+              <th data-i18n="maybe">Vielleicht</th>
+              <th data-i18n="no">Nein</th>
+              <th data-i18n="unknown">Unbekannt</th>
+              <th data-i18n="flipped">Ja→Nein</th>
+            </tr>
+          </thead>
+          <tbody id="ranking-body"></tbody>
+        </table>
       </div>
     </div>
   </section>
