@@ -19,6 +19,9 @@ let pendingPhotoURL = "";
 let pendingInfo = { address: "", phone: "", birthday: "", altEmail: "" };
 let chatRoom = "";
 let chatMessages = [];
+let chatUnread = {};
+let galleryDateId = "";
+let galleryItems = [];
 
 const CHAT_ROOMS = ["choir", "band", "orchestra"];
 const CHAT_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
@@ -364,6 +367,7 @@ function renderDateDetail() {
       <button type="button" class="btn ghost" id="btn-comments">${I18N.t("comments")}${commentCount ? ` (${commentCount})` : ""}</button>
       <button type="button" class="btn ghost" id="btn-titles">${I18N.t("titles")}${(d.titles || []).length ? ` (${d.titles.length})` : ""}</button>
       ${d.chatOpen ? `<button type="button" class="btn ghost" id="btn-event-chat">${I18N.t("eventChat")}</button>` : ""}
+      <button type="button" class="btn ghost" id="btn-gallery">${I18N.t("gallery")}${d.galleryCount ? ` (${d.galleryCount})` : ""}</button>
     </div>`;
 }
 
@@ -428,6 +432,9 @@ function resetDateForm() {
   setBringForm();
   setPollRows([], false);
   dateTitleIDs = [];
+  const pickSearch = document.getElementById("archive-pick-search");
+  if (pickSearch) pickSearch.value = "";
+  clearTitleNewForm();
   document.getElementById("btn-date-delete").disabled = true;
   renderDates();
   renderDateTitles();
@@ -452,6 +459,9 @@ function fillDateForm(d) {
   setBringForm(d.bring);
   setPollRows(d.options, !d.pollOpen && (d.options || []).length >= 2);
   dateTitleIDs = (d.titles || []).map((t) => t.id);
+  const pickSearch = document.getElementById("archive-pick-search");
+  if (pickSearch) pickSearch.value = "";
+  clearTitleNewForm();
   document.getElementById("btn-date-delete").disabled = false;
   renderDates();
   renderDateTitles();
@@ -480,6 +490,12 @@ async function loadState() {
   fillSettingsForm();
   paintPersonPhoto();
   paintUserChannels();
+  if (document.getElementById("gallery-dialog")?.open && galleryDateId) {
+    api(`/api/controller/dates/${encodeURIComponent(galleryDateId)}/gallery`).then((data) => {
+      galleryItems = data.gallery || [];
+      renderGallery();
+    }).catch(() => {});
+  }
 }
 
 function fillSettingsForm() {
@@ -749,25 +765,94 @@ function renderArchiveFiles() {
   }).join("");
 }
 
+function archivePickQuery() {
+  return (document.getElementById("archive-pick-search")?.value || "").trim().toLowerCase();
+}
+
 function renderDateTitleSelects() {
   const inherit = document.getElementById("inherit-titles");
-  const pick = document.getElementById("archive-pick");
-  if (!inherit || !pick) return;
-  inherit.innerHTML = `<option value="">${I18N.t("inheritTitlesPick")}</option>` +
-    state.dates
-      .filter((d) => d.id !== selectedDate && (d.titles || []).length)
-      .map((d) => `<option value="${d.id}">${escapeHtml(d.title)}</option>`)
-      .join("");
-  pick.innerHTML = `<option value="">${I18N.t("addFromArchive")}</option>` +
-    archiveItems()
-      .filter((item) => !dateTitleIDs.includes(item.id))
-      .map((item) => `<option value="${item.id}">${escapeHtml(item.title)}${item.composer ? ` · ${escapeHtml(item.composer)}` : ""}</option>`)
-      .join("");
+  if (inherit) {
+    inherit.innerHTML = `<option value="">${I18N.t("inheritTitlesPick")}</option>` +
+      state.dates
+        .filter((d) => d.id !== selectedDate && (d.titles || []).length)
+        .map((d) => `<option value="${d.id}">${escapeHtml(d.title)}</option>`)
+        .join("");
+  }
+  renderArchivePick();
+}
+
+function renderArchivePick() {
+  const list = document.getElementById("archive-pick-list");
+  const empty = document.getElementById("archive-pick-empty");
+  const search = document.getElementById("archive-pick-search");
+  if (!list || !empty) return;
+  if (search) search.placeholder = I18N.t("archivePickSearch");
+  const q = archivePickQuery();
+  if (!q) {
+    list.innerHTML = "";
+    empty.hidden = false;
+    empty.textContent = I18N.t("archivePickHint");
+    return;
+  }
+  const rows = archiveItems()
+    .filter((item) => !dateTitleIDs.includes(item.id))
+    .filter((item) => `${item.title} ${item.composer || ""}`.toLowerCase().includes(q));
+  if (!rows.length) {
+    list.innerHTML = "";
+    empty.hidden = false;
+    empty.textContent = I18N.t("archivePickEmpty");
+    return;
+  }
+  empty.hidden = true;
+  list.innerHTML = rows.map((item) => `
+    <button type="button" class="archive-pick-item" data-add-title="${item.id}">
+      <strong>${escapeHtml(item.title)}</strong>
+      ${item.composer ? `<span>${escapeHtml(item.composer)}</span>` : ""}
+    </button>`).join("");
+}
+
+function addTitleToDate(id) {
+  if (!id || dateTitleIDs.includes(id)) return;
+  dateTitleIDs.push(id);
+  renderDateTitles();
+  paintDateSave();
+}
+
+function clearTitleNewForm() {
+  const name = document.getElementById("title-new-name");
+  const composer = document.getElementById("title-new-composer");
+  if (name) name.value = "";
+  if (composer) composer.value = "";
+  showError(document.getElementById("title-new-error"), "");
+}
+
+async function createTitleForDate() {
+  const errEl = document.getElementById("title-new-error");
+  showError(errEl, "");
+  const title = document.getElementById("title-new-name")?.value || "";
+  const composer = document.getElementById("title-new-composer")?.value || "";
+  try {
+    const data = await api("/api/controller/archive", {
+      method: "POST",
+      body: JSON.stringify({ title, composer }),
+    });
+    const item = data.item;
+    if (item) {
+      state.archive = [...archiveItems().filter((x) => x.id !== item.id), item];
+      addTitleToDate(item.id);
+    }
+    clearTitleNewForm();
+    renderArchive();
+  } catch (err) {
+    showError(errEl, err.message);
+  }
 }
 
 function renderDateTitles() {
   const box = document.getElementById("date-titles");
   if (!box) return;
+  const copyBtn = document.getElementById("date-titles-copy");
+  if (copyBtn) copyBtn.disabled = dateTitleIDs.length === 0;
   box.innerHTML = dateTitleIDs.map((id, i) => {
     const item = archiveByID(id);
     const title = item?.title || id;
@@ -1090,6 +1175,10 @@ document.getElementById("date-detail").addEventListener("click", async (e) => {
     document.getElementById("date-titles")?.scrollIntoView({ behavior: "smooth", block: "center" });
     return;
   }
+  if (e.target.closest("#btn-gallery") && selectedDate) {
+    openGallery(selectedDate).catch((err) => alert(err.message));
+    return;
+  }
   if (e.target.closest("#btn-event-chat") && selectedDate) {
     const event = state.dates.find((x) => x.id === selectedDate);
     if (!event) return;
@@ -1119,28 +1208,269 @@ document.getElementById("comment-close").addEventListener("click", () => {
   document.getElementById("comment-dialog").close();
 });
 
+function galleryFileURL(dateId, item) {
+  return `/api/controller/dates/${encodeURIComponent(dateId)}/gallery/${encodeURIComponent(item.id)}`;
+}
+
+function renderGallery() {
+  const list = document.getElementById("gallery-list");
+  const date = state.dates.find((d) => d.id === galleryDateId);
+  document.getElementById("gallery-heading").textContent = date?.title || I18N.t("event");
+  if (!galleryItems.length) {
+    list.innerHTML = `<p class="muted">${I18N.t("galleryEmpty")}</p>`;
+    return;
+  }
+  list.innerHTML = galleryItems.map((item) => {
+    const url = galleryFileURL(galleryDateId, item);
+    const media = item.kind === "video"
+      ? `<video class="gallery-media" controls preload="metadata" src="${url}"></video>`
+      : `<img class="gallery-media" src="${url}" alt="" />`;
+    return `<article class="gallery-card">
+      ${media}
+      <p class="meta">${escapeHtml(item.nickname || "")}${item.name ? ` · ${escapeHtml(item.name)}` : ""}</p>
+      <button type="button" class="btn ghost danger" data-gallery-del="${item.id}">${I18N.t("delete")}</button>
+    </article>`;
+  }).join("");
+}
+
+async function openGallery(id) {
+  galleryDateId = id;
+  showError(document.getElementById("gallery-error"), "");
+  const data = await api(`/api/controller/dates/${encodeURIComponent(id)}/gallery`);
+  galleryItems = data.gallery || [];
+  renderGallery();
+  const dialog = document.getElementById("gallery-dialog");
+  if (!dialog.open) dialog.showModal();
+  paintGallerySize();
+}
+
+function paintGallerySize() {
+  const dialog = document.getElementById("gallery-dialog");
+  const shrink = document.getElementById("gallery-shrink");
+  const expand = document.getElementById("gallery-expand");
+  if (!dialog || !shrink || !expand) return;
+  const full = dialog.classList.contains("full");
+  shrink.disabled = !full;
+  expand.disabled = full;
+  shrink.setAttribute("aria-pressed", full ? "false" : "true");
+  expand.setAttribute("aria-pressed", full ? "true" : "false");
+}
+
+function setGalleryFull(full) {
+  const dialog = document.getElementById("gallery-dialog");
+  dialog.classList.toggle("full", full);
+  paintGallerySize();
+}
+
+document.getElementById("gallery-close").addEventListener("click", () => {
+  document.getElementById("gallery-dialog").close();
+});
+
+document.getElementById("gallery-shrink").addEventListener("click", () => setGalleryFull(false));
+document.getElementById("gallery-expand").addEventListener("click", () => setGalleryFull(true));
+
+document.getElementById("gallery-dialog").addEventListener("close", () => {
+  galleryDateId = "";
+  galleryItems = [];
+  document.getElementById("gallery-dialog").classList.remove("full");
+  document.getElementById("gallery-list").innerHTML = "";
+  setGalleryProgress(false);
+});
+
+document.getElementById("gallery-add").addEventListener("click", () => {
+  const input = document.getElementById("gallery-file");
+  input.value = "";
+  input.click();
+});
+
+const GALLERY_MAX_PHOTO = 8 * 1024 * 1024;
+const GALLERY_MAX_VIDEO = 1024 * 1024 * 1024;
+const GALLERY_PROGRESS_MIN = 1024 * 1024;
+
+function isGalleryVideo(file) {
+  return String(file.type || "").startsWith("video/") || /\.(mp4|m4v|webm|mov)$/i.test(file.name || "");
+}
+
+function galleryMaxFor(file) {
+  return isGalleryVideo(file) ? GALLERY_MAX_VIDEO : GALLERY_MAX_PHOTO;
+}
+
+function setGalleryProgress(on, name, loaded, total) {
+  const box = document.getElementById("gallery-progress");
+  const nameEl = document.getElementById("gallery-progress-name");
+  const pctEl = document.getElementById("gallery-progress-pct");
+  const bar = document.getElementById("gallery-progress-bar");
+  if (!box) return;
+  box.hidden = !on;
+  if (!on) {
+    if (bar) bar.value = 0;
+    if (nameEl) nameEl.textContent = "";
+    if (pctEl) pctEl.textContent = "";
+    return;
+  }
+  const pct = total > 0 ? Math.min(100, Math.round((loaded / total) * 100)) : 0;
+  if (nameEl) nameEl.textContent = name || I18N.t("galleryUploading");
+  if (pctEl) pctEl.textContent = `${pct}%`;
+  if (bar) bar.value = pct;
+}
+
+function uploadGalleryFile(url, file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    xhr.withCredentials = true;
+    xhr.upload.addEventListener("progress", (e) => {
+      if (e.lengthComputable && onProgress) onProgress(e.loaded, e.total);
+    });
+    xhr.onload = () => {
+      let data = {};
+      try { data = JSON.parse(xhr.responseText || "{}"); } catch {}
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+      else reject(new Error(I18N.error(data.error || xhr.statusText || String(xhr.status))));
+    };
+    xhr.onerror = () => reject(new Error(I18N.t("errFile")));
+    xhr.onabort = () => reject(new Error(I18N.t("errFile")));
+    const fd = new FormData();
+    fd.append("file", file);
+    xhr.send(fd);
+  });
+}
+
+async function uploadGalleryFiles(url, files, onProgress) {
+  const errors = [];
+  const showBar = files.some((f) => f.size >= GALLERY_PROGRESS_MIN || isGalleryVideo(f));
+  let doneBytes = 0;
+  const totalBytes = files.reduce((n, f) => n + (f.size || 0), 0);
+  for (const file of files) {
+    if (file.size > galleryMaxFor(file)) {
+      errors.push(`${file.name}: ${I18N.t("errFileLarge")}`);
+      doneBytes += file.size || 0;
+      continue;
+    }
+    try {
+      await uploadGalleryFile(url, file, (loaded) => {
+        if (showBar && onProgress) onProgress(file.name, doneBytes + loaded, totalBytes);
+      });
+    } catch (err) {
+      errors.push(`${file.name}: ${err.message}`);
+    }
+    doneBytes += file.size || 0;
+    if (showBar && onProgress) onProgress(file.name, doneBytes, totalBytes);
+  }
+  return errors;
+}
+
+document.getElementById("gallery-file").addEventListener("change", async (e) => {
+  const files = [...(e.target.files || [])];
+  const errEl = document.getElementById("gallery-error");
+  const addBtn = document.getElementById("gallery-add");
+  showError(errEl, "");
+  if (!files.length || !galleryDateId) return;
+  addBtn.disabled = true;
+  try {
+    const errors = await uploadGalleryFiles(
+      `/api/controller/dates/${encodeURIComponent(galleryDateId)}/gallery`,
+      files,
+      (name, loaded, total) => setGalleryProgress(true, name, loaded, total),
+    );
+    await loadState();
+    await openGallery(galleryDateId);
+    if (errors.length) showError(errEl, errors.join("\n"));
+  } catch (err) {
+    showError(errEl, err.message);
+  } finally {
+    setGalleryProgress(false);
+    addBtn.disabled = false;
+    e.target.value = "";
+  }
+});
+
+document.getElementById("gallery-list").addEventListener("click", async (e) => {
+  const del = e.target.closest("[data-gallery-del]");
+  if (!del || !galleryDateId) return;
+  if (!confirm(I18N.t("confirmDeleteGallery"))) return;
+  showError(document.getElementById("gallery-error"), "");
+  try {
+    await api(`/api/controller/dates/${encodeURIComponent(galleryDateId)}/gallery/${encodeURIComponent(del.dataset.galleryDel)}`, { method: "DELETE" });
+    await loadState();
+    await openGallery(galleryDateId);
+  } catch (err) {
+    showError(document.getElementById("gallery-error"), err.message);
+  }
+});
+
 function memberColor(id) {
   let n = 0;
   for (const ch of String(id || "")) n = (n + ch.charCodeAt(0)) % MEMBER_COLORS.length;
   return MEMBER_COLORS[n];
 }
 
-function formatChatWhen(iso) {
+function chatDayKey(iso) {
   const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+function formatChatDay(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
   const now = new Date();
-  const sameDay = d.toDateString() === now.toDateString();
-  return d.toLocaleString(I18N.locale(), sameDay
-    ? { hour: "2-digit", minute: "2-digit" }
-    : { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const diff = Math.round((today - day) / 86400000);
+  if (diff === 0) return I18N.t("chatToday");
+  if (diff === 1) return I18N.t("chatYesterday");
+  return d.toLocaleDateString(I18N.locale(), {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: now.getFullYear() === d.getFullYear() ? undefined : "numeric",
+  });
+}
+
+function formatChatWhen(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString(I18N.locale(), { hour: "2-digit", minute: "2-digit" });
 }
 
 function chatAuthorKey(m) {
   return m.isAdmin ? "admin" : m.userId;
 }
 
+function applyUnread(map) {
+  chatUnread = { ...(map || {}) };
+}
+
+function unreadCount(room) {
+  return Number(chatUnread[room] || 0);
+}
+
+function chatBadge(n) {
+  if (!n) return "";
+  return `<span class="chat-unread">${n > 99 ? "99+" : n}</span>`;
+}
+
+function noteChatMessage(m) {
+  if (!m?.room || !CHAT_ROOMS.includes(m.room)) return;
+  if (chatRoom === m.room) {
+    chatUnread[m.room] = 0;
+    api(`/api/controller/chats/${encodeURIComponent(m.room)}/read`, { method: "POST" }).catch(() => {});
+    renderChatTabs();
+    return;
+  }
+  if (m.isAdmin) return;
+  chatUnread[m.room] = unreadCount(m.room) + 1;
+  renderChatTabs();
+}
+
 function renderChatTabs() {
   document.querySelectorAll("#chat-tabs [data-chat]").forEach((btn) => {
-    btn.textContent = I18N.role(btn.dataset.chat);
+    const n = unreadCount(btn.dataset.chat);
+    const label = I18N.role(btn.dataset.chat);
+    btn.innerHTML = `${escapeHtml(label)}${chatBadge(n)}`;
+    btn.setAttribute("aria-label", n ? `${label}, ${n}` : label);
     btn.classList.toggle("on", chatRoom === btn.dataset.chat);
   });
 }
@@ -1154,7 +1484,7 @@ function chatReactionsHTML(m) {
     <button type="button" data-id="${m.id}" data-react="${emoji}">${emoji}</button>`).join("");
   return `<div class="chat-reacts">
     ${chips}
-    <button type="button" class="chat-react-add" data-pick="${m.id}" aria-label="${escapeHtml(I18N.t("chatReact"))}">😊</button>
+    <button type="button" class="chat-react-add" data-pick="${m.id}" aria-label="${escapeHtml(I18N.t("chatReact"))}">+</button>
     <div class="chat-picker" hidden data-picker="${m.id}">${picks}</div>
   </div>`;
 }
@@ -1187,7 +1517,12 @@ function renderChat(keepTop) {
   list.innerHTML = chatMessages.length
     ? chatMessages.map((m, i) => {
       const prev = chatMessages[i - 1];
-      return chatMessageHTML(m, !!(prev && chatAuthorKey(prev) === chatAuthorKey(m)));
+      const newDay = !prev || chatDayKey(prev.createdAt) !== chatDayKey(m.createdAt);
+      const stacked = !newDay && !!(prev && chatAuthorKey(prev) === chatAuthorKey(m));
+      const heading = newDay && formatChatDay(m.createdAt)
+        ? `<p class="chat-day">${escapeHtml(formatChatDay(m.createdAt))}</p>`
+        : "";
+      return heading + chatMessageHTML(m, stacked);
     }).join("")
     : `<p class="muted">${I18N.t("noMessages")}</p>`;
   list.scrollTop = keepTop != null && !atBottom ? keepTop : list.scrollHeight;
@@ -1275,6 +1610,7 @@ function connectWS() {
     let msg = {};
     try { msg = JSON.parse(ev.data); } catch { loadState().catch(() => {}); return; }
     if (msg.type === "chat") {
+      noteChatMessage(msg.data);
       if (chatRoom && msg.data?.room === chatRoom) appendChat(msg.data);
       return;
     }
@@ -1303,20 +1639,26 @@ document.getElementById("chat-tabs").addEventListener("click", async (e) => {
 
 function paintChatSize() {
   const dialog = document.getElementById("chat-dialog");
-  const btn = document.getElementById("chat-size");
-  if (!dialog || !btn) return;
+  const shrink = document.getElementById("chat-shrink");
+  const expand = document.getElementById("chat-expand");
+  if (!dialog || !shrink || !expand) return;
   const full = dialog.classList.contains("full");
-  btn.textContent = I18N.t(full ? "chatReduce" : "chatExpand");
-  btn.setAttribute("aria-pressed", full ? "true" : "false");
+  shrink.disabled = !full;
+  expand.disabled = full;
+  shrink.setAttribute("aria-pressed", full ? "false" : "true");
+  expand.setAttribute("aria-pressed", full ? "true" : "false");
 }
 
-document.getElementById("chat-size").addEventListener("click", () => {
+function setChatFull(full) {
   const dialog = document.getElementById("chat-dialog");
-  dialog.classList.toggle("full");
+  dialog.classList.toggle("full", full);
   paintChatSize();
   const list = document.getElementById("chat-list");
   if (list) list.scrollTop = list.scrollHeight;
-});
+}
+
+document.getElementById("chat-shrink").addEventListener("click", () => setChatFull(false));
+document.getElementById("chat-expand").addEventListener("click", () => setChatFull(true));
 
 document.getElementById("chat-close").addEventListener("click", () => {
   document.getElementById("chat-dialog").close();
@@ -1663,13 +2005,89 @@ document.getElementById("inherit-titles").addEventListener("change", (e) => {
   paintDateSave();
 });
 
-document.getElementById("archive-pick").addEventListener("change", (e) => {
-  const id = e.target.value;
-  e.target.value = "";
-  if (!id || dateTitleIDs.includes(id)) return;
-  dateTitleIDs.push(id);
-  renderDateTitles();
-  paintDateSave();
+document.getElementById("archive-pick-search").addEventListener("input", () => {
+  renderArchivePick();
+});
+
+document.getElementById("archive-pick-list").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-add-title]");
+  if (!btn) return;
+  addTitleToDate(btn.dataset.addTitle);
+  document.getElementById("archive-pick-search").value = "";
+  renderArchivePick();
+});
+
+document.getElementById("btn-title-new").addEventListener("click", () => {
+  createTitleForDate().catch((err) => showError(document.getElementById("title-new-error"), err.message));
+});
+
+["title-new-name", "title-new-composer"].forEach((id) => {
+  document.getElementById(id).addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    createTitleForDate().catch((err) => showError(document.getElementById("title-new-error"), err.message));
+  });
+});
+
+function numberedTitleList(titles) {
+  return titles.map((title, i) => `${i + 1}. ${title}`).join("\n");
+}
+
+function titleListHeader(date) {
+  return [
+    date?.title,
+    date?.location,
+    formatWhen(date?.startsAt),
+  ].map((s) => String(s || "").trim()).filter(Boolean).join(" · ");
+}
+
+function titlesClipboardText(date, titles) {
+  const list = numberedTitleList(titles);
+  const head = titleListHeader(date);
+  return head ? `${head}\n\n${list}` : list;
+}
+
+async function copyText(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.style.position = "fixed";
+  ta.style.left = "-9999px";
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand("copy");
+  ta.remove();
+}
+
+function flashCopyBtn(btn) {
+  if (!btn) return;
+  btn.classList.add("copied");
+  btn.setAttribute("aria-label", I18N.t("titlesCopied"));
+  clearTimeout(btn._copyFlash);
+  btn._copyFlash = setTimeout(() => {
+    btn.classList.remove("copied");
+    btn.setAttribute("aria-label", I18N.t("copyTitles"));
+  }, 1400);
+}
+
+document.getElementById("date-titles-copy").addEventListener("click", async () => {
+  const titles = dateTitleIDs.map((id) => archiveByID(id)?.title || "").filter((t) => t);
+  if (!titles.length) return;
+  const date = {
+    title: document.getElementById("date-title").value,
+    location: document.getElementById("date-location").value,
+    startsAt: toISO(document.getElementById("date-start").value),
+  };
+  try {
+    await copyText(titlesClipboardText(date, titles));
+    flashCopyBtn(document.getElementById("date-titles-copy"));
+  } catch (err) {
+    alert(err.message);
+  }
 });
 
 document.getElementById("date-titles").addEventListener("click", (e) => {
@@ -1730,6 +2148,10 @@ I18N.onChange(() => {
     fillSettingsForm();
     paintUserChannels();
     paintPersonPhoto();
+    if (document.getElementById("gallery-dialog")?.open) {
+      paintGallerySize();
+      renderGallery();
+    }
     const dialog = document.getElementById("comment-dialog");
     if (dialog.open && selectedDate) {
       const d = state.dates.find((x) => x.id === selectedDate);

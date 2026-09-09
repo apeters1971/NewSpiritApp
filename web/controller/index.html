@@ -178,16 +178,29 @@
           </div>
           <p class="label" data-i18n="rolesForDate">Rollen, die diesen Termin sehen</p>
           <div id="date-roles" class="checks"></div>
-          <p class="label" data-i18n="titleList">Titelliste</p>
+          <div class="title-list-head">
+            <p class="label" data-i18n="titleList">Titelliste</p>
+            <button type="button" id="date-titles-copy" class="icon-btn" data-i18n-aria="copyTitles" aria-label="Titelliste kopieren" disabled>
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M16 4h-1.18A3 3 0 0 0 12 2a3 3 0 0 0-2.82 2H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2Zm-4-1a1 1 0 1 1 0 2 1 1 0 0 1 0-2Zm4 17H8V6h1.18A3 3 0 0 0 12 8a3 3 0 0 0 2.82-2H16v14Z"/></svg>
+            </button>
+          </div>
           <label for="inherit-titles" data-i18n="inheritTitles">Von anderem Termin übernehmen</label>
           <select id="inherit-titles"></select>
-          <label for="archive-pick" data-i18n="addFromArchive">Aus dem Archiv hinzufügen</label>
-          <select id="archive-pick"></select>
+          <label for="archive-pick-search" data-i18n="addFromArchive">Aus dem Archiv hinzufügen</label>
+          <input id="archive-pick-search" type="search" autocomplete="off" placeholder="Archiv durchsuchen" />
+          <p id="archive-pick-empty" class="muted">Tippe einen Titel oder Komponisten.</p>
+          <div id="archive-pick-list" class="archive-pick-list"></div>
+          <label for="title-new-name" data-i18n="newTitle">Neuer Titel</label>
+          <input id="title-new-name" maxlength="200" autocomplete="off" />
+          <label for="title-new-composer" data-i18n="archiveComposerOpt">Komponist (optional)</label>
+          <input id="title-new-composer" maxlength="120" autocomplete="off" />
+          <p id="title-new-error" class="error" hidden></p>
+          <button type="button" id="btn-title-new" class="btn" data-i18n="newTitle">Neuer Titel</button>
           <div id="date-titles" class="title-picks"></div>
           <p id="date-error" class="error" hidden></p>
           <div class="drawer-actions">
             <button type="submit" id="btn-date-save" class="btn" data-i18n="save">Speichern</button>
-            <button type="button" id="btn-date-new" class="btn ghost" data-i18n="newItem">Neu</button>
+            <button type="button" id="btn-date-new" class="btn ghost" data-i18n="newDate">Neuer Termin</button>
             <button type="button" id="btn-date-delete" class="btn ghost danger" data-i18n="delete" disabled>Löschen</button>
           </div>
           <div id="date-finalize" class="finalize" hidden>
@@ -333,25 +346,56 @@
 
   <dialog id="chat-dialog" class="dialog chat-dialog">
     <div class="dialog-head">
-      <div>
+      <div class="chat-traffic" role="group">
+        <button type="button" id="chat-close" class="chat-dot close" data-i18n-aria="close" aria-label="Schließen"></button>
+        <button type="button" id="chat-shrink" class="chat-dot shrink" data-i18n-aria="chatReduce" aria-label="Klein"></button>
+        <button type="button" id="chat-expand" class="chat-dot expand" data-i18n-aria="chatExpand" aria-label="Vollbild"></button>
+      </div>
+      <div class="chat-head-text">
         <p class="brand" data-i18n="chatBrand">Chat</p>
         <h2 id="chat-title">Chat</h2>
-      </div>
-      <div class="dialog-head-actions">
-        <button type="button" id="chat-size" class="btn ghost" aria-pressed="false">Vollbild</button>
-        <button type="button" id="chat-close" class="btn ghost" data-i18n="close">Schließen</button>
       </div>
     </div>
     <div id="chat-list" class="chat-list"></div>
     <form id="chat-form" class="chat-composer">
       <div class="chat-emoji">
-        <button type="button" id="chat-emoji-toggle" class="chat-emoji-toggle" data-i18n-aria="chatEmoji" aria-expanded="false">😊</button>
+        <button type="button" id="chat-emoji-toggle" class="chat-emoji-toggle" data-i18n-aria="chatEmoji" aria-expanded="false">+</button>
         <div id="chat-emoji-panel" class="chat-emoji-panel" hidden></div>
       </div>
       <label class="visually-hidden" for="chat-text" data-i18n="chatWrite">Nachricht schreiben</label>
       <textarea id="chat-text" required maxlength="2000" rows="1"></textarea>
       <p id="chat-error" class="error" hidden></p>
     </form>
+  </dialog>
+  <dialog id="gallery-dialog" class="dialog gallery-dialog">
+    <div class="dialog-head">
+      <div class="chat-traffic" role="group">
+        <button type="button" id="gallery-close" class="chat-dot close" data-i18n-aria="close" aria-label="Schließen"></button>
+        <button type="button" id="gallery-shrink" class="chat-dot shrink" data-i18n-aria="chatReduce" aria-label="Klein"></button>
+        <button type="button" id="gallery-expand" class="chat-dot expand" data-i18n-aria="chatExpand" aria-label="Vollbild"></button>
+      </div>
+      <div class="gallery-head-text">
+        <p class="brand" data-i18n="gallery">Galerie</p>
+        <h2 id="gallery-heading">Termin</h2>
+      </div>
+    </div>
+    <div class="gallery-body">
+      <p class="muted" data-i18n="galleryLede">Fotos und Videos zu diesem Termin.</p>
+      <div class="gallery-actions">
+        <button type="button" id="gallery-add" class="btn" data-i18n="galleryAdd">Fotos oder Videos hinzufügen</button>
+        <p class="muted gallery-limit" data-i18n="galleryVideoHint">Videos bis 1 GB</p>
+      </div>
+      <input id="gallery-file" type="file" accept="image/*,video/*" multiple hidden />
+      <div id="gallery-progress" class="gallery-progress" hidden>
+        <div class="gallery-progress-meta">
+          <span id="gallery-progress-name" class="gallery-progress-name"></span>
+          <span id="gallery-progress-pct">0%</span>
+        </div>
+        <progress id="gallery-progress-bar" max="100" value="0"></progress>
+      </div>
+      <p id="gallery-error" class="error" hidden></p>
+      <div id="gallery-list" class="gallery-list"></div>
+    </div>
   </dialog>
   <dialog id="comment-dialog" class="dialog">
     <div class="dialog-head">

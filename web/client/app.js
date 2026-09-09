@@ -16,8 +16,11 @@ let directory = [];
 let archiveItems = [];
 let commentDateId = "";
 let titlesDateId = "";
+let galleryDateId = "";
+let galleryItems = [];
 let chatRoom = "";
 let chatMessages = [];
+let chatUnread = {};
 
 const CHAT_ROOMS = ["choir", "band", "orchestra"];
 const CHAT_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
@@ -213,6 +216,7 @@ function renderDate(date) {
       ${date.schedule ? `<button type="button" class="btn ghost" data-schedule="${date.id}">${I18N.t("schedule")}</button>` : ""}
       <button type="button" class="btn ghost" data-titles="${date.id}">${I18N.t("titles")}${(date.titles || []).length ? ` (${date.titles.length})` : ""}</button>
       ${date.chatOpen ? `<button type="button" class="btn ghost" data-event-chat="${date.id}">${I18N.t("eventChat")}</button>` : ""}
+      <button type="button" class="btn ghost" data-gallery="${date.id}">${I18N.t("gallery")}${date.galleryCount ? ` (${date.galleryCount})` : ""}</button>
     </div>
     ${pollOpen(date) ? "" : renderCounts(date)}
     ${pollOpen(date) ? "" : renderRoster(date)}
@@ -330,6 +334,7 @@ function renderNextUp() {
         <button type="button" class="btn ghost" data-comments="${next.id}">${I18N.t("comments")}</button>
         <button type="button" class="btn ghost" data-titles="${next.id}">${I18N.t("titles")}</button>
         <button type="button" class="btn ghost" data-event-chat="${next.id}">${I18N.t("chatBrand")}</button>
+        <button type="button" class="btn ghost" data-gallery="${next.id}">${I18N.t("gallery")}${next.galleryCount ? ` (${next.galleryCount})` : ""}</button>
       </div>
     </div>
     ${next.schedule ? `<div class="schedule-box">
@@ -473,14 +478,6 @@ function archiveManageHTML(item) {
     { kind: "lyrics", label: I18N.t("archiveLyrics") },
     { kind: "sheet", label: I18N.t("archiveSheet") },
   ];
-  const files = item.files || [];
-  const remove = files.length
-    ? files.map((f) => `
-        <div class="archive-upload-row">
-          <span>${escapeHtml(archiveFileLabel(f, I18N.t(f.kind === "tracks" ? "archiveTracks" : f.kind === "lyrics" ? "archiveLyrics" : f.kind === "sheet" ? "archiveSheet" : "archiveAudio")))}</span>
-          <button type="button" class="btn ghost danger" data-archive-del-file="${f.id}">${I18N.t("delete")}</button>
-        </div>`).join("")
-    : "";
   const slots = kinds.map((slot) => `
     <section class="archive-kind">
       <p class="label">${escapeHtml(slot.label)}</p>
@@ -491,7 +488,6 @@ function archiveManageHTML(item) {
     </section>`).join("");
   return `<div class="archive-manage" data-archive-id="${item.id}">
     <p class="muted">${I18N.t("archiveAttachHint")}</p>
-    ${remove}
     ${slots}
   </div>`;
 }
@@ -551,10 +547,12 @@ function showTitlesList() {
   const date = dates.find((d) => d.id === titlesDateId);
   const list = document.getElementById("titles-list");
   const detail = document.getElementById("title-detail");
+  const copyBtn = document.getElementById("titles-copy");
   detail.hidden = true;
   detail.innerHTML = "";
   list.hidden = false;
   const items = date?.titles || [];
+  if (copyBtn) copyBtn.disabled = items.length === 0;
   list.innerHTML = items.length
     ? items.map((item) => `
       <button type="button" class="title-item" data-title="${item.id}">
@@ -617,10 +615,53 @@ function openComments(id) {
   document.getElementById("comment-dialog").showModal();
 }
 
+function galleryFileURL(dateId, item) {
+  return `/api/dates/${encodeURIComponent(dateId)}/gallery/${encodeURIComponent(item.id)}`;
+}
+
+function renderGallery() {
+  const list = document.getElementById("gallery-list");
+  const date = dates.find((d) => d.id === galleryDateId);
+  document.getElementById("gallery-heading").textContent = date?.title || I18N.t("event");
+  if (!galleryItems.length) {
+    list.innerHTML = `<p class="muted">${I18N.t("galleryEmpty")}</p>`;
+    return;
+  }
+  list.innerHTML = galleryItems.map((item) => {
+    const url = galleryFileURL(galleryDateId, item);
+    const media = item.kind === "video"
+      ? `<video class="gallery-media" controls preload="metadata" src="${url}"></video>`
+      : `<img class="gallery-media" src="${url}" alt="" />`;
+    return `<article class="gallery-card">
+      ${media}
+      <p class="meta">${escapeHtml(item.nickname || "")}${item.name ? ` · ${escapeHtml(item.name)}` : ""}</p>
+    </article>`;
+  }).join("");
+}
+
+async function openGallery(id) {
+  const date = dates.find((d) => d.id === id);
+  if (!date) return;
+  galleryDateId = id;
+  showError(document.getElementById("gallery-error"), "");
+  try {
+    const data = await api(`/api/dates/${encodeURIComponent(id)}/gallery`);
+    galleryItems = data.gallery || [];
+    renderGallery();
+    const dialog = document.getElementById("gallery-dialog");
+    if (!dialog.open) dialog.showModal();
+    paintGallerySize();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
 async function loadDates() {
   const data = await api("/api/dates");
   dates = data.dates || [];
   ranking = data.ranking || { year: 0, leaders: [] };
+  applyUnread(data.unread);
+  renderChatTabs();
   render();
 }
 
@@ -698,6 +739,7 @@ async function boot() {
   try {
     const data = await api("/api/me");
     me = data.user;
+    applyUnread(data.unread);
     if (me.mustChangePassword) {
       showGate("password");
       document.getElementById("pw-new").value = "";
@@ -838,6 +880,11 @@ document.getElementById("next-up").addEventListener("click", async (e) => {
     openTitles(titlesBtn.dataset.titles);
     return;
   }
+  const galleryBtn = e.target.closest("[data-gallery]");
+  if (galleryBtn) {
+    await openGallery(galleryBtn.dataset.gallery);
+    return;
+  }
   const eventChat = e.target.closest("[data-event-chat]");
   if (!eventChat) return;
   const date = dates.find((d) => d.id === eventChat.dataset.eventChat);
@@ -863,6 +910,11 @@ datesEl.addEventListener("click", async (e) => {
   const titlesBtn = e.target.closest("button[data-titles]");
   if (titlesBtn) {
     openTitles(titlesBtn.dataset.titles);
+    return;
+  }
+  const galleryBtn = e.target.closest("button[data-gallery]");
+  if (galleryBtn) {
+    await openGallery(galleryBtn.dataset.gallery);
     return;
   }
   const eventChat = e.target.closest("button[data-event-chat]");
@@ -917,20 +969,207 @@ document.getElementById("comment-form").addEventListener("submit", async (e) => 
   }
 });
 
+function paintGallerySize() {
+  const dialog = document.getElementById("gallery-dialog");
+  const shrink = document.getElementById("gallery-shrink");
+  const expand = document.getElementById("gallery-expand");
+  if (!dialog || !shrink || !expand) return;
+  const full = dialog.classList.contains("full");
+  shrink.disabled = !full;
+  expand.disabled = full;
+  shrink.setAttribute("aria-pressed", full ? "false" : "true");
+  expand.setAttribute("aria-pressed", full ? "true" : "false");
+}
+
+function setGalleryFull(full) {
+  const dialog = document.getElementById("gallery-dialog");
+  dialog.classList.toggle("full", full);
+  paintGallerySize();
+}
+
+document.getElementById("gallery-close").addEventListener("click", () => {
+  document.getElementById("gallery-dialog").close();
+});
+
+document.getElementById("gallery-shrink").addEventListener("click", () => setGalleryFull(false));
+document.getElementById("gallery-expand").addEventListener("click", () => setGalleryFull(true));
+
+document.getElementById("gallery-dialog").addEventListener("close", () => {
+  galleryDateId = "";
+  galleryItems = [];
+  document.getElementById("gallery-dialog").classList.remove("full");
+  document.getElementById("gallery-list").innerHTML = "";
+  setGalleryProgress(false);
+});
+
+document.getElementById("gallery-add").addEventListener("click", () => {
+  const input = document.getElementById("gallery-file");
+  input.value = "";
+  input.click();
+});
+
+const GALLERY_MAX_PHOTO = 8 * 1024 * 1024;
+const GALLERY_MAX_VIDEO = 1024 * 1024 * 1024;
+const GALLERY_PROGRESS_MIN = 1024 * 1024;
+
+function isGalleryVideo(file) {
+  return String(file.type || "").startsWith("video/") || /\.(mp4|m4v|webm|mov)$/i.test(file.name || "");
+}
+
+function galleryMaxFor(file) {
+  return isGalleryVideo(file) ? GALLERY_MAX_VIDEO : GALLERY_MAX_PHOTO;
+}
+
+function setGalleryProgress(on, name, loaded, total) {
+  const box = document.getElementById("gallery-progress");
+  const nameEl = document.getElementById("gallery-progress-name");
+  const pctEl = document.getElementById("gallery-progress-pct");
+  const bar = document.getElementById("gallery-progress-bar");
+  if (!box) return;
+  box.hidden = !on;
+  if (!on) {
+    if (bar) bar.value = 0;
+    if (nameEl) nameEl.textContent = "";
+    if (pctEl) pctEl.textContent = "";
+    return;
+  }
+  const pct = total > 0 ? Math.min(100, Math.round((loaded / total) * 100)) : 0;
+  if (nameEl) nameEl.textContent = name || I18N.t("galleryUploading");
+  if (pctEl) pctEl.textContent = `${pct}%`;
+  if (bar) bar.value = pct;
+}
+
+function uploadGalleryFile(url, file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    xhr.withCredentials = true;
+    xhr.upload.addEventListener("progress", (e) => {
+      if (e.lengthComputable && onProgress) onProgress(e.loaded, e.total);
+    });
+    xhr.onload = () => {
+      let data = {};
+      try { data = JSON.parse(xhr.responseText || "{}"); } catch {}
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+      else reject(new Error(I18N.error(data.error || xhr.statusText || String(xhr.status))));
+    };
+    xhr.onerror = () => reject(new Error(I18N.t("errFile")));
+    xhr.onabort = () => reject(new Error(I18N.t("errFile")));
+    const fd = new FormData();
+    fd.append("file", file);
+    xhr.send(fd);
+  });
+}
+
+async function uploadGalleryFiles(url, files, onProgress) {
+  const errors = [];
+  const showBar = files.some((f) => f.size >= GALLERY_PROGRESS_MIN || isGalleryVideo(f));
+  let doneBytes = 0;
+  const totalBytes = files.reduce((n, f) => n + (f.size || 0), 0);
+  for (const file of files) {
+    if (file.size > galleryMaxFor(file)) {
+      errors.push(`${file.name}: ${I18N.t("errFileLarge")}`);
+      doneBytes += file.size || 0;
+      continue;
+    }
+    try {
+      await uploadGalleryFile(url, file, (loaded) => {
+        if (showBar && onProgress) onProgress(file.name, doneBytes + loaded, totalBytes);
+      });
+    } catch (err) {
+      errors.push(`${file.name}: ${err.message}`);
+    }
+    doneBytes += file.size || 0;
+    if (showBar && onProgress) onProgress(file.name, doneBytes, totalBytes);
+  }
+  return errors;
+}
+
+document.getElementById("gallery-file").addEventListener("change", async (e) => {
+  const files = [...(e.target.files || [])];
+  const errEl = document.getElementById("gallery-error");
+  const addBtn = document.getElementById("gallery-add");
+  showError(errEl, "");
+  if (!files.length || !galleryDateId) return;
+  addBtn.disabled = true;
+  try {
+    const errors = await uploadGalleryFiles(
+      `/api/dates/${encodeURIComponent(galleryDateId)}/gallery`,
+      files,
+      (name, loaded, total) => setGalleryProgress(true, name, loaded, total),
+    );
+    await loadDates();
+    await openGallery(galleryDateId);
+    if (errors.length) showError(errEl, errors.join("\n"));
+  } catch (err) {
+    showError(errEl, err.message);
+  } finally {
+    setGalleryProgress(false);
+    addBtn.disabled = false;
+    e.target.value = "";
+  }
+});
+
 function memberColor(id) {
   let h = 0;
   for (const ch of String(id || "")) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   return MEMBER_COLORS[h % MEMBER_COLORS.length];
 }
 
+function chatDayKey(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+function formatChatDay(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const diff = Math.round((today - day) / 86400000);
+  if (diff === 0) return I18N.t("chatToday");
+  if (diff === 1) return I18N.t("chatYesterday");
+  return d.toLocaleDateString(I18N.locale(), {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: now.getFullYear() === d.getFullYear() ? undefined : "numeric",
+  });
+}
+
 function formatChatWhen(iso) {
   if (!iso) return "";
   const d = new Date(iso);
-  const now = new Date();
-  const sameDay = d.toDateString() === now.toDateString();
-  return d.toLocaleString(I18N.locale(), sameDay
-    ? { hour: "2-digit", minute: "2-digit" }
-    : { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString(I18N.locale(), { hour: "2-digit", minute: "2-digit" });
+}
+
+function applyUnread(map) {
+  chatUnread = { ...(map || {}) };
+}
+
+function unreadCount(room) {
+  return Number(chatUnread[room] || 0);
+}
+
+function chatBadge(n) {
+  if (!n) return "";
+  return `<span class="chat-unread">${n > 99 ? "99+" : n}</span>`;
+}
+
+function noteChatMessage(m) {
+  if (!m?.room || !CHAT_ROOMS.includes(m.room)) return;
+  if (chatRoom === m.room) {
+    chatUnread[m.room] = 0;
+    api(`/api/chats/${encodeURIComponent(m.room)}/read`, { method: "POST" }).catch(() => {});
+    renderChatTabs();
+    return;
+  }
+  if (me && !m.isAdmin && m.userId === me.id) return;
+  chatUnread[m.room] = unreadCount(m.room) + 1;
+  renderChatTabs();
 }
 
 function renderChatTabs() {
@@ -940,7 +1179,10 @@ function renderChatTabs() {
     const show = !!(me && CHAT_ROOMS.includes(me.role) && btn.dataset.chat === me.role);
     btn.hidden = !show;
     btn.classList.toggle("on", show && chatRoom === me.role);
-    btn.textContent = I18N.role(btn.dataset.chat);
+    const n = show ? unreadCount(btn.dataset.chat) : 0;
+    const label = I18N.role(btn.dataset.chat);
+    btn.innerHTML = `${escapeHtml(label)}${chatBadge(n)}`;
+    btn.setAttribute("aria-label", n ? `${label}, ${n}` : label);
     if (show) any = true;
   });
   box.hidden = !any;
@@ -959,7 +1201,7 @@ function chatReactionsHTML(m) {
     <button type="button" data-id="${m.id}" data-react="${emoji}">${emoji}</button>`).join("");
   return `<div class="chat-reacts">
     ${chips}
-    <button type="button" class="chat-react-add" data-pick="${m.id}" aria-label="${escapeHtml(I18N.t("chatReact"))}">😊</button>
+    <button type="button" class="chat-react-add" data-pick="${m.id}" aria-label="${escapeHtml(I18N.t("chatReact"))}">+</button>
     <div class="chat-picker" hidden data-picker="${m.id}">${picks}</div>
   </div>`;
 }
@@ -992,7 +1234,12 @@ function renderChat(keepTop) {
   list.innerHTML = chatMessages.length
     ? chatMessages.map((m, i) => {
       const prev = chatMessages[i - 1];
-      return chatMessageHTML(m, !!(prev && chatAuthorKey(prev) === chatAuthorKey(m)));
+      const newDay = !prev || chatDayKey(prev.createdAt) !== chatDayKey(m.createdAt);
+      const stacked = !newDay && !!(prev && chatAuthorKey(prev) === chatAuthorKey(m));
+      const heading = newDay && formatChatDay(m.createdAt)
+        ? `<p class="chat-day">${escapeHtml(formatChatDay(m.createdAt))}</p>`
+        : "";
+      return heading + chatMessageHTML(m, stacked);
     }).join("")
     : `<p class="muted">${I18N.t("noMessages")}</p>`;
   list.scrollTop = keepTop != null && !atBottom ? keepTop : list.scrollHeight;
@@ -1040,6 +1287,8 @@ async function openChat(room, title) {
   showError(document.getElementById("chat-error"), "");
   const data = await api(`/api/chats/${encodeURIComponent(room)}`);
   chatMessages = data.messages || [];
+  chatUnread[room] = 0;
+  renderChatTabs();
   renderChat();
   const input = document.getElementById("chat-text");
   input.placeholder = I18N.t("chatWrite");
@@ -1055,6 +1304,7 @@ function connectWS() {
     let msg = {};
     try { msg = JSON.parse(ev.data); } catch { return; }
     if (msg.type === "chat") {
+      noteChatMessage(msg.data);
       if (chatRoom && msg.data?.room === chatRoom) appendChat(msg.data);
       return;
     }
@@ -1069,6 +1319,8 @@ function connectWS() {
     if (msg.type === "changed") {
       api("/api/me").then((data) => {
         me = data.user;
+        applyUnread(data.unread);
+        renderChatTabs();
         if (me.mustChangePassword) {
           showGate("password");
           return;
@@ -1080,6 +1332,7 @@ function connectWS() {
         if (document.getElementById("proposals-dialog").open) loadProposals().catch(() => {});
         if (document.getElementById("directory-dialog").open) loadDirectory().catch(() => {});
         if (document.getElementById("archive-dialog").open) loadArchive().catch(() => {});
+        if (document.getElementById("gallery-dialog").open && galleryDateId) openGallery(galleryDateId).catch(() => {});
       }
     }
   };
@@ -1108,6 +1361,10 @@ I18N.onChange(() => {
     if (document.getElementById("proposals-dialog").open) renderProposalList();
     if (document.getElementById("directory-dialog").open) renderDirectory();
     if (document.getElementById("archive-dialog").open) renderArchive();
+    if (document.getElementById("gallery-dialog").open) {
+      paintGallerySize();
+      renderGallery();
+    }
     if (document.getElementById("calendar-dialog").open) {
       document.getElementById("calendar-copy").textContent = I18N.t("copyLink");
     }
@@ -1127,20 +1384,26 @@ document.getElementById("chat-tabs").addEventListener("click", async (e) => {
 
 function paintChatSize() {
   const dialog = document.getElementById("chat-dialog");
-  const btn = document.getElementById("chat-size");
-  if (!dialog || !btn) return;
+  const shrink = document.getElementById("chat-shrink");
+  const expand = document.getElementById("chat-expand");
+  if (!dialog || !shrink || !expand) return;
   const full = dialog.classList.contains("full");
-  btn.textContent = I18N.t(full ? "chatReduce" : "chatExpand");
-  btn.setAttribute("aria-pressed", full ? "true" : "false");
+  shrink.disabled = !full;
+  expand.disabled = full;
+  shrink.setAttribute("aria-pressed", full ? "false" : "true");
+  expand.setAttribute("aria-pressed", full ? "true" : "false");
 }
 
-document.getElementById("chat-size").addEventListener("click", () => {
+function setChatFull(full) {
   const dialog = document.getElementById("chat-dialog");
-  dialog.classList.toggle("full");
+  dialog.classList.toggle("full", full);
   paintChatSize();
   const list = document.getElementById("chat-list");
   if (list) list.scrollTop = list.scrollHeight;
-});
+}
+
+document.getElementById("chat-shrink").addEventListener("click", () => setChatFull(false));
+document.getElementById("chat-expand").addEventListener("click", () => setChatFull(true));
 
 document.getElementById("chat-close").addEventListener("click", () => {
   document.getElementById("chat-dialog").close();
@@ -1231,6 +1494,63 @@ function insertChatEmoji(emoji) {
 
 document.getElementById("schedule-close").addEventListener("click", () => {
   document.getElementById("schedule-dialog").close();
+});
+
+function numberedTitleList(titles) {
+  return titles.map((title, i) => `${i + 1}. ${title}`).join("\n");
+}
+
+function titleListHeader(date) {
+  return [
+    date?.title,
+    date?.location,
+    formatWhen(date?.startsAt),
+  ].map((s) => String(s || "").trim()).filter(Boolean).join(" · ");
+}
+
+function titlesClipboardText(date, titles) {
+  const list = numberedTitleList(titles);
+  const head = titleListHeader(date);
+  return head ? `${head}\n\n${list}` : list;
+}
+
+async function copyText(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.style.position = "fixed";
+  ta.style.left = "-9999px";
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand("copy");
+  ta.remove();
+}
+
+function flashCopyBtn(btn) {
+  if (!btn) return;
+  btn.classList.add("copied");
+  btn.setAttribute("aria-label", I18N.t("titlesCopied"));
+  clearTimeout(btn._copyFlash);
+  btn._copyFlash = setTimeout(() => {
+    btn.classList.remove("copied");
+    btn.setAttribute("aria-label", I18N.t("copyTitles"));
+  }, 1400);
+}
+
+document.getElementById("titles-copy").addEventListener("click", async () => {
+  const date = dates.find((d) => d.id === titlesDateId);
+  const titles = (date?.titles || []).map((item) => item.title).filter((t) => t);
+  if (!titles.length) return;
+  try {
+    await copyText(titlesClipboardText(date, titles));
+    flashCopyBtn(document.getElementById("titles-copy"));
+  } catch (err) {
+    alert(err.message);
+  }
 });
 
 document.getElementById("titles-close").addEventListener("click", () => {
@@ -1531,23 +1851,13 @@ document.getElementById("archive-detail").addEventListener("click", (e) => {
     return;
   }
   const upload = e.target.closest("[data-archive-upload]");
-  if (upload) {
-    const input = document.getElementById("archive-member-file");
-    input.dataset.kind = upload.dataset.archiveUpload;
-    input.dataset.accept = upload.dataset.accept || "";
-    input.accept = upload.dataset.accept || "";
-    input.value = "";
-    input.click();
-    return;
-  }
-  const del = e.target.closest("[data-archive-del-file]");
-  if (!del) return;
-  const box = document.querySelector("[data-archive-id]");
-  if (!box || !confirm(I18N.t("confirmDeleteFile"))) return;
-  api(`/api/archive/${encodeURIComponent(box.dataset.archiveId)}/files/${encodeURIComponent(del.dataset.archiveDelFile)}`, { method: "DELETE" })
-    .then((data) => openArchiveItem(data.item.id))
-    .then(() => loadArchive())
-    .catch((err) => alert(err.message));
+  if (!upload) return;
+  const input = document.getElementById("archive-member-file");
+  input.dataset.kind = upload.dataset.archiveUpload;
+  input.dataset.accept = upload.dataset.accept || "";
+  input.accept = upload.dataset.accept || "";
+  input.value = "";
+  input.click();
 });
 
 document.getElementById("archive-new").addEventListener("click", () => showArchiveCreate(true));

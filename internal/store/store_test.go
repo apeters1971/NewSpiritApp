@@ -820,3 +820,130 @@ func TestPasswordMustChange(t *testing.T) {
 		t.Fatalf("reset %+v %v", reset, err)
 	}
 }
+
+func TestChatUnread(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "unread.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	ada, err := st.CreateUser("Ada", "ada@example.com", "secret1", RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ben, err := st.CreateUser("Ben", "ben@example.com", "secret1", RoleChoir, "Alt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.AddChatMessage(ada.ID, RoleChoir, "hello"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.AddAdminChatMessage(RoleChoir, "from admin"); err != nil {
+		t.Fatal(err)
+	}
+	adaUnread, err := st.MemberChatUnread(ada)
+	if err != nil || adaUnread[RoleChoir] != 1 {
+		t.Fatalf("ada unread %+v %v", adaUnread, err)
+	}
+	benUnread, err := st.MemberChatUnread(ben)
+	if err != nil || benUnread[RoleChoir] != 2 {
+		t.Fatalf("ben unread %+v %v", benUnread, err)
+	}
+	ctrl, err := st.ControllerChatUnread()
+	if err != nil || ctrl[RoleChoir] != 1 {
+		t.Fatalf("controller unread %+v %v", ctrl, err)
+	}
+	if err := st.MarkChatRead(ben.ID, RoleChoir, ben.Role); err != nil {
+		t.Fatal(err)
+	}
+	benUnread, err = st.MemberChatUnread(ben)
+	if err != nil || benUnread[RoleChoir] != 0 {
+		t.Fatalf("ben after read %+v %v", benUnread, err)
+	}
+	if _, err := st.AddChatMessage(ada.ID, RoleChoir, "again"); err != nil {
+		t.Fatal(err)
+	}
+	benUnread, err = st.MemberChatUnread(ben)
+	if err != nil || benUnread[RoleChoir] != 1 {
+		t.Fatalf("ben after new %+v %v", benUnread, err)
+	}
+}
+
+func TestGallery(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "gallery.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	ada, err := st.CreateUser("Ada", "ada@example.com", "secret1", RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ben, err := st.CreateUser("Ben", "ben@example.com", "secret1", RoleChoir, "Alt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	band, err := st.CreateUser("Cara", "cara@example.com", "secret1", RoleBand, "Drums")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	start := time.Date(2026, 9, 20, 18, 0, 0, 0, time.UTC)
+	d, err := st.CreateDate("Sunday practice", CategoryRehearsal, start, nil, "Hall", "", "", []string{RoleChoir}, Bring{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.MemberCanSeeDate(ada, d.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.MemberCanSeeDate(band, d.ID); err == nil {
+		t.Fatal("band should not see choir date")
+	}
+
+	img := image.NewRGBA(image.Rect(0, 0, 8, 8))
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, nil); err != nil {
+		t.Fatal(err)
+	}
+	item, err := st.AddGalleryItem(d.ID, ada.ID, "rehearsal.jpg", buf.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if item.Kind != GalleryKindPhoto || item.UserID != ada.ID || item.Nickname != "Ada" {
+		t.Fatalf("item %+v", item)
+	}
+	view, err := st.DateView(d.ID, &ada)
+	if err != nil || view.GalleryCount != 1 {
+		t.Fatalf("count %d %v", view.GalleryCount, err)
+	}
+	list, err := st.ListGallery(d.ID)
+	if err != nil || len(list) != 1 || list[0].ID != item.ID {
+		t.Fatalf("list %+v %v", list, err)
+	}
+	got, data, err := st.GalleryFile(d.ID, item.ID)
+	if err != nil || got.MIME != "image/jpeg" || len(data) == 0 {
+		t.Fatalf("file %+v %d %v", got, len(data), err)
+	}
+	if err := st.DeleteGalleryItem(d.ID, item.ID, ben.ID, false); err == nil {
+		t.Fatal("ben should not delete ada's file")
+	}
+	if err := st.DeleteGalleryItem(d.ID, item.ID, ada.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	item, err = st.AddGalleryItem(d.ID, ada.ID, "again.jpg", buf.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DeleteGalleryItem(d.ID, item.ID, "", true); err != nil {
+		t.Fatal(err)
+	}
+	list, err = st.ListGallery(d.ID)
+	if err != nil || len(list) != 0 {
+		t.Fatalf("empty %+v %v", list, err)
+	}
+	if _, err := st.AddGalleryItem(d.ID, ada.ID, "notes.txt", []byte("hello")); err == nil {
+		t.Fatal("expected rejected type")
+	}
+}

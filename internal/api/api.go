@@ -60,8 +60,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/dates/{id}/vote", s.handleVote)
 	mux.HandleFunc("POST /api/dates/{id}/poll", s.handlePollVote)
 	mux.HandleFunc("POST /api/dates/{id}/comments", s.handleAddComment)
+	mux.HandleFunc("GET /api/dates/{id}/gallery", s.handleGalleryList)
+	mux.HandleFunc("POST /api/dates/{id}/gallery", s.handleGalleryUpload)
+	mux.HandleFunc("GET /api/dates/{id}/gallery/{fileId}", s.handleGalleryFile)
 	mux.HandleFunc("GET /api/chats/{room}", s.handleChatList)
 	mux.HandleFunc("POST /api/chats/{room}", s.handleChatPost)
+	mux.HandleFunc("POST /api/chats/{room}/read", s.handleChatRead)
 	mux.HandleFunc("POST /api/chats/{room}/messages/{id}/react", s.handleChatReact)
 	mux.HandleFunc("DELETE /api/chats/{room}/messages/{id}", s.handleChatDelete)
 	mux.HandleFunc("GET /api/archive", s.handleArchiveList)
@@ -91,8 +95,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/controller/dates/{id}", s.handleDeleteDate)
 	mux.HandleFunc("POST /api/controller/dates/{id}/status", s.handleDateStatus)
 	mux.HandleFunc("POST /api/controller/dates/{id}/freeze", s.handleFreezePoll)
+	mux.HandleFunc("GET /api/controller/dates/{id}/gallery", s.handleControllerGalleryList)
+	mux.HandleFunc("POST /api/controller/dates/{id}/gallery", s.handleControllerGalleryUpload)
+	mux.HandleFunc("GET /api/controller/dates/{id}/gallery/{fileId}", s.handleControllerGalleryFile)
+	mux.HandleFunc("DELETE /api/controller/dates/{id}/gallery/{fileId}", s.handleControllerGalleryDelete)
 	mux.HandleFunc("GET /api/controller/chats/{room}", s.handleControllerChatList)
 	mux.HandleFunc("POST /api/controller/chats/{room}", s.handleControllerChatPost)
+	mux.HandleFunc("POST /api/controller/chats/{room}/read", s.handleControllerChatRead)
 	mux.HandleFunc("POST /api/controller/chats/{room}/messages/{id}/react", s.handleControllerChatReact)
 	mux.HandleFunc("DELETE /api/controller/chats/{room}/messages/{id}", s.handleControllerChatDelete)
 	mux.HandleFunc("GET /api/controller/archive", s.handleControllerArchiveList)
@@ -230,7 +239,12 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"user": user})
+	unread, err := s.Store.MemberChatUnread(user)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"user": user, "unread": unread})
 }
 
 func (s *Server) handleMePassword(w http.ResponseWriter, r *http.Request) {
@@ -462,9 +476,15 @@ func (s *Server) handleDates(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
+	unread, err := s.Store.MemberChatUnread(user)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"dates":   dates,
 		"ranking": payload,
+		"unread":  unread,
 	})
 }
 
@@ -557,12 +577,27 @@ func (s *Server) handleChatList(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	msgs, err := s.Store.ListChatMessages(user.Role, r.PathValue("room"), user.ID)
+	room := r.PathValue("room")
+	msgs, err := s.Store.ListChatMessages(user.Role, room, user.ID)
 	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
+	_ = s.Store.MarkChatRead(user.ID, room, user.Role)
 	writeJSON(w, http.StatusOK, map[string]any{"messages": msgs})
+}
+
+func (s *Server) handleChatRead(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if err := s.Store.MarkChatRead(user.ID, r.PathValue("room"), user.Role); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (s *Server) handleChatPost(w http.ResponseWriter, r *http.Request) {
@@ -584,6 +619,7 @@ func (s *Server) handleChatPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.publishChat(msg.Room, hub.Envelope{Type: "chat", Data: msg})
+	_ = s.Store.MarkChatRead(user.ID, msg.Room, user.Role)
 	writeJSON(w, http.StatusCreated, map[string]any{"message": msg})
 }
 
@@ -637,12 +673,25 @@ func (s *Server) handleControllerChatList(w http.ResponseWriter, r *http.Request
 	if !s.requireController(w, r) {
 		return
 	}
-	msgs, err := s.Store.ListChatMessagesForRoom(r.PathValue("room"))
+	room := r.PathValue("room")
+	msgs, err := s.Store.ListChatMessagesForRoom(room)
 	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
+	_ = s.Store.MarkChatRead(store.ChatReadController, room, "")
 	writeJSON(w, http.StatusOK, map[string]any{"messages": msgs})
+}
+
+func (s *Server) handleControllerChatRead(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	if err := s.Store.MarkChatRead(store.ChatReadController, r.PathValue("room"), ""); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (s *Server) handleControllerChatPost(w http.ResponseWriter, r *http.Request) {
@@ -662,6 +711,7 @@ func (s *Server) handleControllerChatPost(w http.ResponseWriter, r *http.Request
 		return
 	}
 	s.publishChat(msg.Room, hub.Envelope{Type: "chat", Data: msg})
+	_ = s.Store.MarkChatRead(store.ChatReadController, msg.Room, "")
 	writeJSON(w, http.StatusCreated, map[string]any{"message": msg})
 }
 
@@ -774,6 +824,11 @@ func (s *Server) handleControllerState(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	unread, err := s.Store.ControllerChatUnread()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"users":      users,
 		"dates":      dates,
@@ -783,6 +838,7 @@ func (s *Server) handleControllerState(w http.ResponseWriter, r *http.Request) {
 		"archive":    archive,
 		"channels":   channels,
 		"proposals":  proposals,
+		"unread":     unread,
 	})
 }
 

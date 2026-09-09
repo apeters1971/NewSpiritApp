@@ -8,9 +8,10 @@ import (
 )
 
 const (
-	ChatAdminName     = "Admin"
-	EventRoomPrefix   = "event:"
-	chatReactionActor = ""
+	ChatAdminName      = "Admin"
+	ChatReadController = "controller"
+	EventRoomPrefix    = "event:"
+	chatReactionActor  = ""
 )
 
 var ChatEmojis = []string{"👍", "❤️", "😂", "😮", "😢", "🎉"}
@@ -449,4 +450,81 @@ ORDER BY created_at`, args...)
 		}
 	}
 	return msgs, nil
+}
+
+func (s *Store) migrateChatReads() error {
+	_, err := s.db.Exec(`
+CREATE TABLE IF NOT EXISTS chat_reads (
+  actor TEXT NOT NULL,
+  room TEXT NOT NULL,
+  last_seen TEXT NOT NULL,
+  PRIMARY KEY (actor, room)
+)`)
+	return err
+}
+
+func (s *Store) MarkChatRead(actor, room, role string) error {
+	if err := s.resolveChatRoom(room, role, false); err != nil {
+		return err
+	}
+	_, err := s.db.Exec(`
+INSERT INTO chat_reads(actor, room, last_seen) VALUES(?,?,?)
+ON CONFLICT(actor, room) DO UPDATE SET last_seen=excluded.last_seen`,
+		actor, room, fmtTime(now()))
+	return err
+}
+
+func (s *Store) MemberChatUnread(u User) (map[string]int, error) {
+	rooms := []string{}
+	if ValidChatRoom(u.Role) {
+		rooms = append(rooms, u.Role)
+	}
+	return s.chatUnreadCounts(u.ID, rooms, u.ID, false)
+}
+
+func (s *Store) ControllerChatUnread() (map[string]int, error) {
+	return s.chatUnreadCounts(ChatReadController, []string{RoleChoir, RoleBand, RoleOrchestra}, "", true)
+}
+
+func (s *Store) chatUnreadCounts(actor string, rooms []string, excludeUserID string, excludeAdmin bool) (map[string]int, error) {
+	out := map[string]int{}
+	if len(rooms) == 0 {
+		return out, nil
+	}
+	placeholders := strings.Repeat("?,", len(rooms))
+	placeholders = placeholders[:len(placeholders)-1]
+	args := make([]any, 0, 2+len(rooms))
+	args = append(args, actor)
+	for _, room := range rooms {
+		args = append(args, room)
+	}
+	filter := ""
+	if excludeAdmin {
+		filter = " AND c.user_id IS NOT NULL AND TRIM(c.user_id) != ''"
+	} else {
+		filter = " AND (c.user_id IS NULL OR c.user_id != ?)"
+		args = append(args, excludeUserID)
+	}
+	rows, err := s.db.Query(`
+SELECT c.room, COUNT(*)
+FROM chat_messages c
+LEFT JOIN chat_reads r ON r.actor=? AND r.room=c.room
+WHERE c.room IN (`+placeholders+`)
+AND c.created_at > COALESCE(r.last_seen, '')`+filter+`
+GROUP BY c.room`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var room string
+		var n int
+		if err := rows.Scan(&room, &n); err != nil {
+			return nil, err
+		}
+		if n > 0 {
+			out[room] = n
+		}
+	}
+	return out, rows.Err()
 }

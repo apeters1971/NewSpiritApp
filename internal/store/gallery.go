@@ -1,8 +1,10 @@
 package store
 
 import (
+	"bytes"
 	"database/sql"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path"
@@ -15,7 +17,7 @@ const (
 	GalleryKindPhoto = "photo"
 	GalleryKindVideo = "video"
 	GalleryMaxPhoto  = 8 << 20
-	GalleryMaxVideo  = 40 << 20
+	GalleryMaxVideo  = 1 << 30
 )
 
 type GalleryItem struct {
@@ -91,6 +93,7 @@ func (s *Store) ListGallery(dateID string) ([]GalleryItem, error) {
 	if _, err := s.dateRow(dateID); err != nil {
 		return nil, err
 	}
+	alias := s.AdminAlias()
 	rows, err := s.db.Query(`
 SELECT m.id, m.date_id, COALESCE(m.user_id, ''), COALESCE(u.nickname, ''), m.kind, m.mime, m.name, m.created_at
 FROM date_media m
@@ -102,7 +105,6 @@ ORDER BY m.created_at, m.id`, dateID)
 	}
 	defer rows.Close()
 	out := []GalleryItem{}
-	alias := s.AdminAlias()
 	for rows.Next() {
 		var item GalleryItem
 		if err := rows.Scan(&item.ID, &item.DateID, &item.UserID, &item.Nickname, &item.Kind, &item.MIME, &item.Name, &item.CreatedAt); err != nil {
@@ -117,6 +119,10 @@ ORDER BY m.created_at, m.id`, dateID)
 }
 
 func (s *Store) AddGalleryItem(dateID, userID, filename string, data []byte) (GalleryItem, error) {
+	return s.AddGalleryItemFromReader(dateID, userID, filename, bytes.NewReader(data))
+}
+
+func (s *Store) AddGalleryItemFromReader(dateID, userID, filename string, r io.Reader) (GalleryItem, error) {
 	if _, err := s.dateRow(dateID); err != nil {
 		return GalleryItem{}, err
 	}
@@ -125,10 +131,22 @@ func (s *Store) AddGalleryItem(dateID, userID, filename string, data []byte) (Ga
 			return GalleryItem{}, err
 		}
 	}
-	if len(data) == 0 {
+	if r == nil {
 		return GalleryItem{}, fmt.Errorf("file is required")
 	}
-	kind, mime, err := sniffGallery(filename, data)
+	head := make([]byte, 512)
+	n, err := io.ReadFull(r, head)
+	if err == io.EOF || err == io.ErrUnexpectedEOF {
+		head = head[:n]
+	} else if err != nil {
+		return GalleryItem{}, fmt.Errorf("file is required")
+	} else {
+		head = head[:n]
+	}
+	if len(head) == 0 {
+		return GalleryItem{}, fmt.Errorf("file is required")
+	}
+	kind, mime, err := sniffGallery(filename, head)
 	if err != nil {
 		return GalleryItem{}, err
 	}
@@ -136,14 +154,31 @@ func (s *Store) AddGalleryItem(dateID, userID, filename string, data []byte) (Ga
 	if kind == GalleryKindVideo {
 		max = GalleryMaxVideo
 	}
-	if len(data) > max {
+	id := newID()
+	dir := filepath.Join(s.mediaDir, dateID)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return GalleryItem{}, err
+	}
+	dest := s.galleryPath(dateID, id)
+	f, err := os.Create(dest)
+	if err != nil {
+		return GalleryItem{}, err
+	}
+	written, copyErr := io.Copy(f, io.MultiReader(bytes.NewReader(head), io.LimitReader(r, int64(max)-int64(len(head))+1)))
+	closeErr := f.Close()
+	if copyErr != nil {
+		_ = os.Remove(dest)
+		return GalleryItem{}, copyErr
+	}
+	if closeErr != nil {
+		_ = os.Remove(dest)
+		return GalleryItem{}, closeErr
+	}
+	if written > int64(max) {
+		_ = os.Remove(dest)
 		return GalleryItem{}, fmt.Errorf("file is too large")
 	}
 	name := sanitizeArchiveName(filename)
-	id := newID()
-	if err := s.writeGalleryFile(dateID, id, data); err != nil {
-		return GalleryItem{}, err
-	}
 	var uid any
 	if userID != "" {
 		uid = userID
@@ -152,7 +187,7 @@ func (s *Store) AddGalleryItem(dateID, userID, filename string, data []byte) (Ga
 		`INSERT INTO date_media(id, date_id, user_id, kind, mime, name, created_at) VALUES(?,?,?,?,?,?,?)`,
 		id, dateID, uid, kind, mime, name, fmtTime(now()),
 	); err != nil {
-		_ = os.Remove(s.galleryPath(dateID, id))
+		_ = os.Remove(dest)
 		return GalleryItem{}, err
 	}
 	item, err := s.galleryItemRow(dateID, id)
@@ -163,11 +198,11 @@ func (s *Store) AddGalleryItem(dateID, userID, filename string, data []byte) (Ga
 }
 
 func (s *Store) GalleryFile(dateID, fileID string) (GalleryItem, []byte, error) {
-	item, err := s.galleryItemRow(dateID, fileID)
+	item, path, err := s.GalleryFilePath(dateID, fileID)
 	if err != nil {
 		return GalleryItem{}, nil, err
 	}
-	data, err := os.ReadFile(s.galleryPath(dateID, fileID))
+	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return GalleryItem{}, nil, ErrNotFound
@@ -175,6 +210,21 @@ func (s *Store) GalleryFile(dateID, fileID string) (GalleryItem, []byte, error) 
 		return GalleryItem{}, nil, err
 	}
 	return item, data, nil
+}
+
+func (s *Store) GalleryFilePath(dateID, fileID string) (GalleryItem, string, error) {
+	item, err := s.galleryItemRow(dateID, fileID)
+	if err != nil {
+		return GalleryItem{}, "", err
+	}
+	p := s.galleryPath(dateID, fileID)
+	if _, err := os.Stat(p); err != nil {
+		if os.IsNotExist(err) {
+			return GalleryItem{}, "", ErrNotFound
+		}
+		return GalleryItem{}, "", err
+	}
+	return item, p, nil
 }
 
 func (s *Store) DeleteGalleryItem(dateID, fileID, userID string, asController bool) error {
@@ -217,14 +267,6 @@ WHERE m.id=? AND m.date_id=?`, fileID, dateID,
 		item.Nickname = s.AdminAlias()
 	}
 	return item, nil
-}
-
-func (s *Store) writeGalleryFile(dateID, fileID string, data []byte) error {
-	dir := filepath.Join(s.mediaDir, dateID)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(s.galleryPath(dateID, fileID), data, 0o644)
 }
 
 func (s *Store) galleryPath(dateID, fileID string) string {

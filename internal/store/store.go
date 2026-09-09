@@ -288,7 +288,10 @@ CREATE TABLE IF NOT EXISTS settings (
 	if err := s.migrateCalendar(); err != nil {
 		return err
 	}
-	return s.migrateGallery()
+	if err := s.migrateGallery(); err != nil {
+		return err
+	}
+	return s.migrateChatReads()
 }
 
 func (s *Store) allowAdminChatMessages() error {
