@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>New Spirit</title>
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <section id="login-view" class="gate">
+    <form id="login-form" class="gate-card">
+      <p class="brand">New Spirit</p>
+      <h1>Sign in</h1>
+      <p class="lede">Use the email and password from the controller. You will see dates for your role and everyone’s votes.</p>
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" required autocomplete="username" />
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" required autocomplete="current-password" />
+      <button type="submit">Enter</button>
+      <p id="login-error" class="error" hidden></p>
+    </form>
+  </section>
+
+  <section id="app-view" class="app" hidden>
+    <header class="top">
+      <div>
+        <p class="brand">New Spirit</p>
+        <h1 id="who-name">Dates</h1>
+        <p id="who-meta" class="muted"></p>
+      </div>
+      <button type="button" id="btn-logout" class="btn ghost">Sign out</button>
+    </header>
+    <div id="dates" class="dates"></div>
+    <p id="empty" class="lede empty" hidden>No dates for your role yet.</p>
+  </section>
+  <script src="/static/app.js"></script>
+</body>
+</html>

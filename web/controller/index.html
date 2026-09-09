@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Controller · New Spirit</title>
+  <link rel="stylesheet" href="/controller/static/app.css" />
+</head>
+<body>
+  <section id="gate" class="gate">
+    <form id="gate-form" class="gate-card">
+      <p class="brand">New Spirit</p>
+      <h1>Controller</h1>
+      <p class="lede">Enter the admin secret to manage people and dates.</p>
+      <label for="secret">Controller secret</label>
+      <input id="secret" type="password" required autocomplete="current-password" />
+      <button type="submit">Open dashboard</button>
+      <p id="gate-error" class="error" hidden></p>
+    </form>
+  </section>
+
+  <section id="dash" class="dash" hidden>
+    <header class="top">
+      <div>
+        <p class="brand">New Spirit · Controller</p>
+        <h1>Availability</h1>
+      </div>
+      <div class="stats">
+        <div><span id="stat-people">0</span><label>people</label></div>
+        <div><span id="stat-dates">0</span><label>dates</label></div>
+        <div><span id="stat-online">0</span><label>online</label></div>
+      </div>
+      <button type="button" id="btn-logout" class="btn ghost">Sign out</button>
+    </header>
+
+    <nav class="tabs" role="tablist">
+      <button type="button" class="tab active" data-tab="people">People</button>
+      <button type="button" class="tab" data-tab="dates">Dates</button>
+    </nav>
+
+    <div id="tab-people" class="tab-panel">
+      <div class="layout">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Nickname</th><th>Email</th><th>Role</th><th>Subrole</th></tr>
+            </thead>
+            <tbody id="people-body"></tbody>
+          </table>
+        </div>
+        <form id="people-form" class="drawer">
+          <h2 id="people-form-title">Add person</h2>
+          <input type="hidden" id="user-id" />
+          <label for="user-nickname">Nickname</label>
+          <input id="user-nickname" required />
+          <label for="user-email">Email</label>
+          <input id="user-email" type="email" required />
+          <label for="user-password">Password <span class="optional" id="pw-hint"></span></label>
+          <input id="user-password" type="password" autocomplete="new-password" />
+          <label for="user-role">Role</label>
+          <select id="user-role" required></select>
+          <label for="user-subrole">Subrole</label>
+          <select id="user-subrole" required></select>
+          <p id="people-error" class="error" hidden></p>
+          <div class="drawer-actions">
+            <button type="submit" class="btn">Save</button>
+            <button type="button" id="btn-user-new" class="btn ghost">New</button>
+            <button type="button" id="btn-user-delete" class="btn ghost danger" disabled>Delete</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="tab-dates" class="tab-panel" hidden>
+      <div class="layout">
+        <div class="dates-col">
+          <div id="date-list"></div>
+        </div>
+        <form id="date-form" class="drawer">
+          <h2 id="date-form-title">Add date</h2>
+          <input type="hidden" id="date-id" />
+          <label for="date-title">Title</label>
+          <input id="date-title" required />
+          <label for="date-start">Starts</label>
+          <input id="date-start" type="datetime-local" required />
+          <label for="date-end">Ends <span class="optional">(optional)</span></label>
+          <input id="date-end" type="datetime-local" />
+          <label for="date-location">Location</label>
+          <input id="date-location" />
+          <label for="date-notes">Notes</label>
+          <textarea id="date-notes" rows="3"></textarea>
+          <p class="label">Roles who see this date</p>
+          <div id="date-roles" class="checks"></div>
+          <p id="date-error" class="error" hidden></p>
+          <div class="drawer-actions">
+            <button type="submit" class="btn">Save</button>
+            <button type="button" id="btn-date-new" class="btn ghost">New</button>
+            <button type="button" id="btn-date-delete" class="btn ghost danger" disabled>Delete</button>
+          </div>
+          <div id="date-finalize" class="finalize" hidden>
+            <h3>Finalize</h3>
+            <p class="muted">Voting stays open until you accept or cancel.</p>
+            <div class="drawer-actions">
+              <button type="button" id="btn-accept" class="btn">Accept</button>
+              <button type="button" id="btn-cancel" class="btn ghost danger">Cancel date</button>
+            </div>
+          </div>
+          <div id="date-detail"></div>
+        </form>
+      </div>
+    </div>
+  </section>
+  <script src="/controller/static/app.js"></script>
+</body>
+</html>
