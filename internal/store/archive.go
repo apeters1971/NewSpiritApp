@@ -12,15 +12,18 @@ import (
 
 const (
 	ArchiveKindAudio  = "audio"
+	ArchiveKindTracks = "tracks"
 	ArchiveKindLyrics = "lyrics"
-	ArchiveKindSheet  = "sheet"
-	ArchiveMaxAudio   = 25 << 20
-	ArchiveMaxDoc     = 12 << 20
-	archiveTitleMax   = 200
-	archiveComposerMax = 120
+	ArchiveKindSheet     = "sheet"
+	ArchiveStatusPending  = "pending"
+	ArchiveStatusAccepted = "accepted"
+	ArchiveMaxAudio       = 25 << 20
+	ArchiveMaxDoc         = 12 << 20
+	archiveTitleMax       = 200
+	archiveComposerMax    = 120
 )
 
-var ArchiveKinds = []string{ArchiveKindAudio, ArchiveKindLyrics, ArchiveKindSheet}
+var ArchiveKinds = []string{ArchiveKindAudio, ArchiveKindTracks, ArchiveKindLyrics, ArchiveKindSheet}
 
 type ArchiveFileMeta struct {
 	ID        string    `json:"id"`
@@ -28,6 +31,8 @@ type ArchiveFileMeta struct {
 	Role      string    `json:"role,omitempty"`
 	MIME      string    `json:"mime"`
 	Name      string    `json:"name"`
+	Status    string    `json:"status"`
+	CreatedBy string    `json:"createdBy,omitempty"`
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
@@ -35,6 +40,8 @@ type ArchiveItem struct {
 	ID        string            `json:"id"`
 	Title     string            `json:"title"`
 	Composer  string            `json:"composer,omitempty"`
+	Status    string            `json:"status"`
+	CreatedBy string            `json:"createdBy,omitempty"`
 	Files     []ArchiveFileMeta `json:"files"`
 	CreatedAt time.Time         `json:"createdAt"`
 }
@@ -45,11 +52,20 @@ type ArchiveFile struct {
 }
 
 func ValidArchiveKind(kind string) bool {
-	return kind == ArchiveKindAudio || kind == ArchiveKindLyrics || kind == ArchiveKindSheet
+	for _, k := range ArchiveKinds {
+		if k == kind {
+			return true
+		}
+	}
+	return false
+}
+
+func ArchiveKindIsAudio(kind string) bool {
+	return kind == ArchiveKindAudio || kind == ArchiveKindTracks
 }
 
 func ArchiveMaxBytes(kind string) int {
-	if kind == ArchiveKindAudio {
+	if ArchiveKindIsAudio(kind) {
 		return ArchiveMaxAudio
 	}
 	return ArchiveMaxDoc
@@ -75,7 +91,14 @@ CREATE INDEX IF NOT EXISTS idx_date_titles_date ON date_titles(date_id, sort_ord
 	if err != nil {
 		return err
 	}
-	return s.migrateArchiveFiles()
+	if err := s.migrateArchiveFiles(); err != nil {
+		return err
+	}
+	_, _ = s.db.Exec(`ALTER TABLE archive_items ADD COLUMN status TEXT NOT NULL DEFAULT 'accepted'`)
+	_, _ = s.db.Exec(`ALTER TABLE archive_items ADD COLUMN created_by TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE archive_files ADD COLUMN status TEXT NOT NULL DEFAULT 'accepted'`)
+	_, _ = s.db.Exec(`ALTER TABLE archive_files ADD COLUMN created_by TEXT NOT NULL DEFAULT ''`)
+	return nil
 }
 
 func archiveFilesDDL() string {
@@ -170,6 +193,14 @@ func prepareArchiveFileName(name string) (string, error) {
 }
 
 func (s *Store) CreateArchiveItem(title, composer string) (ArchiveItem, error) {
+	return s.createArchiveItem(title, composer, "", ArchiveStatusAccepted)
+}
+
+func (s *Store) CreateMemberArchiveItem(title, composer, userID string) (ArchiveItem, error) {
+	return s.createArchiveItem(title, composer, userID, ArchiveStatusPending)
+}
+
+func (s *Store) createArchiveItem(title, composer, createdBy, status string) (ArchiveItem, error) {
 	title, err := prepareArchiveTitle(title)
 	if err != nil {
 		return ArchiveItem{}, err
@@ -178,16 +209,21 @@ func (s *Store) CreateArchiveItem(title, composer string) (ArchiveItem, error) {
 	if err != nil {
 		return ArchiveItem{}, err
 	}
+	if status != ArchiveStatusPending {
+		status = ArchiveStatusAccepted
+	}
 	item := ArchiveItem{
 		ID:        newID(),
 		Title:     title,
 		Composer:  composer,
+		Status:    status,
+		CreatedBy: createdBy,
 		Files:     []ArchiveFileMeta{},
 		CreatedAt: now(),
 	}
 	_, err = s.db.Exec(
-		`INSERT INTO archive_items(id, title, composer, created_at) VALUES(?,?,?,?)`,
-		item.ID, item.Title, item.Composer, fmtTime(item.CreatedAt),
+		`INSERT INTO archive_items(id, title, composer, status, created_by, created_at) VALUES(?,?,?,?,?,?)`,
+		item.ID, item.Title, item.Composer, item.Status, item.CreatedBy, fmtTime(item.CreatedAt),
 	)
 	if err != nil {
 		return ArchiveItem{}, err
@@ -246,11 +282,11 @@ func (s *Store) ListArchive(query string) ([]ArchiveItem, error) {
 	var rows *sql.Rows
 	var err error
 	if query == "" {
-		rows, err = s.db.Query(`SELECT id, title, composer, created_at FROM archive_items ORDER BY title COLLATE NOCASE, created_at`)
+		rows, err = s.db.Query(`SELECT id, title, composer, status, created_by, created_at FROM archive_items ORDER BY title COLLATE NOCASE, created_at`)
 	} else {
 		like := "%" + query + "%"
 		rows, err = s.db.Query(
-			`SELECT id, title, composer, created_at FROM archive_items WHERE title LIKE ? COLLATE NOCASE OR composer LIKE ? COLLATE NOCASE ORDER BY title COLLATE NOCASE, created_at`,
+			`SELECT id, title, composer, status, created_by, created_at FROM archive_items WHERE title LIKE ? COLLATE NOCASE OR composer LIKE ? COLLATE NOCASE ORDER BY title COLLATE NOCASE, created_at`,
 			like, like,
 		)
 	}
@@ -285,6 +321,14 @@ func (s *Store) ListArchive(query string) ([]ArchiveItem, error) {
 }
 
 func (s *Store) AddArchiveFile(itemID, kind, role, filename string, data []byte) (ArchiveItem, error) {
+	return s.addArchiveFile(itemID, kind, role, filename, data, "", ArchiveStatusAccepted)
+}
+
+func (s *Store) AddMemberArchiveFile(itemID, kind, role, filename, userID string, data []byte) (ArchiveItem, error) {
+	return s.addArchiveFile(itemID, kind, role, filename, data, userID, ArchiveStatusPending)
+}
+
+func (s *Store) addArchiveFile(itemID, kind, role, filename string, data []byte, createdBy, status string) (ArchiveItem, error) {
 	if _, err := s.archiveItemRow(itemID); err != nil {
 		return ArchiveItem{}, err
 	}
@@ -309,9 +353,12 @@ func (s *Store) AddArchiveFile(itemID, kind, role, filename string, data []byte)
 	if err != nil {
 		return ArchiveItem{}, err
 	}
+	if status != ArchiveStatusPending {
+		status = ArchiveStatusAccepted
+	}
 	_, err = s.db.Exec(
-		`INSERT INTO archive_files(id, item_id, kind, role, mime, name, data, updated_at) VALUES(?,?,?,?,?,?,?,?)`,
-		newID(), itemID, kind, role, mime, name, data, fmtTime(now()),
+		`INSERT INTO archive_files(id, item_id, kind, role, mime, name, data, status, created_by, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+		newID(), itemID, kind, role, mime, name, data, status, createdBy, fmtTime(now()),
 	)
 	if err != nil {
 		return ArchiveItem{}, err
@@ -359,38 +406,69 @@ func (s *Store) GetArchiveFile(itemID, fileID string) (ArchiveFile, error) {
 	var f ArchiveFile
 	var updated string
 	err := s.db.QueryRow(
-		`SELECT id, kind, role, mime, name, data, updated_at FROM archive_files WHERE id=? AND item_id=?`,
+		`SELECT id, kind, role, mime, name, data, status, created_by, updated_at FROM archive_files WHERE id=? AND item_id=?`,
 		fileID, itemID,
-	).Scan(&f.ID, &f.Kind, &f.Role, &f.MIME, &f.Name, &f.Data, &updated)
+	).Scan(&f.ID, &f.Kind, &f.Role, &f.MIME, &f.Name, &f.Data, &f.Status, &f.CreatedBy, &updated)
 	if err == sql.ErrNoRows {
 		return ArchiveFile{}, ErrNotFound
 	}
 	if err != nil {
 		return ArchiveFile{}, err
 	}
+	if f.Status == "" {
+		f.Status = ArchiveStatusAccepted
+	}
 	f.UpdatedAt = parseTime(updated)
 	return f, nil
 }
 
+func (s *Store) MemberCanDownloadArchiveFile(userID, itemID, fileID string) error {
+	if err := s.MemberCanAccessArchive(userID, itemID); err != nil {
+		return err
+	}
+	item, err := s.archiveItemRow(itemID)
+	if err != nil {
+		return err
+	}
+	f, err := s.GetArchiveFile(itemID, fileID)
+	if err != nil {
+		return err
+	}
+	if f.CreatedBy != "" && f.CreatedBy == userID {
+		return nil
+	}
+	if item.Status == ArchiveStatusAccepted && f.Status == ArchiveStatusAccepted {
+		return nil
+	}
+	return fmt.Errorf("%w: this archive file is pending", ErrForbidden)
+}
+
+func (s *Store) AcceptArchiveItem(id string) (ArchiveItem, error) {
+	if _, err := s.archiveItemRow(id); err != nil {
+		return ArchiveItem{}, err
+	}
+	if _, err := s.db.Exec(`UPDATE archive_items SET status=? WHERE id=?`, ArchiveStatusAccepted, id); err != nil {
+		return ArchiveItem{}, err
+	}
+	return s.ArchiveItem(id)
+}
+
+func (s *Store) AcceptArchiveFile(itemID, fileID string) (ArchiveItem, error) {
+	if _, err := s.GetArchiveFile(itemID, fileID); err != nil {
+		return ArchiveItem{}, err
+	}
+	if _, err := s.db.Exec(`UPDATE archive_files SET status=?, updated_at=? WHERE id=? AND item_id=?`, ArchiveStatusAccepted, fmtTime(now()), fileID, itemID); err != nil {
+		return ArchiveItem{}, err
+	}
+	return s.ArchiveItem(itemID)
+}
+
 func (s *Store) MemberCanAccessArchive(userID, itemID string) error {
+	if _, err := s.UserByID(userID); err != nil {
+		return err
+	}
 	if _, err := s.archiveItemRow(itemID); err != nil {
 		return err
-	}
-	u, err := s.UserByID(userID)
-	if err != nil {
-		return err
-	}
-	var n int
-	err = s.db.QueryRow(`
-SELECT COUNT(1)
-FROM date_titles t
-JOIN date_roles r ON r.date_id = t.date_id
-WHERE t.item_id=? AND r.role=?`, itemID, u.Role).Scan(&n)
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return fmt.Errorf("%w: this archive item is not on your dates", ErrForbidden)
 	}
 	return nil
 }
@@ -440,7 +518,7 @@ func (s *Store) titlesForDates(ids []string) (map[string][]ArchiveItem, error) {
 		args[i] = id
 	}
 	rows, err := s.db.Query(`
-SELECT t.date_id, a.id, a.title, a.composer, a.created_at
+SELECT t.date_id, a.id, a.title, a.composer, a.status, a.created_by, a.created_at
 FROM date_titles t
 JOIN archive_items a ON a.id = t.item_id
 WHERE t.date_id IN (`+placeholders+`)
@@ -459,8 +537,11 @@ ORDER BY t.sort_order, a.title COLLATE NOCASE`, args...)
 	for rows.Next() {
 		var dateID, created string
 		var item ArchiveItem
-		if err := rows.Scan(&dateID, &item.ID, &item.Title, &item.Composer, &created); err != nil {
+		if err := rows.Scan(&dateID, &item.ID, &item.Title, &item.Composer, &item.Status, &item.CreatedBy, &created); err != nil {
 			return nil, err
+		}
+		if item.Status == "" {
+			item.Status = ArchiveStatusAccepted
 		}
 		item.CreatedAt = parseTime(created)
 		item.Files = []ArchiveFileMeta{}
@@ -489,7 +570,7 @@ ORDER BY t.sort_order, a.title COLLATE NOCASE`, args...)
 }
 
 func (s *Store) archiveItemRow(id string) (ArchiveItem, error) {
-	row := s.db.QueryRow(`SELECT id, title, composer, created_at FROM archive_items WHERE id=?`, id)
+	row := s.db.QueryRow(`SELECT id, title, composer, status, created_by, created_at FROM archive_items WHERE id=?`, id)
 	item, err := scanArchiveItem(row)
 	if err == sql.ErrNoRows {
 		return ArchiveItem{}, ErrNotFound
@@ -500,8 +581,11 @@ func (s *Store) archiveItemRow(id string) (ArchiveItem, error) {
 func scanArchiveItem(rs rowScanner) (ArchiveItem, error) {
 	var item ArchiveItem
 	var created string
-	if err := rs.Scan(&item.ID, &item.Title, &item.Composer, &created); err != nil {
+	if err := rs.Scan(&item.ID, &item.Title, &item.Composer, &item.Status, &item.CreatedBy, &created); err != nil {
 		return ArchiveItem{}, err
+	}
+	if item.Status == "" {
+		item.Status = ArchiveStatusAccepted
 	}
 	item.CreatedAt = parseTime(created)
 	item.Files = []ArchiveFileMeta{}
@@ -520,7 +604,7 @@ func (s *Store) archiveFileMetas(ids []string) (map[string][]ArchiveFileMeta, er
 		args[i] = id
 	}
 	rows, err := s.db.Query(`
-SELECT id, item_id, kind, role, mime, name, updated_at
+SELECT id, item_id, kind, role, mime, name, status, created_by, updated_at
 FROM archive_files
 WHERE item_id IN (`+placeholders+`)
 ORDER BY kind, role COLLATE NOCASE, name COLLATE NOCASE`, args...)
@@ -531,8 +615,11 @@ ORDER BY kind, role COLLATE NOCASE, name COLLATE NOCASE`, args...)
 	for rows.Next() {
 		var itemID, updated string
 		var f ArchiveFileMeta
-		if err := rows.Scan(&f.ID, &itemID, &f.Kind, &f.Role, &f.MIME, &f.Name, &updated); err != nil {
+		if err := rows.Scan(&f.ID, &itemID, &f.Kind, &f.Role, &f.MIME, &f.Name, &f.Status, &f.CreatedBy, &updated); err != nil {
 			return nil, err
+		}
+		if f.Status == "" {
+			f.Status = ArchiveStatusAccepted
 		}
 		f.UpdatedAt = parseTime(updated)
 		out[itemID] = append(out[itemID], f)
@@ -560,7 +647,7 @@ func sniffArchiveMIME(kind, filename string, data []byte) (string, error) {
 		detected = strings.TrimSpace(detected[:i])
 	}
 	switch kind {
-	case ArchiveKindAudio:
+	case ArchiveKindAudio, ArchiveKindTracks:
 		switch {
 		case ext == ".mp3" || detected == "audio/mpeg":
 			return "audio/mpeg", nil

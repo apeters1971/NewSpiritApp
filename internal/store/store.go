@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -23,7 +24,8 @@ var (
 )
 
 type Store struct {
-	db *sql.DB
+	db       *sql.DB
+	mediaDir string
 }
 
 type User struct {
@@ -34,6 +36,7 @@ type User struct {
 	Subrole            string     `json:"subrole"`
 	Address            string     `json:"address"`
 	Phone              string     `json:"phone"`
+	AltEmail           string     `json:"altEmail,omitempty"`
 	Birthday           string     `json:"birthday"`
 	HasPhoto           bool       `json:"hasPhoto"`
 	PhotoUpdatedAt     *time.Time `json:"photoUpdatedAt,omitempty"`
@@ -46,6 +49,7 @@ type DirectoryEntry struct {
 	ID             string     `json:"id"`
 	Nickname       string     `json:"nickname"`
 	Email          string     `json:"email"`
+	AltEmail       string     `json:"altEmail,omitempty"`
 	Phone          string     `json:"phone"`
 	Role           string     `json:"role"`
 	Subrole        string     `json:"subrole"`
@@ -116,6 +120,7 @@ type DateView struct {
 	Comments      []Comment      `json:"comments"`
 	ChatOpen      bool           `json:"chatOpen"`
 	Titles        []ArchiveItem  `json:"titles"`
+	GalleryCount  int            `json:"galleryCount"`
 }
 
 func Open(path string) (*Store, error) {
@@ -124,7 +129,7 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
-	s := &Store{db: db}
+	s := &Store{db: db, mediaDir: filepath.Join(filepath.Dir(path), "gallery")}
 	if err := s.migrate(); err != nil {
 		_ = db.Close()
 		return nil, err
@@ -253,6 +258,7 @@ CREATE TABLE IF NOT EXISTS settings (
 	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN address TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN phone TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN birthday TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN alt_email TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0`)
 	_, _ = s.db.Exec(`
 CREATE TABLE IF NOT EXISTS chat_reactions (
@@ -279,7 +285,10 @@ CREATE TABLE IF NOT EXISTS settings (
 	if err := s.migrateProposals(); err != nil {
 		return err
 	}
-	return s.migrateCalendar()
+	if err := s.migrateCalendar(); err != nil {
+		return err
+	}
+	return s.migrateGallery()
 }
 
 func (s *Store) allowAdminChatMessages() error {
@@ -490,7 +499,7 @@ func (s *Store) ChangeOwnPassword(id, password string) (User, error) {
 	return s.UserByID(id)
 }
 
-func (s *Store) SetUserInfo(id, address, phone, birthday string) (User, error) {
+func (s *Store) SetUserInfo(id, address, phone, birthday, altEmail string) (User, error) {
 	if _, err := s.UserByID(id); err != nil {
 		return User{}, err
 	}
@@ -500,16 +509,31 @@ func (s *Store) SetUserInfo(id, address, phone, birthday string) (User, error) {
 	if err != nil {
 		return User{}, err
 	}
+	altEmail, err = normalizeContactEmail(altEmail)
+	if err != nil {
+		return User{}, err
+	}
 	if len(address) > 500 {
 		return User{}, fmt.Errorf("address is too long")
 	}
 	if len(phone) > 80 {
 		return User{}, fmt.Errorf("phone is too long")
 	}
-	if _, err := s.db.Exec(`UPDATE users SET address=?, phone=?, birthday=? WHERE id=?`, address, phone, birthday, id); err != nil {
+	if _, err := s.db.Exec(`UPDATE users SET address=?, phone=?, birthday=?, alt_email=? WHERE id=?`, address, phone, birthday, altEmail, id); err != nil {
 		return User{}, err
 	}
 	return s.UserByID(id)
+}
+
+func normalizeContactEmail(email string) (string, error) {
+	email = NormalizeEmail(email)
+	if email == "" {
+		return "", nil
+	}
+	if !strings.Contains(email, "@") || utf8.RuneCountInString(email) > 120 {
+		return "", fmt.Errorf("invalid email")
+	}
+	return email, nil
 }
 
 func normalizeBirthday(s string) (string, error) {
@@ -537,7 +561,7 @@ func (s *Store) DeleteUser(id string) error {
 }
 
 func (s *Store) ListUsers() ([]User, error) {
-	rows, err := s.db.Query(`SELECT id, nickname, email, role, subrole, address, phone, birthday, must_change_password, created_at FROM users ORDER BY nickname COLLATE NOCASE`)
+	rows, err := s.db.Query(`SELECT id, nickname, email, role, subrole, address, phone, alt_email, birthday, must_change_password, created_at FROM users ORDER BY nickname COLLATE NOCASE`)
 	if err != nil {
 		return nil, err
 	}
@@ -563,7 +587,7 @@ func (s *Store) ListUsers() ([]User, error) {
 }
 
 func (s *Store) ListDirectory() ([]DirectoryEntry, error) {
-	rows, err := s.db.Query(`SELECT id, nickname, email, role, subrole, phone FROM users ORDER BY nickname COLLATE NOCASE`)
+	rows, err := s.db.Query(`SELECT id, nickname, email, alt_email, role, subrole, phone FROM users ORDER BY nickname COLLATE NOCASE`)
 	if err != nil {
 		return nil, err
 	}
@@ -571,7 +595,7 @@ func (s *Store) ListDirectory() ([]DirectoryEntry, error) {
 	out := []DirectoryEntry{}
 	for rows.Next() {
 		var e DirectoryEntry
-		if err := rows.Scan(&e.ID, &e.Nickname, &e.Email, &e.Role, &e.Subrole, &e.Phone); err != nil {
+		if err := rows.Scan(&e.ID, &e.Nickname, &e.Email, &e.AltEmail, &e.Role, &e.Subrole, &e.Phone); err != nil {
 			return nil, err
 		}
 		out = append(out, e)
@@ -597,7 +621,7 @@ func (s *Store) ListDirectory() ([]DirectoryEntry, error) {
 }
 
 func (s *Store) UserByID(id string) (User, error) {
-	u, err := scanUserRow(s.db.QueryRow(`SELECT id, nickname, email, role, subrole, address, phone, birthday, must_change_password, created_at FROM users WHERE id=?`, id))
+	u, err := scanUserRow(s.db.QueryRow(`SELECT id, nickname, email, role, subrole, address, phone, alt_email, birthday, must_change_password, created_at FROM users WHERE id=?`, id))
 	if err != nil {
 		return User{}, err
 	}
@@ -619,9 +643,9 @@ func (s *Store) Login(email, password string) (User, string, error) {
 	var hash, created string
 	var mustChange int
 	err := s.db.QueryRow(
-		`SELECT id, nickname, email, password_hash, role, subrole, address, phone, birthday, must_change_password, created_at FROM users WHERE email=?`,
+		`SELECT id, nickname, email, password_hash, role, subrole, address, phone, alt_email, birthday, must_change_password, created_at FROM users WHERE email=?`,
 		email,
-	).Scan(&u.ID, &u.Nickname, &u.Email, &hash, &u.Role, &u.Subrole, &u.Address, &u.Phone, &u.Birthday, &mustChange, &created)
+	).Scan(&u.ID, &u.Nickname, &u.Email, &hash, &u.Role, &u.Subrole, &u.Address, &u.Phone, &u.AltEmail, &u.Birthday, &mustChange, &created)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, "", ErrUnauthorized
 	}
@@ -651,7 +675,7 @@ func (s *Store) UserBySession(sessionID string) (User, error) {
 		return User{}, ErrUnauthorized
 	}
 	u, err := scanUserRow(s.db.QueryRow(`
-SELECT u.id, u.nickname, u.email, u.role, u.subrole, u.address, u.phone, u.birthday, u.must_change_password, u.created_at
+SELECT u.id, u.nickname, u.email, u.role, u.subrole, u.address, u.phone, u.alt_email, u.birthday, u.must_change_password, u.created_at
 FROM sessions s
 JOIN users u ON u.id = s.user_id
 WHERE s.id=? AND s.revoked_at IS NULL`, sessionID))
@@ -851,6 +875,7 @@ func (s *Store) DeleteDate(id string) error {
 	if n == 0 {
 		return ErrNotFound
 	}
+	_ = s.removeGalleryDir(id)
 	return nil
 }
 
@@ -991,7 +1016,16 @@ func (s *Store) DateView(id string, viewer *User) (DateView, error) {
 	if err != nil {
 		return DateView{}, err
 	}
-	return s.attachView(d, viewer, commentsByDate[id], titlesByDate[id])
+	view, err := s.attachView(d, viewer, commentsByDate[id], titlesByDate[id])
+	if err != nil {
+		return DateView{}, err
+	}
+	counts, err := s.galleryCounts([]string{id})
+	if err != nil {
+		return DateView{}, err
+	}
+	view.GalleryCount = counts[id]
+	return view, nil
 }
 
 func (s *Store) ListDateViews(viewer *User) ([]DateView, error) {
@@ -1014,6 +1048,10 @@ func (s *Store) ListDateViews(viewer *User) ([]DateView, error) {
 	if err != nil {
 		return nil, err
 	}
+	galleryCounts, err := s.galleryCounts(ids)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]DateView, 0, len(ids))
 	for _, d := range dates {
 		if viewer != nil && !slicesContains(d.Roles, viewer.Role) {
@@ -1023,6 +1061,7 @@ func (s *Store) ListDateViews(viewer *User) ([]DateView, error) {
 		if err != nil {
 			return nil, err
 		}
+		v.GalleryCount = galleryCounts[d.ID]
 		out = append(out, v)
 	}
 	return out, nil
@@ -1250,7 +1289,7 @@ func scanUser(rs rowScanner) (User, error) {
 	var u User
 	var created string
 	var mustChange int
-	if err := rs.Scan(&u.ID, &u.Nickname, &u.Email, &u.Role, &u.Subrole, &u.Address, &u.Phone, &u.Birthday, &mustChange, &created); err != nil {
+	if err := rs.Scan(&u.ID, &u.Nickname, &u.Email, &u.Role, &u.Subrole, &u.Address, &u.Phone, &u.AltEmail, &u.Birthday, &mustChange, &created); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return User{}, ErrNotFound
 		}

@@ -122,6 +122,7 @@
               <th class="photo-col" data-i18n="photo">Foto</th>
               <th data-i18n="name">Name</th>
               <th data-i18n="email">E-Mail</th>
+              <th data-i18n="altEmail">Weitere E-Mail</th>
               <th data-i18n="address">Adresse</th>
               <th data-i18n="phone">Telefon</th>
               <th data-i18n="birthday">Geburtstag</th>
@@ -215,6 +216,7 @@
                 <th data-i18n="title">Titel</th>
                 <th data-i18n="archiveComposer">Komponist</th>
                 <th data-i18n="archiveAudio">Audio</th>
+                <th data-i18n="archiveTracks">Tracks</th>
                 <th data-i18n="archiveLyrics">Text</th>
                 <th data-i18n="archiveSheet">Noten</th>
               </tr>
@@ -335,10 +337,17 @@
         <p class="brand" data-i18n="chatBrand">Chat</p>
         <h2 id="chat-title">Chat</h2>
       </div>
-      <button type="button" id="chat-close" class="btn ghost" data-i18n="close">Schließen</button>
+      <div class="dialog-head-actions">
+        <button type="button" id="chat-size" class="btn ghost" aria-pressed="false">Vollbild</button>
+        <button type="button" id="chat-close" class="btn ghost" data-i18n="close">Schließen</button>
+      </div>
     </div>
     <div id="chat-list" class="chat-list"></div>
     <form id="chat-form" class="chat-composer">
+      <div class="chat-emoji">
+        <button type="button" id="chat-emoji-toggle" class="chat-emoji-toggle" data-i18n-aria="chatEmoji" aria-expanded="false">😊</button>
+        <div id="chat-emoji-panel" class="chat-emoji-panel" hidden></div>
+      </div>
       <label class="visually-hidden" for="chat-text" data-i18n="chatWrite">Nachricht schreiben</label>
       <textarea id="chat-text" required maxlength="2000" rows="1"></textarea>
       <p id="chat-error" class="error" hidden></p>
@@ -386,6 +395,9 @@
       <textarea id="info-address" rows="3" maxlength="500" autocomplete="street-address"></textarea>
       <label for="info-phone" data-i18n="phone">Telefon</label>
       <input id="info-phone" type="tel" maxlength="80" autocomplete="tel" />
+      <label for="info-alt-email" data-i18n="altEmail">Weitere E-Mail</label>
+      <input id="info-alt-email" type="email" maxlength="120" autocomplete="email" />
+      <p class="muted" data-i18n="altEmailHint">Nicht zum Anmelden.</p>
       <label for="info-birthday" data-i18n="birthday">Geburtstag</label>
       <input id="info-birthday" type="date" />
       <p id="info-error" class="error" hidden></p>

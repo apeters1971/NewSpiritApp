@@ -29,7 +29,7 @@
       <label for="password" data-i18n="password">Passwort</label>
       <input id="password" name="password" type="password" required autocomplete="current-password" />
       <button type="submit" data-i18n="enter">Weiter</button>
-      <button type="button" class="btn ghost install-open" data-i18n="addToHome">Zum Home-Bildschirm</button>
+      <button type="button" class="btn ghost install-open" data-i18n="addToHome">Add App</button>
       <p id="login-error" class="error" hidden></p>
     </form>
   </section>
@@ -70,6 +70,13 @@
           <p id="who-meta" class="muted"></p>
           <p id="who-channels" class="who-channels" hidden></p>
         </div>
+        <div class="top-session">
+          <div class="lang-switch" role="group" data-i18n-aria="lang">
+            <button type="button" class="lang-btn" data-lang="de">DE</button>
+            <button type="button" class="lang-btn" data-lang="en">EN</button>
+          </div>
+          <button type="button" id="btn-logout" class="btn ghost" data-i18n="signOut">Abmelden</button>
+        </div>
       </div>
       <div class="top-actions">
         <div id="chat-tabs" class="chat-tabs" hidden>
@@ -77,16 +84,12 @@
           <button type="button" class="btn ghost chat-tab" data-chat="band" hidden>Band</button>
           <button type="button" class="btn ghost chat-tab" data-chat="orchestra" hidden>Orchester</button>
         </div>
-        <button type="button" id="btn-calendar" class="btn calendar" data-i18n="subscribeCalendar">Kalender</button>
         <button type="button" id="btn-directory" class="btn book" data-i18n="addressBook">Adressbuch</button>
-        <button type="button" class="btn install install-open" data-i18n="addToHome">Zum Home-Bildschirm</button>
+        <button type="button" id="btn-archive" class="btn notes" data-i18n="tabArchive">Notenarchiv</button>
         <button type="button" id="btn-propose" class="btn song" data-i18n="proposeSong">Song vorschlagen</button>
         <button type="button" id="btn-proposals" class="btn song" data-i18n="songProposals">Songvorschläge</button>
-        <div class="lang-switch" role="group" data-i18n-aria="lang">
-          <button type="button" class="lang-btn" data-lang="de">DE</button>
-          <button type="button" class="lang-btn" data-lang="en">EN</button>
-        </div>
-        <button type="button" id="btn-logout" class="btn ghost" data-i18n="signOut">Abmelden</button>
+        <button type="button" class="btn install install-open" data-i18n="addToHome">Add App</button>
+        <button type="button" id="btn-calendar" class="btn calendar" data-i18n="subscribeCalendar">Kalender</button>
       </div>
     </header>
     <section id="my-channels" class="my-channels" hidden></section>
@@ -148,6 +151,9 @@
       <textarea id="info-address" rows="3" maxlength="500" autocomplete="street-address"></textarea>
       <label for="info-phone" data-i18n="phone">Telefon</label>
       <input id="info-phone" type="tel" maxlength="80" autocomplete="tel" />
+      <label for="info-alt-email" data-i18n="altEmail">Weitere E-Mail</label>
+      <input id="info-alt-email" type="email" maxlength="120" autocomplete="email" />
+      <p class="muted" data-i18n="altEmailHint">Nicht zum Anmelden.</p>
       <label for="info-birthday" data-i18n="birthday">Geburtstag</label>
       <input id="info-birthday" type="date" />
       <p id="info-error" class="error" hidden></p>
@@ -157,7 +163,7 @@
   <dialog id="install-dialog" class="dialog">
     <div class="dialog-head">
       <div>
-        <p class="brand" data-i18n="addToHome">Zum Home-Bildschirm</p>
+        <p class="brand" data-i18n="addToHome">Add App</p>
         <h2 data-i18n="addToHomeTitle">Als App öffnen</h2>
       </div>
       <button type="button" id="install-close" class="btn ghost" data-i18n="close">Schließen</button>
@@ -215,7 +221,7 @@
       </div>
       <button type="button" id="directory-close" class="btn ghost" data-i18n="close">Schließen</button>
     </div>
-    <p class="muted" data-i18n="addressBookLede">E-Mail und Telefon aller Personen.</p>
+    <p class="muted" data-i18n="addressBookLede">E-Mails und Telefon aller Personen.</p>
     <label for="directory-search" data-i18n="search">Suchen</label>
     <input id="directory-search" type="search" autocomplete="off" />
     <div id="directory-list" class="directory-list"></div>
@@ -240,6 +246,35 @@
     </div>
     <div id="schedule-body" class="schedule-body"></div>
   </dialog>
+  <dialog id="archive-dialog" class="dialog directory-dialog">
+    <div class="dialog-head">
+      <div>
+        <p class="brand" data-i18n="tabArchive">Notenarchiv</p>
+        <h2 data-i18n="archiveTitle">Noten und Audio</h2>
+      </div>
+      <button type="button" id="archive-close" class="btn ghost" data-i18n="close">Schließen</button>
+    </div>
+    <p class="muted" data-i18n="archiveLede">Audio, Tracks, Texte und Noten. Lege Songs an und hänge Dateien an.</p>
+    <div id="archive-toolbar" class="archive-toolbar">
+      <button type="button" id="archive-new" class="btn" data-i18n="addSong">Song hinzufügen</button>
+    </div>
+    <form id="archive-create" class="info-form archive-create" hidden>
+      <label for="archive-create-title" data-i18n="songName">Songname</label>
+      <input id="archive-create-title" required maxlength="200" autocomplete="off" />
+      <label for="archive-create-composer" data-i18n="archiveComposerOpt">Komponist (optional)</label>
+      <input id="archive-create-composer" maxlength="120" autocomplete="off" />
+      <p id="archive-create-error" class="error" hidden></p>
+      <div class="archive-create-actions">
+        <button type="submit" data-i18n="save">Speichern</button>
+        <button type="button" id="archive-create-cancel" class="btn ghost" data-i18n="cancel">Abbrechen</button>
+      </div>
+    </form>
+    <label for="archive-search" data-i18n="search">Suchen</label>
+    <input id="archive-search" type="search" autocomplete="off" />
+    <div id="archive-list" class="titles-list"></div>
+    <div id="archive-detail" class="title-detail" hidden></div>
+    <input id="archive-member-file" type="file" hidden />
+  </dialog>
   <dialog id="titles-dialog" class="dialog">
     <div class="dialog-head">
       <div>
@@ -257,10 +292,17 @@
         <p class="brand" data-i18n="chatBrand">Chat</p>
         <h2 id="chat-title">Chat</h2>
       </div>
-      <button type="button" id="chat-close" class="btn ghost" data-i18n="close">Schließen</button>
+      <div class="dialog-head-actions">
+        <button type="button" id="chat-size" class="btn ghost" aria-pressed="false">Vollbild</button>
+        <button type="button" id="chat-close" class="btn ghost" data-i18n="close">Schließen</button>
+      </div>
     </div>
     <div id="chat-list" class="chat-list"></div>
     <form id="chat-form" class="chat-composer">
+      <div class="chat-emoji">
+        <button type="button" id="chat-emoji-toggle" class="chat-emoji-toggle" data-i18n-aria="chatEmoji" aria-expanded="false">😊</button>
+        <div id="chat-emoji-panel" class="chat-emoji-panel" hidden></div>
+      </div>
       <label class="visually-hidden" for="chat-text" data-i18n="chatWrite">Nachricht schreiben</label>
       <textarea id="chat-text" required maxlength="2000" rows="1"></textarea>
       <p id="chat-error" class="error" hidden></p>

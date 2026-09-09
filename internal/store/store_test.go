@@ -289,15 +289,21 @@ func TestUserInfo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := st.SetUserInfo(u.ID, "Hall Street 1", "+49 30 1234", "1990-05-01")
+	got, err := st.SetUserInfo(u.ID, "Hall Street 1", "+49 30 1234", "1990-05-01", "ada.home@example.com")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Address != "Hall Street 1" || got.Phone != "+49 30 1234" || got.Birthday != "1990-05-01" {
+	if got.Address != "Hall Street 1" || got.Phone != "+49 30 1234" || got.Birthday != "1990-05-01" || got.AltEmail != "ada.home@example.com" {
 		t.Fatalf("info %+v", got)
 	}
-	if _, err := st.SetUserInfo(u.ID, "Hall", "123", "13.05.1990"); err == nil {
+	if _, err := st.SetUserInfo(u.ID, "Hall", "123", "13.05.1990", ""); err == nil {
 		t.Fatal("expected invalid birthday")
+	}
+	if _, err := st.SetUserInfo(u.ID, "Hall", "123", "1990-05-01", "not-an-email"); err == nil {
+		t.Fatal("expected invalid email")
+	}
+	if _, _, err := st.Login("ada.home@example.com", "secret1"); err == nil {
+		t.Fatal("alt email must not log in")
 	}
 }
 
@@ -315,7 +321,7 @@ func TestDirectory(t *testing.T) {
 	if _, err := st.CreateUser("Ben", "ben@example.com", "secret1", RoleChoir, "Alt"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.SetUserInfo(ada.ID, "Hidden Street", "+49 611 1234", "1990-05-01"); err != nil {
+	if _, err := st.SetUserInfo(ada.ID, "Hidden Street", "+49 611 1234", "1990-05-01", "ada.home@example.com"); err != nil {
 		t.Fatal(err)
 	}
 	list, err := st.ListDirectory()
@@ -325,7 +331,7 @@ func TestDirectory(t *testing.T) {
 	if len(list) != 2 {
 		t.Fatalf("got %d people", len(list))
 	}
-	if list[0].Nickname != "Ada" || list[0].Email != "ada@example.com" || list[0].Phone != "+49 611 1234" {
+	if list[0].Nickname != "Ada" || list[0].Email != "ada@example.com" || list[0].AltEmail != "ada.home@example.com" || list[0].Phone != "+49 611 1234" {
 		t.Fatalf("ada %+v", list[0])
 	}
 	if list[1].Nickname != "Ben" || list[1].Phone != "" {
@@ -517,8 +523,12 @@ func TestArchiveAndDateTitles(t *testing.T) {
 	if err != nil || len(item.Files) != 3 {
 		t.Fatalf("files %+v %v", item, err)
 	}
+	item, err = st.AddArchiveFile(song.ID, ArchiveKindTracks, "guitar", "stems.mp3", mp3)
+	if err != nil || len(item.Files) != 4 {
+		t.Fatalf("tracks %+v %v", item, err)
+	}
 	again, err := st.AddArchiveFile(song.ID, ArchiveKindAudio, "choir", "choir.mp3", mp3)
-	if err != nil || len(again.Files) != 4 {
+	if err != nil || len(again.Files) != 5 {
 		t.Fatalf("append audio %+v %v", again, err)
 	}
 	var pianoID string
@@ -545,8 +555,8 @@ func TestArchiveAndDateTitles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.MemberCanAccessArchive(ada.ID, song.ID); err == nil {
-		t.Fatal("should not access before titles are set")
+	if err := st.MemberCanAccessArchive(ada.ID, song.ID); err != nil {
+		t.Fatalf("library access %v", err)
 	}
 	if err := st.SetDateTitles(d.ID, []string{song.ID, other.ID}); err != nil {
 		t.Fatal(err)
@@ -588,6 +598,52 @@ func TestArchiveAndDateTitles(t *testing.T) {
 	}
 	if _, err := st.ArchiveItem(song.ID); err == nil {
 		t.Fatal("deleted archive item still there")
+	}
+}
+
+func TestArchiveApproval(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "archive-approve.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	ada, err := st.CreateUser("Ada", "ada@example.com", "secret1", RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ben, err := st.CreateUser("Ben", "ben@example.com", "secret1", RoleChoir, "Alt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending, err := st.CreateMemberArchiveItem("New Tune", "", ada.ID)
+	if err != nil || pending.Status != ArchiveStatusPending {
+		t.Fatalf("pending song %+v %v", pending, err)
+	}
+	mp3 := []byte{0xFF, 0xFB, 0x90, 0x00, 'I', 'D', '3'}
+	withFile, err := st.AddMemberArchiveFile(pending.ID, ArchiveKindAudio, "choir", "demo.mp3", ada.ID, mp3)
+	if err != nil || len(withFile.Files) != 1 || withFile.Files[0].Status != ArchiveStatusPending {
+		t.Fatalf("pending file %+v %v", withFile, err)
+	}
+	if err := st.MemberCanDownloadArchiveFile(ada.ID, pending.ID, withFile.Files[0].ID); err != nil {
+		t.Fatalf("uploader should hear own file %v", err)
+	}
+	if err := st.MemberCanDownloadArchiveFile(ben.ID, pending.ID, withFile.Files[0].ID); err == nil {
+		t.Fatal("others should not download pending material")
+	}
+	accepted, err := st.AcceptArchiveItem(pending.ID)
+	if err != nil || accepted.Status != ArchiveStatusAccepted {
+		t.Fatalf("accept song %+v %v", accepted, err)
+	}
+	if err := st.MemberCanDownloadArchiveFile(ben.ID, pending.ID, withFile.Files[0].ID); err == nil {
+		t.Fatal("pending file still blocked after song accept")
+	}
+	ready, err := st.AcceptArchiveFile(pending.ID, withFile.Files[0].ID)
+	if err != nil || ready.Files[0].Status != ArchiveStatusAccepted {
+		t.Fatalf("accept file %+v %v", ready, err)
+	}
+	if err := st.MemberCanDownloadArchiveFile(ben.ID, pending.ID, withFile.Files[0].ID); err != nil {
+		t.Fatalf("accepted file should download %v", err)
 	}
 }
 

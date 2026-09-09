@@ -9,7 +9,7 @@ One Go server, SQLite, and a German/English web UI. Members use the phone-friend
 | Members | [http://localhost:8080/](http://localhost:8080/) |
 | Controller | [http://localhost:8080/controller](http://localhost:8080/controller) |
 
-On a phone, **Zum Home-Bildschirm** adds the member UI like an app (Safari: Share → Add to Home Screen; Android: Install app). That works best over HTTPS.
+On a phone, **Add App** adds the member UI like an app (Safari: Share → Add to Home Screen; Android: Install app). That works best over HTTPS.
 
 ## Quick start
 

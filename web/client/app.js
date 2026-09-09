@@ -13,6 +13,7 @@ let dates = [];
 let ranking = { year: 0, leaders: [] };
 let proposals = [];
 let directory = [];
+let archiveItems = [];
 let commentDateId = "";
 let titlesDateId = "";
 let chatRoom = "";
@@ -20,6 +21,13 @@ let chatMessages = [];
 
 const CHAT_ROOMS = ["choir", "band", "orchestra"];
 const CHAT_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
+const COMPOSE_EMOJIS = [
+  "😀", "😂", "😊", "😍", "🥰", "😘", "😎", "🤩", "🥳", "😇",
+  "😉", "😜", "🤔", "🙄", "😴", "😭", "😤", "😮", "😱", "🥺",
+  "👍", "👎", "👏", "🙌", "🙏", "💪", "✌️", "👋", "❤️", "🔥",
+  "⭐", "✨", "🎉", "💯", "👀", "✅", "🎵", "🎶", "🎤", "🎸",
+  "🎹", "🥁",
+];
 const MEMBER_COLORS = ["#3dd6c6", "#f0a35e", "#8cb4ff", "#e38cff", "#7fd99a", "#f07178", "#ffd166", "#9ad0c8"];
 
 async function api(path, opts = {}) {
@@ -59,17 +67,38 @@ function formatWhen(iso) {
   return d.toLocaleString(I18N.locale(), { weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+function sameCalendarDay(a, b) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function formatDay(d) {
+  return d.toLocaleDateString(I18N.locale(), { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+}
+
+function formatClock(d) {
+  const m = d.getMinutes();
+  return m ? `${d.getHours()}:${String(m).padStart(2, "0")}` : String(d.getHours());
+}
+
+function formatStartEnd(startIso, endIso) {
+  if (!startIso) return "";
+  const start = new Date(startIso);
+  if (!endIso) return formatWhen(startIso);
+  const end = new Date(endIso);
+  if (sameCalendarDay(start, end)) {
+    return `${formatDay(start)}, ${formatClock(start)}–${formatClock(end)}${I18N.t("clockSuffix")}`;
+  }
+  return `${formatWhen(startIso)} – ${formatWhen(endIso)}`;
+}
+
 function formatRange(date) {
-  let s = formatWhen(date.startsAt);
-  if (date.endsAt) s += " – " + formatWhen(date.endsAt);
+  let s = formatStartEnd(date.startsAt, date.endsAt);
   if (date.location) s += " · " + date.location;
   return s;
 }
 
 function formatOptionRange(opt) {
-  let s = formatWhen(opt.startsAt);
-  if (opt.endsAt) s += " – " + formatWhen(opt.endsAt);
-  return s;
+  return formatStartEnd(opt.startsAt, opt.endsAt);
 }
 
 function pollOpen(date) {
@@ -348,12 +377,21 @@ function renderSpirit() {
     box.innerHTML = "";
     return;
   }
-  const mine = typeof ranking.myScore === "number"
-    ? `<div class="spirit-mine">
+  const stats = [];
+  if (typeof ranking.myScore === "number") {
+    stats.push(`<div class="spirit-stat">
         <span class="spirit-mine-label">${I18N.t("myPoints")}</span>
         <strong class="spirit-score">${ranking.myScore}</strong>
-      </div>`
-    : "";
+      </div>`);
+  }
+  if (typeof ranking.myYes === "number" && ranking.events > 0) {
+    const pct = Math.round((ranking.myYes / ranking.events) * 100);
+    stats.push(`<div class="spirit-stat">
+        <span class="spirit-mine-label">${I18N.t("presence")}</span>
+        <strong class="spirit-score">${pct}%</strong>
+      </div>`);
+  }
+  const mine = stats.length ? `<div class="spirit-mine">${stats.join("")}</div>` : "";
   const people = leaders.map((leader) => `
       <div class="spirit-person">
         <strong>${escapeHtml(leader.nickname)}</strong>
@@ -422,15 +460,54 @@ function archiveFileLabel(file, kindLabel) {
   return bits.join(" · ");
 }
 
-function titleMaterialHTML(item) {
+function archiveKindAccept(kind) {
+  if (kind === "audio" || kind === "tracks") return "audio/*";
+  if (kind === "lyrics") return "application/pdf,text/plain,image/*";
+  return "application/pdf,image/*";
+}
+
+function archiveManageHTML(item) {
+  const kinds = [
+    { kind: "audio", label: I18N.t("archiveAudio") },
+    { kind: "tracks", label: I18N.t("archiveTracks") },
+    { kind: "lyrics", label: I18N.t("archiveLyrics") },
+    { kind: "sheet", label: I18N.t("archiveSheet") },
+  ];
+  const files = item.files || [];
+  const remove = files.length
+    ? files.map((f) => `
+        <div class="archive-upload-row">
+          <span>${escapeHtml(archiveFileLabel(f, I18N.t(f.kind === "tracks" ? "archiveTracks" : f.kind === "lyrics" ? "archiveLyrics" : f.kind === "sheet" ? "archiveSheet" : "archiveAudio")))}</span>
+          <button type="button" class="btn ghost danger" data-archive-del-file="${f.id}">${I18N.t("delete")}</button>
+        </div>`).join("")
+    : "";
+  const slots = kinds.map((slot) => `
+    <section class="archive-kind">
+      <p class="label">${escapeHtml(slot.label)}</p>
+      <div class="archive-upload-row">
+        <input data-archive-role="${slot.kind}" maxlength="40" placeholder="${escapeHtml(I18N.t("archiveRoleHint"))}" />
+        <button type="button" class="btn ghost" data-archive-upload="${slot.kind}" data-accept="${archiveKindAccept(slot.kind)}">${I18N.t("archiveAddFile")}</button>
+      </div>
+    </section>`).join("");
+  return `<div class="archive-manage" data-archive-id="${item.id}">
+    <p class="muted">${I18N.t("archiveAttachHint")}</p>
+    ${remove}
+    ${slots}
+  </div>`;
+}
+
+function titleMaterialHTML(item, back) {
   const files = item.files || [];
   const audios = files.filter((f) => f.kind === "audio");
+  const tracks = files.filter((f) => f.kind === "tracks");
   const lyrics = files.filter((f) => f.kind === "lyrics");
   const sheets = files.filter((f) => f.kind === "sheet");
   const preferred = sheets.filter((f) => f.role && f.role === me?.role);
   const rest = sheets.filter((f) => !preferred.includes(f));
+  const backAttr = back === "archive" ? "data-archive-back" : "data-titles-back";
+  const backLabel = back === "archive" ? I18N.t("backToArchive") : I18N.t("backToTitles");
   let html = `
-    <button type="button" class="btn ghost" data-titles-back>${I18N.t("backToTitles")}</button>
+    <button type="button" class="btn ghost" ${backAttr}>${backLabel}</button>
     <div>
       <strong>${escapeHtml(item.title)}</strong>
       ${item.composer ? `<p class="muted">${escapeHtml(item.composer)}</p>` : ""}
@@ -438,13 +515,16 @@ function titleMaterialHTML(item) {
   audios.forEach((audio) => {
     html += `<div><p class="label">${escapeHtml(archiveFileLabel(audio, I18N.t("archiveAudio")))}</p><audio controls src="${archiveFileURL(item.id, audio)}"></audio></div>`;
   });
+  tracks.forEach((track) => {
+    html += `<div><p class="label">${escapeHtml(archiveFileLabel(track, I18N.t("archiveTracks")))}</p><audio controls src="${archiveFileURL(item.id, track)}"></audio></div>`;
+  });
   lyrics.forEach((f) => {
     html += filePreviewHTML(item.id, f, archiveFileLabel(f, I18N.t("archiveLyrics")));
   });
   [...preferred, ...rest].forEach((f) => {
     html += filePreviewHTML(item.id, f, archiveFileLabel(f, I18N.t("archiveSheet")));
   });
-  if (!audios.length && !lyrics.length && !sheets.length) {
+  if (!audios.length && !tracks.length && !lyrics.length && !sheets.length) {
     html += `<p class="muted">${I18N.t("archiveNoFile")}</p>`;
   }
   return html;
@@ -502,7 +582,7 @@ async function openTitleDetail(itemId) {
     const data = await api(`/api/archive/${encodeURIComponent(itemId)}`);
     list.hidden = true;
     detail.hidden = false;
-    detail.innerHTML = titleMaterialHTML(data.item);
+    detail.innerHTML = titleMaterialHTML(data.item, "titles");
     for (const el of detail.querySelectorAll("[data-text-src]")) {
       try {
         const res = await fetch(el.dataset.textSrc, { credentials: "same-origin" });
@@ -964,6 +1044,7 @@ async function openChat(room, title) {
   const input = document.getElementById("chat-text");
   input.placeholder = I18N.t("chatWrite");
   document.getElementById("chat-dialog").showModal();
+  paintChatSize();
   input.focus();
 }
 
@@ -998,6 +1079,7 @@ function connectWS() {
         loadDates().catch(() => {});
         if (document.getElementById("proposals-dialog").open) loadProposals().catch(() => {});
         if (document.getElementById("directory-dialog").open) loadDirectory().catch(() => {});
+        if (document.getElementById("archive-dialog").open) loadArchive().catch(() => {});
       }
     }
   };
@@ -1014,6 +1096,7 @@ I18N.onChange(() => {
     paintInfoButton(document.getElementById("who-info"), me);
     paintMyChannels();
     renderChatTabs();
+    paintChatSize();
     if (document.getElementById("chat-dialog").open && chatRoom) {
       const date = chatRoom.startsWith("event:")
         ? dates.find((d) => d.id === chatRoom.slice("event:".length))
@@ -1024,6 +1107,10 @@ I18N.onChange(() => {
     }
     if (document.getElementById("proposals-dialog").open) renderProposalList();
     if (document.getElementById("directory-dialog").open) renderDirectory();
+    if (document.getElementById("archive-dialog").open) renderArchive();
+    if (document.getElementById("calendar-dialog").open) {
+      document.getElementById("calendar-copy").textContent = I18N.t("copyLink");
+    }
     render();
   }
 });
@@ -1036,6 +1123,23 @@ document.getElementById("chat-tabs").addEventListener("click", async (e) => {
   } catch (err) {
     alert(err.message);
   }
+});
+
+function paintChatSize() {
+  const dialog = document.getElementById("chat-dialog");
+  const btn = document.getElementById("chat-size");
+  if (!dialog || !btn) return;
+  const full = dialog.classList.contains("full");
+  btn.textContent = I18N.t(full ? "chatReduce" : "chatExpand");
+  btn.setAttribute("aria-pressed", full ? "true" : "false");
+}
+
+document.getElementById("chat-size").addEventListener("click", () => {
+  const dialog = document.getElementById("chat-dialog");
+  dialog.classList.toggle("full");
+  paintChatSize();
+  const list = document.getElementById("chat-list");
+  if (list) list.scrollTop = list.scrollHeight;
 });
 
 document.getElementById("chat-close").addEventListener("click", () => {
@@ -1065,6 +1169,7 @@ async function sendChat() {
     });
     input.value = "";
     input.style.height = "";
+    setChatEmojiOpen(false);
     appendChat(data.message);
   } catch (err) {
     showError(errEl, err.message);
@@ -1081,6 +1186,48 @@ document.getElementById("chat-text").addEventListener("keydown", (e) => {
   e.preventDefault();
   sendChat();
 });
+
+function setChatEmojiOpen(open) {
+  const toggle = document.getElementById("chat-emoji-toggle");
+  const panel = document.getElementById("chat-emoji-panel");
+  if (!toggle || !panel) return;
+  panel.hidden = !open;
+  toggle.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+function insertChatEmoji(emoji) {
+  const input = document.getElementById("chat-text");
+  const start = input.selectionStart ?? input.value.length;
+  const end = input.selectionEnd ?? input.value.length;
+  const next = input.value.slice(0, start) + emoji + input.value.slice(end);
+  if (input.maxLength > 0 && next.length > input.maxLength) return;
+  input.value = next;
+  const pos = start + [...emoji].length;
+  input.focus();
+  input.setSelectionRange(pos, pos);
+}
+
+(function setupChatEmojiPicker() {
+  const toggle = document.getElementById("chat-emoji-toggle");
+  const panel = document.getElementById("chat-emoji-panel");
+  if (!toggle || !panel) return;
+  panel.innerHTML = COMPOSE_EMOJIS.map((emoji) => `<button type="button" data-emoji="${emoji}">${emoji}</button>`).join("");
+  toggle.addEventListener("click", (e) => {
+    e.preventDefault();
+    setChatEmojiOpen(panel.hidden);
+  });
+  panel.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-emoji]");
+    if (!btn) return;
+    insertChatEmoji(btn.dataset.emoji);
+  });
+  document.addEventListener("pointerdown", (e) => {
+    if (panel.hidden) return;
+    if (e.target.closest(".chat-emoji")) return;
+    setChatEmojiOpen(false);
+  });
+  document.getElementById("chat-dialog").addEventListener("close", () => setChatEmojiOpen(false));
+})();
 
 document.getElementById("schedule-close").addEventListener("click", () => {
   document.getElementById("schedule-dialog").close();
@@ -1142,7 +1289,7 @@ document.getElementById("chat-list").addEventListener("click", async (e) => {
 });
 
 function hasInfo(user) {
-  return !!(user?.address || user?.phone || user?.birthday);
+  return !!(user?.address || user?.phone || user?.birthday || user?.altEmail);
 }
 
 function paintInfoButton(btn, user) {
@@ -1154,6 +1301,7 @@ function paintInfoButton(btn, user) {
 function fillInfoForm(user = {}) {
   document.getElementById("info-address").value = user.address || "";
   document.getElementById("info-phone").value = user.phone || "";
+  document.getElementById("info-alt-email").value = user.altEmail || "";
   document.getElementById("info-birthday").value = user.birthday || "";
   showError(document.getElementById("info-error"), "");
 }
@@ -1162,6 +1310,7 @@ function readInfoForm() {
   return {
     address: document.getElementById("info-address").value,
     phone: document.getElementById("info-phone").value,
+    altEmail: document.getElementById("info-alt-email").value,
     birthday: document.getElementById("info-birthday").value,
   };
 }
@@ -1242,7 +1391,7 @@ function renderDirectory() {
   const q = document.getElementById("directory-search").value.trim().toLowerCase();
   const rows = directory.filter((p) => {
     if (!q) return true;
-    const hay = `${p.nickname} ${p.email} ${p.phone} ${I18N.role(p.role)} ${I18N.subrole(p.subrole)}`.toLowerCase();
+    const hay = `${p.nickname} ${p.email} ${p.altEmail || ""} ${p.phone} ${I18N.role(p.role)} ${I18N.subrole(p.subrole)}`.toLowerCase();
     return hay.includes(q);
   });
   if (!rows.length) {
@@ -1251,6 +1400,7 @@ function renderDirectory() {
   }
   list.innerHTML = rows.map((p) => {
     const mail = p.email ? `<p><a href="mailto:${escapeHtml(p.email)}">${escapeHtml(p.email)}</a></p>` : "";
+    const alt = p.altEmail ? `<p><a href="mailto:${escapeHtml(p.altEmail)}">${escapeHtml(p.altEmail)}</a></p>` : "";
     const tel = phoneHref(p.phone);
     const phone = p.phone
       ? `<p>${tel ? `<a href="${escapeHtml(tel)}">${escapeHtml(p.phone)}</a>` : escapeHtml(p.phone)}</p>`
@@ -1261,12 +1411,195 @@ function renderDirectory() {
       <div>
         <strong>${escapeHtml(p.nickname)}</strong>
         <p class="meta">${escapeHtml(I18N.role(p.role))} · ${escapeHtml(I18N.subrole(p.subrole))}</p>
-        ${mail}${phone}
+        ${mail}${alt}${phone}
       </div>
     </article>
   `;
   }).join("");
 }
+
+async function loadArchive() {
+  const data = await api("/api/archive");
+  archiveItems = data.archive || [];
+  renderArchive();
+}
+
+function showArchiveCreate(show) {
+  document.getElementById("archive-create").hidden = !show;
+  document.getElementById("archive-toolbar").hidden = show;
+  document.getElementById("archive-list").hidden = show;
+  document.getElementById("archive-search").hidden = show;
+  document.querySelector("label[for=archive-search]").hidden = show;
+  if (show) {
+    document.getElementById("archive-detail").hidden = true;
+    document.getElementById("archive-create-title").value = "";
+    document.getElementById("archive-create-composer").value = "";
+    showError(document.getElementById("archive-create-error"), "");
+    document.getElementById("archive-create-title").focus();
+  }
+}
+
+function showArchiveList() {
+  document.getElementById("archive-detail").hidden = true;
+  document.getElementById("archive-detail").innerHTML = "";
+  document.getElementById("archive-create").hidden = true;
+  document.getElementById("archive-toolbar").hidden = false;
+  document.getElementById("archive-list").hidden = false;
+  document.getElementById("archive-search").hidden = false;
+  document.querySelector("label[for=archive-search]").hidden = false;
+  renderArchive();
+}
+
+function renderArchive() {
+  const list = document.getElementById("archive-list");
+  if (list.hidden) return;
+  const q = document.getElementById("archive-search").value.trim().toLowerCase();
+  const rows = archiveItems.filter((item) => {
+    if (!q) return true;
+    const hay = `${item.title} ${item.composer || ""}`.toLowerCase();
+    return hay.includes(q);
+  });
+  if (!rows.length) {
+    list.innerHTML = `<p class="muted">${I18N.t("archiveNoItems")}</p>`;
+    return;
+  }
+  list.innerHTML = rows.map((item) => `
+    <button type="button" class="title-item" data-archive-item="${item.id}">
+      <div>
+        <strong>${escapeHtml(item.title)}</strong>
+        ${item.composer ? `<p>${escapeHtml(item.composer)}</p>` : ""}
+      </div>
+    </button>`).join("");
+}
+
+async function openArchiveItem(itemId) {
+  const list = document.getElementById("archive-list");
+  const detail = document.getElementById("archive-detail");
+  try {
+    const data = await api(`/api/archive/${encodeURIComponent(itemId)}`);
+    list.hidden = true;
+    detail.hidden = false;
+    document.getElementById("archive-create").hidden = true;
+    document.getElementById("archive-toolbar").hidden = true;
+    document.getElementById("archive-search").hidden = true;
+    document.querySelector("label[for=archive-search]").hidden = true;
+    detail.innerHTML = titleMaterialHTML(data.item, "archive") + archiveManageHTML(data.item);
+    for (const el of detail.querySelectorAll("[data-text-src]")) {
+      try {
+        const res = await fetch(el.dataset.textSrc, { credentials: "same-origin" });
+        el.textContent = await res.text();
+      } catch {
+        el.textContent = "";
+      }
+    }
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+document.getElementById("btn-archive").addEventListener("click", async () => {
+  try {
+    document.getElementById("archive-search").value = "";
+    await loadArchive();
+    showArchiveList();
+    document.getElementById("archive-dialog").showModal();
+    document.getElementById("archive-search").focus();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+document.getElementById("archive-close").addEventListener("click", () => {
+  document.getElementById("archive-dialog").close();
+});
+
+document.getElementById("archive-dialog").addEventListener("close", () => {
+  document.getElementById("archive-detail").innerHTML = "";
+});
+
+document.getElementById("archive-search").addEventListener("input", renderArchive);
+
+document.getElementById("archive-list").addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-archive-item]");
+  if (!btn) return;
+  await openArchiveItem(btn.dataset.archiveItem);
+});
+
+document.getElementById("archive-detail").addEventListener("click", (e) => {
+  if (e.target.closest("[data-archive-back]")) {
+    showArchiveList();
+    return;
+  }
+  const upload = e.target.closest("[data-archive-upload]");
+  if (upload) {
+    const input = document.getElementById("archive-member-file");
+    input.dataset.kind = upload.dataset.archiveUpload;
+    input.dataset.accept = upload.dataset.accept || "";
+    input.accept = upload.dataset.accept || "";
+    input.value = "";
+    input.click();
+    return;
+  }
+  const del = e.target.closest("[data-archive-del-file]");
+  if (!del) return;
+  const box = document.querySelector("[data-archive-id]");
+  if (!box || !confirm(I18N.t("confirmDeleteFile"))) return;
+  api(`/api/archive/${encodeURIComponent(box.dataset.archiveId)}/files/${encodeURIComponent(del.dataset.archiveDelFile)}`, { method: "DELETE" })
+    .then((data) => openArchiveItem(data.item.id))
+    .then(() => loadArchive())
+    .catch((err) => alert(err.message));
+});
+
+document.getElementById("archive-new").addEventListener("click", () => showArchiveCreate(true));
+
+document.getElementById("archive-create-cancel").addEventListener("click", () => showArchiveList());
+
+document.getElementById("archive-create").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById("archive-create-error");
+  showError(errEl, "");
+  try {
+    const data = await api("/api/archive", {
+      method: "POST",
+      body: JSON.stringify({
+        title: document.getElementById("archive-create-title").value,
+        composer: document.getElementById("archive-create-composer").value,
+      }),
+    });
+    await loadArchive();
+    await openArchiveItem(data.item.id);
+  } catch (err) {
+    showError(errEl, err.message);
+  }
+});
+
+document.getElementById("archive-member-file").addEventListener("change", async (e) => {
+  const input = e.target;
+  const file = input.files?.[0];
+  const kind = input.dataset.kind;
+  const box = document.querySelector("[data-archive-id]");
+  if (!file || !kind || !box) return;
+  const role = document.querySelector(`[data-archive-role="${kind}"]`)?.value || "";
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("kind", kind);
+  if (role) fd.append("role", role);
+  try {
+    const res = await fetch(`/api/archive/${encodeURIComponent(box.dataset.archiveId)}/files`, {
+      method: "POST",
+      credentials: "same-origin",
+      body: fd,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(I18N.error(data.error || res.statusText));
+    await loadArchive();
+    await openArchiveItem(data.item.id);
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    input.value = "";
+  }
+});
 
 document.getElementById("btn-directory").addEventListener("click", async () => {
   try {
@@ -1284,6 +1617,49 @@ document.getElementById("directory-close").addEventListener("click", () => {
 });
 
 document.getElementById("directory-search").addEventListener("input", renderDirectory);
+
+async function openCalendar() {
+  const errEl = document.getElementById("calendar-error");
+  const urlEl = document.getElementById("calendar-url");
+  const openEl = document.getElementById("calendar-open");
+  const copyEl = document.getElementById("calendar-copy");
+  showError(errEl, "");
+  urlEl.value = "";
+  openEl.removeAttribute("href");
+  copyEl.textContent = I18N.t("copyLink");
+  try {
+    const data = await api("/api/me/calendar");
+    urlEl.value = data.url || "";
+    if (data.webcalUrl) openEl.href = data.webcalUrl;
+    document.getElementById("calendar-dialog").showModal();
+    urlEl.focus();
+    urlEl.select();
+  } catch (err) {
+    showError(errEl, err.message);
+    document.getElementById("calendar-dialog").showModal();
+  }
+}
+
+document.getElementById("btn-calendar").addEventListener("click", openCalendar);
+
+document.getElementById("calendar-close").addEventListener("click", () => {
+  document.getElementById("calendar-dialog").close();
+});
+
+document.getElementById("calendar-copy").addEventListener("click", async () => {
+  const url = document.getElementById("calendar-url").value;
+  const copyEl = document.getElementById("calendar-copy");
+  if (!url) return;
+  try {
+    await navigator.clipboard.writeText(url);
+    copyEl.textContent = I18N.t("copied");
+    setTimeout(() => {
+      copyEl.textContent = I18N.t("copyLink");
+    }, 1600);
+  } catch {
+    document.getElementById("calendar-url").select();
+  }
+});
 
 document.getElementById("btn-propose").addEventListener("click", () => {
   document.getElementById("propose-form").reset();

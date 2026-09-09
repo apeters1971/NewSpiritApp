@@ -16,12 +16,19 @@ let pollRows = [];
 let pollFrozen = false;
 let pendingPhoto = null;
 let pendingPhotoURL = "";
-let pendingInfo = { address: "", phone: "", birthday: "" };
+let pendingInfo = { address: "", phone: "", birthday: "", altEmail: "" };
 let chatRoom = "";
 let chatMessages = [];
 
 const CHAT_ROOMS = ["choir", "band", "orchestra"];
 const CHAT_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
+const COMPOSE_EMOJIS = [
+  "😀", "😂", "😊", "😍", "🥰", "😘", "😎", "🤩", "🥳", "😇",
+  "😉", "😜", "🤔", "🙄", "😴", "😭", "😤", "😮", "😱", "🥺",
+  "👍", "👎", "👏", "🙌", "🙏", "💪", "✌️", "👋", "❤️", "🔥",
+  "⭐", "✨", "🎉", "💯", "👀", "✅", "🎵", "🎶", "🎤", "🎸",
+  "🎹", "🥁",
+];
 const MEMBER_COLORS = ["#3dd6c6", "#f0a35e", "#8cb4ff", "#e38cff", "#7fd99a", "#f07178", "#ffd166", "#9ad0c8"];
 
 function currentPerson() {
@@ -32,7 +39,7 @@ function currentPerson() {
 }
 
 function hasInfo(user) {
-  return !!(user?.address || user?.phone || user?.birthday);
+  return !!(user?.address || user?.phone || user?.birthday || user?.altEmail);
 }
 
 function paintInfoButton(btn, user) {
@@ -59,6 +66,7 @@ function paintPersonPhoto() {
 function fillInfoForm(user = {}) {
   document.getElementById("info-address").value = user.address || "";
   document.getElementById("info-phone").value = user.phone || "";
+  document.getElementById("info-alt-email").value = user.altEmail || "";
   document.getElementById("info-birthday").value = user.birthday || "";
   showError(document.getElementById("info-error"), "");
 }
@@ -67,6 +75,7 @@ function readInfoForm() {
   return {
     address: document.getElementById("info-address").value,
     phone: document.getElementById("info-phone").value,
+    altEmail: document.getElementById("info-alt-email").value,
     birthday: document.getElementById("info-birthday").value,
   };
 }
@@ -262,7 +271,7 @@ function renderPeople() {
 function renderContacts() {
   const body = document.getElementById("contacts-body");
   if (!state.users.length) {
-    body.innerHTML = `<tr><td colspan="6" class="muted">${I18N.t("noContacts")}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="7" class="muted">${I18N.t("noContacts")}</td></tr>`;
     return;
   }
   body.innerHTML = state.users.map((u) => `
@@ -270,6 +279,7 @@ function renderContacts() {
       <td>${Photo.html(u, "sm")}</td>
       <td>${escapeHtml(u.nickname)}</td>
       <td>${escapeHtml(u.email)}</td>
+      <td>${escapeHtml(u.altEmail || "")}</td>
       <td>${escapeHtml(u.address || "")}</td>
       <td>${escapeHtml(u.phone || "")}</td>
       <td>${escapeHtml(formatBirthday(u.birthday))}</td>
@@ -365,7 +375,7 @@ function clearPendingPhoto() {
 
 function resetUserForm() {
   selectedUser = "";
-  pendingInfo = { address: "", phone: "", birthday: "" };
+  pendingInfo = { address: "", phone: "", birthday: "", altEmail: "" };
   clearPendingPhoto();
   document.getElementById("people-form-title").textContent = I18N.t("addPerson");
   document.getElementById("user-id").value = "";
@@ -385,7 +395,7 @@ function resetUserForm() {
 
 function fillUserForm(u) {
   selectedUser = u.id;
-  pendingInfo = { address: u.address || "", phone: u.phone || "", birthday: u.birthday || "" };
+  pendingInfo = { address: u.address || "", phone: u.phone || "", birthday: u.birthday || "", altEmail: u.altEmail || "" };
   clearPendingPhoto();
   document.getElementById("people-form-title").textContent = I18N.t("editPerson");
   document.getElementById("user-id").value = u.id;
@@ -629,7 +639,7 @@ function archiveRoleLabel(role) {
 }
 
 function archiveKindAccept(kind) {
-  if (kind === "audio") return "audio/*";
+  if (kind === "audio" || kind === "tracks") return "audio/*";
   if (kind === "lyrics") return "application/pdf,text/plain,image/*";
   return "application/pdf,image/*";
 }
@@ -661,6 +671,7 @@ function renderArchive() {
       <td>${escapeHtml(item.title)}</td>
       <td>${escapeHtml(item.composer || "")}</td>
       <td>${count("audio")}</td>
+      <td>${count("tracks")}</td>
       <td>${count("lyrics")}</td>
       <td>${escapeHtml(sheetRoles)}</td>
     </tr>`;
@@ -705,6 +716,7 @@ function renderArchiveFiles() {
   box.hidden = false;
   const kinds = [
     { kind: "audio", label: I18N.t("archiveAudio") },
+    { kind: "tracks", label: I18N.t("archiveTracks") },
     { kind: "lyrics", label: I18N.t("archiveLyrics") },
     { kind: "sheet", label: I18N.t("archiveSheet") },
   ];
@@ -865,6 +877,7 @@ async function boot() {
     gate.hidden = true;
     dash.hidden = false;
     renderChatTabs();
+    paintChatSize();
     connectWS();
   } catch {
     gate.hidden = false;
@@ -1230,6 +1243,7 @@ async function openChat(room, title) {
   const input = document.getElementById("chat-text");
   input.placeholder = I18N.t("chatWrite");
   document.getElementById("chat-dialog").showModal();
+  paintChatSize();
   input.focus();
 }
 
@@ -1247,6 +1261,7 @@ async function sendChat() {
     });
     input.value = "";
     input.style.height = "";
+    setChatEmojiOpen(false);
     appendChat(data.message);
   } catch (err) {
     showError(errEl, err.message);
@@ -1286,6 +1301,23 @@ document.getElementById("chat-tabs").addEventListener("click", async (e) => {
   }
 });
 
+function paintChatSize() {
+  const dialog = document.getElementById("chat-dialog");
+  const btn = document.getElementById("chat-size");
+  if (!dialog || !btn) return;
+  const full = dialog.classList.contains("full");
+  btn.textContent = I18N.t(full ? "chatReduce" : "chatExpand");
+  btn.setAttribute("aria-pressed", full ? "true" : "false");
+}
+
+document.getElementById("chat-size").addEventListener("click", () => {
+  const dialog = document.getElementById("chat-dialog");
+  dialog.classList.toggle("full");
+  paintChatSize();
+  const list = document.getElementById("chat-list");
+  if (list) list.scrollTop = list.scrollHeight;
+});
+
 document.getElementById("chat-close").addEventListener("click", () => {
   document.getElementById("chat-dialog").close();
 });
@@ -1306,6 +1338,48 @@ document.getElementById("chat-text").addEventListener("keydown", (e) => {
   e.preventDefault();
   sendChat();
 });
+
+function setChatEmojiOpen(open) {
+  const toggle = document.getElementById("chat-emoji-toggle");
+  const panel = document.getElementById("chat-emoji-panel");
+  if (!toggle || !panel) return;
+  panel.hidden = !open;
+  toggle.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+function insertChatEmoji(emoji) {
+  const input = document.getElementById("chat-text");
+  const start = input.selectionStart ?? input.value.length;
+  const end = input.selectionEnd ?? input.value.length;
+  const next = input.value.slice(0, start) + emoji + input.value.slice(end);
+  if (input.maxLength > 0 && next.length > input.maxLength) return;
+  input.value = next;
+  const pos = start + [...emoji].length;
+  input.focus();
+  input.setSelectionRange(pos, pos);
+}
+
+(function setupChatEmojiPicker() {
+  const toggle = document.getElementById("chat-emoji-toggle");
+  const panel = document.getElementById("chat-emoji-panel");
+  if (!toggle || !panel) return;
+  panel.innerHTML = COMPOSE_EMOJIS.map((emoji) => `<button type="button" data-emoji="${emoji}">${emoji}</button>`).join("");
+  toggle.addEventListener("click", (e) => {
+    e.preventDefault();
+    setChatEmojiOpen(panel.hidden);
+  });
+  panel.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-emoji]");
+    if (!btn) return;
+    insertChatEmoji(btn.dataset.emoji);
+  });
+  document.addEventListener("pointerdown", (e) => {
+    if (panel.hidden) return;
+    if (e.target.closest(".chat-emoji")) return;
+    setChatEmojiOpen(false);
+  });
+  document.getElementById("chat-dialog").addEventListener("close", () => setChatEmojiOpen(false));
+})();
 
 document.getElementById("chat-list").addEventListener("dblclick", async (e) => {
   if (e.target.closest(".chat-reacts")) return;
@@ -1635,6 +1709,7 @@ I18N.onChange(() => {
   }
   renderPollRows();
   renderChatTabs();
+  paintChatSize();
   if (document.getElementById("chat-dialog").open && chatRoom) {
     const date = chatRoom.startsWith("event:")
       ? state.dates.find((d) => d.id === chatRoom.slice("event:".length))
