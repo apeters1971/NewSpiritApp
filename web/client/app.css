@@ -39,6 +39,29 @@ body {
   place-items: center;
   padding: 1.5rem;
 }
+.logo {
+  display: block;
+  object-fit: contain;
+  background: #000;
+}
+.logo-login {
+  width: min(180px, 56%);
+  height: auto;
+  margin: 0 auto 1rem;
+  border-radius: 50%;
+}
+.logo-bar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.top-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
 .gate-card {
   width: min(420px, 100%);
   background: var(--panel);
@@ -69,7 +92,60 @@ body {
 .btn.ghost { background: transparent; color: var(--ink); }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
-.app { padding: 1.25rem clamp(1rem, 2vw, 1.75rem) 2rem; max-width: 960px; margin: 0 auto; }
+.top-actions { display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap; }
+.lang-switch {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  background: #0f151b;
+}
+.gate-card .lang-switch { margin-bottom: 1rem; }
+.lang-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 0.35rem 0.6rem;
+  cursor: pointer;
+}
+.gate-card .lang-btn {
+  width: auto;
+  margin: 0;
+  background: transparent;
+  color: var(--muted);
+  border: 0;
+  padding: 0.35rem 0.6rem;
+}
+.lang-btn.on {
+  background: var(--accent);
+  color: #062c28;
+}
+
+.app { padding: 1.25rem clamp(1rem, 2vw, 1.75rem) 2rem; max-width: 1100px; margin: 0 auto; }
+.overview { margin-bottom: 1.4rem; }
+.overview h2 { margin: 0 0 0.7rem; font-size: 1.15rem; }
+.table-wrap {
+  overflow: auto;
+  border: 1px solid var(--line);
+  background: rgba(24, 34, 44, 0.9);
+}
+.overview-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.overview-table th, .overview-table td {
+  text-align: left;
+  padding: 0.5rem 0.65rem;
+  border-bottom: 1px solid var(--line);
+}
+.overview-table th {
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.overview-table tbody tr { cursor: pointer; }
+.overview-table tbody tr:hover { background: rgba(61, 214, 198, 0.08); }
 .top {
   display: flex;
   justify-content: space-between;
@@ -96,6 +172,14 @@ body {
 .card h2 { margin: 0.15rem 0 0.25rem; font-size: 1.25rem; }
 .when { margin: 0; color: var(--muted); font-size: 0.92rem; }
 .notes { margin: 0.55rem 0 0; color: var(--muted); white-space: pre-wrap; }
+.bring { margin: 0.45rem 0 0; display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+.chip {
+  display: inline-block;
+  padding: 0.12rem 0.45rem;
+  border: 1px solid var(--line);
+  background: #101820;
+  font-size: 0.78rem;
+}
 
 .badge {
   display: inline-block;
@@ -163,6 +247,45 @@ body {
   letter-spacing: 0.04em;
 }
 .changed { color: var(--muted); font-size: 0.8rem; }
+.card-actions { margin: 0.35rem 0 0.85rem; }
+
+.dialog {
+  width: min(520px, calc(100vw - 2rem));
+  max-height: min(80vh, 720px);
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  padding: 1.1rem 1.15rem 1.2rem;
+}
+.dialog::backdrop { background: rgba(8, 12, 16, 0.72); }
+.dialog-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 1rem;
+  margin-bottom: 0.85rem;
+}
+.dialog-head h2 { margin: 0.2rem 0 0; font-size: 1.2rem; }
+.comment-list { display: grid; gap: 0.65rem; max-height: 40vh; overflow: auto; }
+.comment-card {
+  border: 1px solid var(--line);
+  background: #101820;
+  padding: 0.65rem 0.75rem;
+}
+.comment-card .meta { margin: 0 0 0.3rem; color: var(--muted); font-size: 0.78rem; }
+.comment-card p { margin: 0; white-space: pre-wrap; }
+.comment-form { margin-top: 0.9rem; }
+.comment-form label { display: block; margin-bottom: 0.35rem; }
+.comment-form textarea {
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--line);
+  background: #0f151b;
+  color: var(--ink);
+  font: inherit;
+  resize: vertical;
+  margin-bottom: 0.7rem;
+}
 
 @media (max-width: 640px) {
   .card-head { flex-direction: column; }

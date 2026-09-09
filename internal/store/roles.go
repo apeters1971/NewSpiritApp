@@ -36,6 +36,33 @@ var RoleLabels = map[string]string{
 	RoleTechnician: "Technician",
 }
 
+const (
+	CategoryConcert     = "concert"
+	CategoryRehearsal   = "rehearsal"
+	CategoryMeeting     = "meeting"
+	CategoryEvent       = "event"
+	CategoryWeekend     = "choir-weekend"
+	CategoryConcertTour = "concert-tour"
+)
+
+var Categories = []string{
+	CategoryConcert,
+	CategoryRehearsal,
+	CategoryMeeting,
+	CategoryEvent,
+	CategoryWeekend,
+	CategoryConcertTour,
+}
+
+var CategoryLabels = map[string]string{
+	CategoryConcert:     "Concert",
+	CategoryRehearsal:   "Rehearsal",
+	CategoryMeeting:     "Meeting",
+	CategoryEvent:       "Event",
+	CategoryWeekend:     "Choir Weekend",
+	CategoryConcertTour: "Concert Tour",
+}
+
 func ValidRole(role string) bool {
 	return slices.Contains(Roles, role)
 }
@@ -81,6 +108,47 @@ func NormalizeRoles(roles []string) ([]string, error) {
 	return out, nil
 }
 
+func ValidCategory(category string) bool {
+	return slices.Contains(Categories, category)
+}
+
+func NormalizeCategory(category string) (string, error) {
+	category = strings.TrimSpace(strings.ToLower(category))
+	if category == "" {
+		return CategoryEvent, nil
+	}
+	if !ValidCategory(category) {
+		return "", fmt.Errorf("invalid category")
+	}
+	return category, nil
+}
+
+const (
+	DressNone    = ""
+	DressWhite   = "white"
+	DressBlack   = "black"
+	DressCasual  = "casual"
+)
+
+var DressOptions = []string{DressWhite, DressBlack, DressCasual}
+
+var DressLabels = map[string]string{
+	DressWhite:  "White Dress",
+	DressBlack:  "Black Dress",
+	DressCasual: "Casual",
+}
+
+func NormalizeDress(dress string) (string, error) {
+	dress = strings.TrimSpace(strings.ToLower(dress))
+	if dress == "" || dress == "none" {
+		return "", nil
+	}
+	if !slices.Contains(DressOptions, dress) {
+		return "", fmt.Errorf("invalid dress option")
+	}
+	return dress, nil
+}
+
 func Catalog() map[string]any {
 	roles := make([]map[string]any, 0, len(Roles))
 	for _, role := range Roles {
@@ -91,5 +159,20 @@ func Catalog() map[string]any {
 			"subroles": sub,
 		})
 	}
-	return map[string]any{"roles": roles}
+	cats := make([]map[string]any, 0, len(Categories))
+	for _, id := range Categories {
+		cats = append(cats, map[string]any{"id": id, "label": CategoryLabels[id]})
+	}
+	dress := []map[string]any{{"id": "", "label": "None"}}
+	for _, id := range DressOptions {
+		dress = append(dress, map[string]any{"id": id, "label": DressLabels[id]})
+	}
+	return map[string]any{
+		"roles":      roles,
+		"categories": cats,
+		"bring": map[string]any{
+			"gear":  []map[string]string{{"id": "mic", "label": "Mic"}, {"id": "cable", "label": "Cable"}, {"id": "stand", "label": "Stand"}},
+			"dress": dress,
+		},
+	}
 }

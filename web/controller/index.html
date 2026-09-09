@@ -1,41 +1,56 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Controller · New Spirit</title>
+  <title data-i18n-page="pageController">Verwaltung · New Spirit</title>
+  <link rel="icon" href="/static/nsgc-symbol.png" type="image/png" />
   <link rel="stylesheet" href="/controller/static/app.css" />
 </head>
 <body>
   <section id="gate" class="gate">
     <form id="gate-form" class="gate-card">
-      <p class="brand">New Spirit</p>
-      <h1>Controller</h1>
-      <p class="lede">Enter the admin secret to manage people and dates.</p>
-      <label for="secret">Controller secret</label>
+      <div class="lang-switch" role="group" data-i18n-aria="lang">
+        <button type="button" class="lang-btn" data-lang="de">DE</button>
+        <button type="button" class="lang-btn" data-lang="en">EN</button>
+      </div>
+      <img class="logo logo-login" src="/static/nsgc-symbol.png" alt="New Spirit Gospel Choir" />
+      <p class="brand" data-i18n="brand">New Spirit</p>
+      <h1 data-i18n="controller">Verwaltung</h1>
+      <p class="lede" data-i18n="controllerLede">Gib das Admin-Geheimnis ein, um Personen und Termine zu verwalten.</p>
+      <label for="secret" data-i18n="secret">Admin-Geheimnis</label>
       <input id="secret" type="password" required autocomplete="current-password" />
-      <button type="submit">Open dashboard</button>
+      <button type="submit" data-i18n="openDash">Dashboard öffnen</button>
       <p id="gate-error" class="error" hidden></p>
     </form>
   </section>
 
   <section id="dash" class="dash" hidden>
     <header class="top">
-      <div>
-        <p class="brand">New Spirit · Controller</p>
-        <h1>Availability</h1>
+      <div class="top-brand">
+        <img class="logo logo-bar" src="/static/nsgc-symbol.png" alt="New Spirit Gospel Choir" />
+        <div>
+          <p class="brand" data-i18n="brandController">New Spirit · Verwaltung</p>
+          <h1 data-i18n="availability">Verfügbarkeit</h1>
+        </div>
       </div>
       <div class="stats">
-        <div><span id="stat-people">0</span><label>people</label></div>
-        <div><span id="stat-dates">0</span><label>dates</label></div>
-        <div><span id="stat-online">0</span><label>online</label></div>
+        <div><span id="stat-people">0</span><label data-i18n="people">Personen</label></div>
+        <div><span id="stat-dates">0</span><label data-i18n="dates">Termine</label></div>
+        <div><span id="stat-online">0</span><label data-i18n="online">online</label></div>
       </div>
-      <button type="button" id="btn-logout" class="btn ghost">Sign out</button>
+      <div class="top-actions">
+        <div class="lang-switch" role="group" data-i18n-aria="lang">
+          <button type="button" class="lang-btn" data-lang="de">DE</button>
+          <button type="button" class="lang-btn" data-lang="en">EN</button>
+        </div>
+        <button type="button" id="btn-logout" class="btn ghost" data-i18n="signOut">Abmelden</button>
+      </div>
     </header>
 
     <nav class="tabs" role="tablist">
-      <button type="button" class="tab active" data-tab="people">People</button>
-      <button type="button" class="tab" data-tab="dates">Dates</button>
+      <button type="button" class="tab active" data-tab="people" data-i18n="tabPeople">Personen</button>
+      <button type="button" class="tab" data-tab="dates" data-i18n="tabDates">Termine</button>
     </nav>
 
     <div id="tab-people" class="tab-panel">
@@ -43,29 +58,34 @@
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>Nickname</th><th>Email</th><th>Role</th><th>Subrole</th></tr>
+              <tr>
+                <th data-i18n="nickname">Spitzname</th>
+                <th data-i18n="email">E-Mail</th>
+                <th data-i18n="role">Rolle</th>
+                <th data-i18n="subrole">Teilrolle</th>
+              </tr>
             </thead>
             <tbody id="people-body"></tbody>
           </table>
         </div>
         <form id="people-form" class="drawer">
-          <h2 id="people-form-title">Add person</h2>
+          <h2 id="people-form-title">Person hinzufügen</h2>
           <input type="hidden" id="user-id" />
-          <label for="user-nickname">Nickname</label>
+          <label for="user-nickname" data-i18n="nickname">Spitzname</label>
           <input id="user-nickname" required />
-          <label for="user-email">Email</label>
+          <label for="user-email" data-i18n="email">E-Mail</label>
           <input id="user-email" type="email" required />
-          <label for="user-password">Password <span class="optional" id="pw-hint"></span></label>
+          <label for="user-password"><span data-i18n="password">Passwort</span> <span class="optional" id="pw-hint"></span></label>
           <input id="user-password" type="password" autocomplete="new-password" />
-          <label for="user-role">Role</label>
+          <label for="user-role" data-i18n="role">Rolle</label>
           <select id="user-role" required></select>
-          <label for="user-subrole">Subrole</label>
+          <label for="user-subrole" data-i18n="subrole">Teilrolle</label>
           <select id="user-subrole" required></select>
           <p id="people-error" class="error" hidden></p>
           <div class="drawer-actions">
-            <button type="submit" class="btn">Save</button>
-            <button type="button" id="btn-user-new" class="btn ghost">New</button>
-            <button type="button" id="btn-user-delete" class="btn ghost danger" disabled>Delete</button>
+            <button type="submit" class="btn" data-i18n="save">Speichern</button>
+            <button type="button" id="btn-user-new" class="btn ghost" data-i18n="newItem">Neu</button>
+            <button type="button" id="btn-user-delete" class="btn ghost danger" data-i18n="delete" disabled>Löschen</button>
           </div>
         </form>
       </div>
@@ -77,32 +97,47 @@
           <div id="date-list"></div>
         </div>
         <form id="date-form" class="drawer">
-          <h2 id="date-form-title">Add date</h2>
+          <h2 id="date-form-title">Termin hinzufügen</h2>
           <input type="hidden" id="date-id" />
-          <label for="date-title">Title</label>
+          <label for="date-title" data-i18n="title">Titel</label>
           <input id="date-title" required />
-          <label for="date-start">Starts</label>
+          <label for="date-category" data-i18n="category">Kategorie</label>
+          <select id="date-category" required></select>
+          <label for="date-start" data-i18n="starts">Beginn</label>
           <input id="date-start" type="datetime-local" required />
-          <label for="date-end">Ends <span class="optional">(optional)</span></label>
+          <label for="date-end"><span data-i18n="ends">Ende</span> <span class="optional" data-i18n="optional">(optional)</span></label>
           <input id="date-end" type="datetime-local" />
-          <label for="date-location">Location</label>
+          <label for="date-location" data-i18n="location">Ort</label>
           <input id="date-location" />
-          <label for="date-notes">Notes</label>
+          <label for="date-notes" data-i18n="notes">Notizen</label>
           <textarea id="date-notes" rows="3"></textarea>
-          <p class="label">Roles who see this date</p>
+          <p class="label" data-i18n="whatToBring">Mitbringen</p>
+          <div class="checks">
+            <label><input type="checkbox" id="bring-mic" /> <span data-i18n="gear.mic">Mikro</span></label>
+            <label><input type="checkbox" id="bring-cable" /> <span data-i18n="gear.cable">Kabel</span></label>
+            <label><input type="checkbox" id="bring-stand" /> <span data-i18n="gear.stand">Stativ</span></label>
+          </div>
+          <p class="label"><span data-i18n="dress">Kleidung</span> <span class="optional" data-i18n="optional">(optional)</span></p>
+          <div id="bring-dress" class="checks">
+            <label><input type="radio" name="dress" value="" checked /> <span data-i18n="dressNone">Keine</span></label>
+            <label><input type="radio" name="dress" value="white" /> <span data-i18n="dress.white">Weißes Kleid</span></label>
+            <label><input type="radio" name="dress" value="black" /> <span data-i18n="dress.black">Schwarzes Kleid</span></label>
+            <label><input type="radio" name="dress" value="casual" /> <span data-i18n="dress.casual">Casual</span></label>
+          </div>
+          <p class="label" data-i18n="rolesForDate">Rollen, die diesen Termin sehen</p>
           <div id="date-roles" class="checks"></div>
           <p id="date-error" class="error" hidden></p>
           <div class="drawer-actions">
-            <button type="submit" class="btn">Save</button>
-            <button type="button" id="btn-date-new" class="btn ghost">New</button>
-            <button type="button" id="btn-date-delete" class="btn ghost danger" disabled>Delete</button>
+            <button type="submit" class="btn" data-i18n="save">Speichern</button>
+            <button type="button" id="btn-date-new" class="btn ghost" data-i18n="newItem">Neu</button>
+            <button type="button" id="btn-date-delete" class="btn ghost danger" data-i18n="delete" disabled>Löschen</button>
           </div>
           <div id="date-finalize" class="finalize" hidden>
-            <h3>Finalize</h3>
-            <p class="muted">Voting stays open until you accept or cancel.</p>
+            <h3 data-i18n="finalize">Abschluss</h3>
+            <p class="muted" data-i18n="finalizeHint">Die Abstimmung bleibt offen, bis du annimmst oder absagst.</p>
             <div class="drawer-actions">
-              <button type="button" id="btn-accept" class="btn">Accept</button>
-              <button type="button" id="btn-cancel" class="btn ghost danger">Cancel date</button>
+              <button type="button" id="btn-accept" class="btn" data-i18n="accept">Annehmen</button>
+              <button type="button" id="btn-cancel" class="btn ghost danger" data-i18n="cancelDate">Absagen</button>
             </div>
           </div>
           <div id="date-detail"></div>
@@ -110,6 +145,18 @@
       </div>
     </div>
   </section>
+
+  <dialog id="comment-dialog" class="dialog">
+    <div class="dialog-head">
+      <div>
+        <p class="brand" data-i18n="commentBrand">Kommentare</p>
+        <h2 id="comment-title">Termin</h2>
+      </div>
+      <button type="button" id="comment-close" class="btn ghost" data-i18n="close">Schließen</button>
+    </div>
+    <div id="comment-list" class="comment-list"></div>
+  </dialog>
+  <script src="/static/i18n.js"></script>
   <script src="/controller/static/app.js"></script>
 </body>
 </html>

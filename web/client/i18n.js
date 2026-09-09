@@ -1,0 +1,389 @@
+(() => {
+  const KEY = "spirit-lang";
+  const listeners = [];
+
+  const dict = {
+    de: {
+      pageMember: "New Spirit",
+      pageController: "Verwaltung · New Spirit",
+      brand: "New Spirit",
+      brandController: "New Spirit · Verwaltung",
+      signIn: "Anmelden",
+      loginLede: "Melde dich mit E-Mail und Passwort aus der Verwaltung an. Du siehst die Termine deiner Rolle und alle Stimmen.",
+      email: "E-Mail",
+      password: "Passwort",
+      enter: "Weiter",
+      signOut: "Abmelden",
+      controller: "Verwaltung",
+      controllerLede: "Gib das Admin-Geheimnis ein, um Personen und Termine zu verwalten.",
+      secret: "Admin-Geheimnis",
+      openDash: "Dashboard öffnen",
+      availability: "Verfügbarkeit",
+      people: "Personen",
+      dates: "Termine",
+      online: "online",
+      tabPeople: "Personen",
+      tabDates: "Termine",
+      nickname: "Spitzname",
+      role: "Rolle",
+      subrole: "Teilrolle",
+      addPerson: "Person hinzufügen",
+      editPerson: "Person bearbeiten",
+      addDate: "Termin hinzufügen",
+      editDate: "Termin bearbeiten",
+      save: "Speichern",
+      newItem: "Neu",
+      delete: "Löschen",
+      title: "Titel",
+      category: "Kategorie",
+      starts: "Beginn",
+      ends: "Ende",
+      optional: "(optional)",
+      location: "Ort",
+      notes: "Notizen",
+      whatToBring: "Mitbringen",
+      dress: "Kleidung",
+      dressNone: "Keine",
+      rolesForDate: "Rollen, die diesen Termin sehen",
+      finalize: "Abschluss",
+      finalizeHint: "Die Abstimmung bleibt offen, bis du annimmst oder absagst.",
+      accept: "Annehmen",
+      cancelDate: "Absagen",
+      votes: "Stimmen",
+      comments: "Kommentare",
+      commentBrand: "Kommentare",
+      addComment: "Kommentar schreiben",
+      postComment: "Kommentar senden",
+      close: "Schließen",
+      noComments: "Noch keine Kommentare.",
+      dateNotFound: "Termin nicht gefunden.",
+      nextMonths: "Nächste drei Monate",
+      when: "Wann",
+      event: "Termin",
+      bring: "Mitbringen",
+      status: "Status",
+      yourVote: "Deine Stimme",
+      noUpcoming: "Keine Termine in den nächsten drei Monaten.",
+      noDatesRole: "Noch keine Termine für deine Rolle.",
+      noDatesYet: "Noch keine Termine.",
+      noPeopleRoles: "Noch keine Personen in diesen Rollen.",
+      name: "Name",
+      vote: "Stimme",
+      firstVote: "erste Stimme",
+      yourFirstVote: "Deine erste Stimme",
+      bringPrefix: "Mitbringen",
+      passwordKeep: "(leer lassen zum Behalten)",
+      lang: "Sprache",
+      confirmDeletePerson: "Diese Person löschen?",
+      confirmDeleteDate: "Diesen Termin löschen?",
+      yes: "Ja",
+      maybe: "Vielleicht",
+      no: "Nein",
+      unknown: "Unbekannt",
+      voting: "Abstimmung",
+      accepted: "Angenommen",
+      cancelled: "Abgesagt",
+      "role.choir": "Chor",
+      "role.band": "Band",
+      "role.orchestra": "Orchester",
+      "role.technician": "Technik",
+      "subrole.Sopran": "Sopran",
+      "subrole.Alt": "Alt",
+      "subrole.Tenor/Bass": "Tenor/Bass",
+      "subrole.Drums": "Schlagzeug",
+      "subrole.Percussion": "Percussion",
+      "subrole.Guitar": "Gitarre",
+      "subrole.Hammond": "Hammond",
+      "subrole.E-Bass": "E-Bass",
+      "subrole.Trumpet": "Trompete",
+      "subrole.Sax": "Sax",
+      "subrole.Trombone": "Posaune",
+      "subrole.Piano": "Klavier",
+      "subrole.Strings": "Streicher",
+      "subrole.Woodbrass": "Holzbläser",
+      "subrole.Brass": "Blech",
+      "subrole.Harp": "Harfe",
+      "subrole.Sound": "Ton",
+      "subrole.Light": "Licht",
+      "subrole.Stage": "Bühne",
+      "category.concert": "Konzert",
+      "category.rehearsal": "Probe",
+      "category.meeting": "Treffen",
+      "category.event": "Event",
+      "category.choir-weekend": "Chorwochenende",
+      "category.concert-tour": "Konzertreise",
+      "gear.mic": "Mikro",
+      "gear.cable": "Kabel",
+      "gear.stand": "Stativ",
+      "dress.white": "Weißes Kleid",
+      "dress.black": "Schwarzes Kleid",
+      "dress.casual": "Casual",
+      errLogin: "E-Mail oder Passwort ungültig",
+      errUnauthorized: "Nicht angemeldet",
+      errSecret: "Geheimnis ungültig",
+      errSecretMissing: "CONTROLLER_SECRET ist nicht gesetzt",
+      errComment: "Kommentar fehlt",
+      errCommentLong: "Kommentar ist zu lang",
+      errVote: "Ungültige Stimme",
+      errNotFound: "Nicht gefunden",
+      errTitle: "Titel ist erforderlich",
+      errRoles: "Mindestens eine Rolle ist erforderlich",
+      errNickname: "Spitzname ist erforderlich",
+      errEmail: "E-Mail ungültig",
+      errPassword: "Passwort muss mindestens 6 Zeichen haben",
+      errRole: "Ungültige Rolle",
+      errCategory: "Ungültige Kategorie",
+      errDress: "Ungültige Kleidung",
+      errStart: "Beginn ist erforderlich",
+      errEnd: "Ende liegt vor dem Beginn",
+      errStatus: "Status muss angenommen oder abgesagt sein",
+      errExists: "Spitzname oder E-Mail existiert bereits",
+      errAlreadyFinal: "Der Termin ist bereits abgeschlossen",
+      errLocked: "Bei abgesagten Terminen kann nicht mehr abgestimmt werden",
+      errNotYourRole: "Dieser Termin gilt nicht für deine Rolle",
+    },
+    en: {
+      pageMember: "New Spirit",
+      pageController: "Controller · New Spirit",
+      brand: "New Spirit",
+      brandController: "New Spirit · Controller",
+      signIn: "Sign in",
+      loginLede: "Use the email and password from the controller. You will see dates for your role and everyone’s votes.",
+      email: "Email",
+      password: "Password",
+      enter: "Enter",
+      signOut: "Sign out",
+      controller: "Controller",
+      controllerLede: "Enter the admin secret to manage people and dates.",
+      secret: "Controller secret",
+      openDash: "Open dashboard",
+      availability: "Availability",
+      people: "people",
+      dates: "dates",
+      online: "online",
+      tabPeople: "People",
+      tabDates: "Dates",
+      nickname: "Nickname",
+      role: "Role",
+      subrole: "Subrole",
+      addPerson: "Add person",
+      editPerson: "Edit person",
+      addDate: "Add date",
+      editDate: "Edit date",
+      save: "Save",
+      newItem: "New",
+      delete: "Delete",
+      title: "Title",
+      category: "Category",
+      starts: "Starts",
+      ends: "Ends",
+      optional: "(optional)",
+      location: "Location",
+      notes: "Notes",
+      whatToBring: "What to bring",
+      dress: "Dress",
+      dressNone: "None",
+      rolesForDate: "Roles who see this date",
+      finalize: "Finalize",
+      finalizeHint: "Voting stays open until you accept or cancel.",
+      accept: "Accept",
+      cancelDate: "Cancel date",
+      votes: "Votes",
+      comments: "Comments",
+      commentBrand: "Comments",
+      addComment: "Add a comment",
+      postComment: "Post comment",
+      close: "Close",
+      noComments: "No comments yet.",
+      dateNotFound: "Date not found.",
+      nextMonths: "Next three months",
+      when: "When",
+      event: "Event",
+      bring: "Bring",
+      status: "Status",
+      yourVote: "Your vote",
+      noUpcoming: "No dates in the next three months.",
+      noDatesRole: "No dates for your role yet.",
+      noDatesYet: "No dates yet.",
+      noPeopleRoles: "No people in these roles yet.",
+      name: "Name",
+      vote: "Vote",
+      firstVote: "first",
+      yourFirstVote: "Your first vote",
+      bringPrefix: "Bring",
+      passwordKeep: "(leave blank to keep)",
+      lang: "Language",
+      confirmDeletePerson: "Delete this person?",
+      confirmDeleteDate: "Delete this date?",
+      yes: "Yes",
+      maybe: "Maybe",
+      no: "No",
+      unknown: "Unknown",
+      voting: "Voting",
+      accepted: "Accepted",
+      cancelled: "Cancelled",
+      "role.choir": "Choir",
+      "role.band": "Band",
+      "role.orchestra": "Orchestra",
+      "role.technician": "Technician",
+      "subrole.Sopran": "Sopran",
+      "subrole.Alt": "Alt",
+      "subrole.Tenor/Bass": "Tenor/Bass",
+      "subrole.Drums": "Drums",
+      "subrole.Percussion": "Percussion",
+      "subrole.Guitar": "Guitar",
+      "subrole.Hammond": "Hammond",
+      "subrole.E-Bass": "E-Bass",
+      "subrole.Trumpet": "Trumpet",
+      "subrole.Sax": "Sax",
+      "subrole.Trombone": "Trombone",
+      "subrole.Piano": "Piano",
+      "subrole.Strings": "Strings",
+      "subrole.Woodbrass": "Woodbrass",
+      "subrole.Brass": "Brass",
+      "subrole.Harp": "Harp",
+      "subrole.Sound": "Sound",
+      "subrole.Light": "Light",
+      "subrole.Stage": "Stage",
+      "category.concert": "Concert",
+      "category.rehearsal": "Rehearsal",
+      "category.meeting": "Meeting",
+      "category.event": "Event",
+      "category.choir-weekend": "Choir Weekend",
+      "category.concert-tour": "Concert Tour",
+      "gear.mic": "Mic",
+      "gear.cable": "Cable",
+      "gear.stand": "Stand",
+      "dress.white": "White Dress",
+      "dress.black": "Black Dress",
+      "dress.casual": "Casual",
+      errLogin: "Invalid email or password",
+      errUnauthorized: "Unauthorized",
+      errSecret: "Invalid secret",
+      errSecretMissing: "CONTROLLER_SECRET is not configured",
+      errComment: "Comment is required",
+      errCommentLong: "Comment is too long",
+      errVote: "Invalid vote",
+      errNotFound: "Not found",
+      errTitle: "Title is required",
+      errRoles: "At least one role is required",
+      errNickname: "Nickname is required",
+      errEmail: "Invalid email",
+      errPassword: "Password must be at least 6 characters",
+      errRole: "Invalid role",
+      errCategory: "Invalid category",
+      errDress: "Invalid dress option",
+      errStart: "Start time is required",
+      errEnd: "End time is before start time",
+      errStatus: "Status must be accepted or cancelled",
+      errExists: "Nickname or email already exists",
+      errAlreadyFinal: "This date is already finalized",
+      errLocked: "Voting is locked on cancelled dates",
+      errNotYourRole: "This date is not for your role",
+    },
+  };
+
+  const errMap = {
+    "invalid email or password": "errLogin",
+    unauthorized: "errUnauthorized",
+    "invalid secret": "errSecret",
+    "CONTROLLER_SECRET not configured": "errSecretMissing",
+    "comment is required": "errComment",
+    "comment is too long": "errCommentLong",
+    "invalid vote": "errVote",
+    "not found": "errNotFound",
+    "title is required": "errTitle",
+    "at least one role is required": "errRoles",
+    "nickname is required": "errNickname",
+    "invalid email": "errEmail",
+    "password must be at least 6 characters": "errPassword",
+    "invalid role": "errRole",
+    "invalid category": "errCategory",
+    "invalid dress option": "errDress",
+    "start time is required": "errStart",
+    "end time is before start time": "errEnd",
+    "status must be accepted or cancelled": "errStatus",
+  };
+
+  function stored() {
+    try {
+      const v = localStorage.getItem(KEY);
+      if (v === "en" || v === "de") return v;
+    } catch {}
+    return "de";
+  }
+
+  let lang = stored();
+
+  function t(key) {
+    return (dict[lang] && dict[lang][key]) || dict.de[key] || key;
+  }
+
+  function apply() {
+    document.documentElement.lang = lang;
+    document.querySelectorAll("[data-i18n]").forEach((el) => {
+      el.textContent = t(el.dataset.i18n);
+    });
+    document.querySelectorAll("[data-i18n-html]").forEach((el) => {
+      el.innerHTML = t(el.dataset.i18nHtml);
+    });
+    document.querySelectorAll("[data-i18n-page]").forEach((el) => {
+      document.title = t(el.dataset.i18nPage);
+    });
+    document.querySelectorAll("[data-i18n-aria]").forEach((el) => {
+      el.setAttribute("aria-label", t(el.dataset.i18nAria));
+    });
+    document.querySelectorAll("[data-lang]").forEach((el) => {
+      el.classList.toggle("on", el.dataset.lang === lang);
+      el.setAttribute("aria-pressed", el.dataset.lang === lang ? "true" : "false");
+    });
+  }
+
+  function setLang(next) {
+    if (next !== "de" && next !== "en") return;
+    lang = next;
+    try { localStorage.setItem(KEY, lang); } catch {}
+    apply();
+    listeners.forEach((fn) => fn(lang));
+  }
+
+  function error(msg) {
+    const raw = String(msg || "");
+    if (errMap[raw]) return t(errMap[raw]);
+    if (raw.includes("nickname or email already exists")) return t("errExists");
+    if (raw.includes("already")) return t("errAlreadyFinal");
+    if (raw.includes("voting is locked")) return t("errLocked");
+    if (raw.includes("not for your role")) return t("errNotYourRole");
+    return raw;
+  }
+
+  window.I18N = {
+    t,
+    apply,
+    setLang,
+    error,
+    locale: () => (lang === "en" ? "en-GB" : "de-DE"),
+    lang: () => lang,
+    role: (id) => t(`role.${id}`),
+    subrole: (name) => t(`subrole.${name}`),
+    category: (id) => t(`category.${id}`),
+    status: (id) => t(id),
+    vote: (id) => t(id),
+    dress: (id) => t(`dress.${id}`),
+    gear: (id) => t(`gear.${id}`),
+    onChange(fn) { listeners.push(fn); },
+  };
+
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-lang]");
+    if (!btn) return;
+    e.preventDefault();
+    setLang(btn.dataset.lang);
+  });
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", apply);
+  } else {
+    apply();
+  }
+})();

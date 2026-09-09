@@ -37,13 +37,22 @@ type User struct {
 type Date struct {
 	ID        string     `json:"id"`
 	Title     string     `json:"title"`
+	Category  string     `json:"category"`
 	StartsAt  time.Time  `json:"startsAt"`
 	EndsAt    *time.Time `json:"endsAt,omitempty"`
 	Location  string     `json:"location,omitempty"`
 	Notes     string     `json:"notes,omitempty"`
 	Status    string     `json:"status"`
 	Roles     []string   `json:"roles"`
+	Bring     Bring      `json:"bring"`
 	CreatedAt time.Time  `json:"createdAt"`
+}
+
+type Bring struct {
+	Mic   bool   `json:"mic"`
+	Cable bool   `json:"cable"`
+	Stand bool   `json:"stand"`
+	Dress string `json:"dress,omitempty"`
 }
 
 type RosterEntry struct {
@@ -66,12 +75,22 @@ type SubroleCount struct {
 	Total   int    `json:"total"`
 }
 
+type Comment struct {
+	ID        string    `json:"id"`
+	DateID    string    `json:"dateId"`
+	UserID    string    `json:"userId"`
+	Nickname  string    `json:"nickname"`
+	Text      string    `json:"text"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
 type DateView struct {
 	Date
 	MyChoice      string         `json:"myChoice"`
 	MyInitial     *string        `json:"myInitial,omitempty"`
 	Roster        []RosterEntry  `json:"roster"`
 	SubroleCounts []SubroleCount `json:"subroleCounts"`
+	Comments      []Comment      `json:"comments"`
 }
 
 func Open(path string) (*Store, error) {
@@ -115,11 +134,16 @@ CREATE TABLE IF NOT EXISTS controller_sessions (
 CREATE TABLE IF NOT EXISTS dates (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT 'event',
   starts_at TEXT NOT NULL,
   ends_at TEXT,
   location TEXT NOT NULL DEFAULT '',
   notes TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL,
+  bring_mic INTEGER NOT NULL DEFAULT 0,
+  bring_cable INTEGER NOT NULL DEFAULT 0,
+  bring_stand INTEGER NOT NULL DEFAULT 0,
+  bring_dress TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS date_roles (
@@ -138,8 +162,24 @@ CREATE TABLE IF NOT EXISTS votes (
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 CREATE INDEX IF NOT EXISTS idx_dates_starts ON dates(starts_at);
 CREATE INDEX IF NOT EXISTS idx_votes_date ON votes(date_id);
+CREATE TABLE IF NOT EXISTS comments (
+  id TEXT PRIMARY KEY,
+  date_id TEXT NOT NULL REFERENCES dates(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  text TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_comments_date ON comments(date_id, created_at);
 `)
-	return err
+	if err != nil {
+		return err
+	}
+	_, _ = s.db.Exec(`ALTER TABLE dates ADD COLUMN category TEXT NOT NULL DEFAULT 'event'`)
+	_, _ = s.db.Exec(`ALTER TABLE dates ADD COLUMN bring_mic INTEGER NOT NULL DEFAULT 0`)
+	_, _ = s.db.Exec(`ALTER TABLE dates ADD COLUMN bring_cable INTEGER NOT NULL DEFAULT 0`)
+	_, _ = s.db.Exec(`ALTER TABLE dates ADD COLUMN bring_stand INTEGER NOT NULL DEFAULT 0`)
+	_, _ = s.db.Exec(`ALTER TABLE dates ADD COLUMN bring_dress TEXT NOT NULL DEFAULT ''`)
+	return nil
 }
 
 func newID() string {
@@ -388,7 +428,7 @@ func (s *Store) RevokeControllerSession(sessionID string) {
 	_, _ = s.db.Exec(`UPDATE controller_sessions SET revoked_at=? WHERE id=? AND revoked_at IS NULL`, fmtTime(now()), sessionID)
 }
 
-func (s *Store) CreateDate(title string, startsAt time.Time, endsAt *time.Time, location, notes string, roles []string) (Date, error) {
+func (s *Store) CreateDate(title, category string, startsAt time.Time, endsAt *time.Time, location, notes string, roles []string, bring Bring) (Date, error) {
 	title = NormalizeName(title)
 	if title == "" {
 		return Date{}, fmt.Errorf("title is required")
@@ -396,22 +436,32 @@ func (s *Store) CreateDate(title string, startsAt time.Time, endsAt *time.Time, 
 	if startsAt.IsZero() {
 		return Date{}, fmt.Errorf("start time is required")
 	}
-	roles, err := NormalizeRoles(roles)
+	category, err := NormalizeCategory(category)
+	if err != nil {
+		return Date{}, err
+	}
+	roles, err = NormalizeRoles(roles)
 	if err != nil {
 		return Date{}, err
 	}
 	if endsAt != nil && endsAt.Before(startsAt) {
 		return Date{}, fmt.Errorf("end time is before start time")
 	}
+	bring, err = normalizeBring(bring)
+	if err != nil {
+		return Date{}, err
+	}
 	d := Date{
 		ID:        newID(),
 		Title:     title,
+		Category:  category,
 		StartsAt:  startsAt.UTC(),
 		EndsAt:    utcPtr(endsAt),
 		Location:  NormalizeName(location),
 		Notes:     strings.TrimSpace(notes),
 		Status:    StatusVoting,
 		Roles:     roles,
+		Bring:     bring,
 		CreatedAt: now(),
 	}
 	tx, err := s.db.Begin()
@@ -424,8 +474,8 @@ func (s *Store) CreateDate(title string, startsAt time.Time, endsAt *time.Time, 
 		ends = fmtTime(*d.EndsAt)
 	}
 	if _, err := tx.Exec(
-		`INSERT INTO dates(id, title, starts_at, ends_at, location, notes, status, created_at) VALUES(?,?,?,?,?,?,?,?)`,
-		d.ID, d.Title, fmtTime(d.StartsAt), ends, d.Location, d.Notes, d.Status, fmtTime(d.CreatedAt),
+		`INSERT INTO dates(id, title, category, starts_at, ends_at, location, notes, status, bring_mic, bring_cable, bring_stand, bring_dress, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		d.ID, d.Title, d.Category, fmtTime(d.StartsAt), ends, d.Location, d.Notes, d.Status, boolInt(d.Bring.Mic), boolInt(d.Bring.Cable), boolInt(d.Bring.Stand), d.Bring.Dress, fmtTime(d.CreatedAt),
 	); err != nil {
 		return Date{}, err
 	}
@@ -438,7 +488,7 @@ func (s *Store) CreateDate(title string, startsAt time.Time, endsAt *time.Time, 
 	return d, nil
 }
 
-func (s *Store) UpdateDate(id, title string, startsAt time.Time, endsAt *time.Time, location, notes string, roles []string) (Date, error) {
+func (s *Store) UpdateDate(id, title, category string, startsAt time.Time, endsAt *time.Time, location, notes string, roles []string, bring Bring) (Date, error) {
 	if _, err := s.dateRow(id); err != nil {
 		return Date{}, err
 	}
@@ -449,12 +499,20 @@ func (s *Store) UpdateDate(id, title string, startsAt time.Time, endsAt *time.Ti
 	if startsAt.IsZero() {
 		return Date{}, fmt.Errorf("start time is required")
 	}
-	roles, err := NormalizeRoles(roles)
+	category, err := NormalizeCategory(category)
+	if err != nil {
+		return Date{}, err
+	}
+	roles, err = NormalizeRoles(roles)
 	if err != nil {
 		return Date{}, err
 	}
 	if endsAt != nil && endsAt.Before(startsAt) {
 		return Date{}, fmt.Errorf("end time is before start time")
+	}
+	bring, err = normalizeBring(bring)
+	if err != nil {
+		return Date{}, err
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -466,8 +524,8 @@ func (s *Store) UpdateDate(id, title string, startsAt time.Time, endsAt *time.Ti
 		ends = fmtTime(endsAt.UTC())
 	}
 	if _, err := tx.Exec(
-		`UPDATE dates SET title=?, starts_at=?, ends_at=?, location=?, notes=? WHERE id=?`,
-		title, fmtTime(startsAt.UTC()), ends, NormalizeName(location), strings.TrimSpace(notes), id,
+		`UPDATE dates SET title=?, category=?, starts_at=?, ends_at=?, location=?, notes=?, bring_mic=?, bring_cable=?, bring_stand=?, bring_dress=? WHERE id=?`,
+		title, category, fmtTime(startsAt.UTC()), ends, NormalizeName(location), strings.TrimSpace(notes), boolInt(bring.Mic), boolInt(bring.Cable), boolInt(bring.Stand), bring.Dress, id,
 	); err != nil {
 		return Date{}, err
 	}
@@ -514,36 +572,10 @@ func (s *Store) SetDateStatus(id, status string) (Date, error) {
 	if _, err := tx.Exec(`UPDATE dates SET status=? WHERE id=?`, status, id); err != nil {
 		return Date{}, err
 	}
-	if status == StatusAccepted {
-		if err := snapshotInitialVotes(tx, id, d.Roles); err != nil {
-			return Date{}, err
-		}
-	}
 	if err := tx.Commit(); err != nil {
 		return Date{}, err
 	}
 	return s.dateRow(id)
-}
-
-func snapshotInitialVotes(tx *sql.Tx, dateID string, roles []string) error {
-	if _, err := tx.Exec(`UPDATE votes SET initial_choice = choice WHERE date_id=? AND initial_choice IS NULL`, dateID); err != nil {
-		return err
-	}
-	placeholders := strings.Repeat("?,", len(roles))
-	placeholders = placeholders[:len(placeholders)-1]
-	args := []any{dateID, fmtTime(now())}
-	for _, role := range roles {
-		args = append(args, role)
-	}
-	args = append(args, dateID)
-	_, err := tx.Exec(`
-INSERT INTO votes(user_id, date_id, choice, initial_choice, updated_at)
-SELECT u.id, ?, 'unknown', 'unknown', ?
-FROM users u
-WHERE u.role IN (`+placeholders+`)
-  AND NOT EXISTS (SELECT 1 FROM votes v WHERE v.user_id = u.id AND v.date_id = ?)
-`, args...)
-	return err
 }
 
 func (s *Store) SetVote(userID, dateID, choice string) error {
@@ -565,11 +597,78 @@ func (s *Store) SetVote(userID, dateID, choice string) error {
 		return fmt.Errorf("%w: this date is not for your role", ErrForbidden)
 	}
 	_, err = s.db.Exec(`
-INSERT INTO votes(user_id, date_id, choice, updated_at) VALUES(?,?,?,?)
+INSERT INTO votes(user_id, date_id, choice, initial_choice, updated_at) VALUES(?,?,?,?,?)
 ON CONFLICT(user_id, date_id) DO UPDATE SET choice=excluded.choice, updated_at=excluded.updated_at`,
-		userID, dateID, choice, fmtTime(now()),
+		userID, dateID, choice, choice, fmtTime(now()),
 	)
 	return err
+}
+
+func (s *Store) AddComment(userID, dateID, text string) (Comment, error) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return Comment{}, fmt.Errorf("comment is required")
+	}
+	if len([]rune(text)) > 2000 {
+		return Comment{}, fmt.Errorf("comment is too long")
+	}
+	d, err := s.dateRow(dateID)
+	if err != nil {
+		return Comment{}, err
+	}
+	u, err := s.UserByID(userID)
+	if err != nil {
+		return Comment{}, err
+	}
+	if !slicesContains(d.Roles, u.Role) {
+		return Comment{}, fmt.Errorf("%w: this date is not for your role", ErrForbidden)
+	}
+	c := Comment{
+		ID:        newID(),
+		DateID:    dateID,
+		UserID:    userID,
+		Nickname:  u.Nickname,
+		Text:      text,
+		CreatedAt: now(),
+	}
+	_, err = s.db.Exec(
+		`INSERT INTO comments(id, date_id, user_id, text, created_at) VALUES(?,?,?,?,?)`,
+		c.ID, c.DateID, c.UserID, c.Text, fmtTime(c.CreatedAt),
+	)
+	return c, err
+}
+
+func (s *Store) commentsForDates(ids []string) (map[string][]Comment, error) {
+	out := map[string][]Comment{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	placeholders := strings.Repeat("?,", len(ids))
+	placeholders = placeholders[:len(placeholders)-1]
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+	rows, err := s.db.Query(`
+SELECT c.id, c.date_id, c.user_id, u.nickname, c.text, c.created_at
+FROM comments c
+JOIN users u ON u.id = c.user_id
+WHERE c.date_id IN (`+placeholders+`)
+ORDER BY c.created_at`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var c Comment
+		var created string
+		if err := rows.Scan(&c.ID, &c.DateID, &c.UserID, &c.Nickname, &c.Text, &created); err != nil {
+			return nil, err
+		}
+		c.CreatedAt = parseTime(created)
+		out[c.DateID] = append(out[c.DateID], c)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) DateView(id string, viewer *User) (DateView, error) {
@@ -577,7 +676,11 @@ func (s *Store) DateView(id string, viewer *User) (DateView, error) {
 	if err != nil {
 		return DateView{}, err
 	}
-	return s.attachView(d, viewer)
+	commentsByDate, err := s.commentsForDates([]string{id})
+	if err != nil {
+		return DateView{}, err
+	}
+	return s.attachView(d, viewer, commentsByDate[id])
 }
 
 func (s *Store) ListDateViews(viewer *User) ([]DateView, error) {
@@ -585,12 +688,23 @@ func (s *Store) ListDateViews(viewer *User) ([]DateView, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := make([]DateView, 0, len(dates))
+	ids := make([]string, 0, len(dates))
 	for _, d := range dates {
 		if viewer != nil && !slicesContains(d.Roles, viewer.Role) {
 			continue
 		}
-		v, err := s.attachView(d, viewer)
+		ids = append(ids, d.ID)
+	}
+	commentsByDate, err := s.commentsForDates(ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]DateView, 0, len(ids))
+	for _, d := range dates {
+		if viewer != nil && !slicesContains(d.Roles, viewer.Role) {
+			continue
+		}
+		v, err := s.attachView(d, viewer, commentsByDate[d.ID])
 		if err != nil {
 			return nil, err
 		}
@@ -599,16 +713,20 @@ func (s *Store) ListDateViews(viewer *User) ([]DateView, error) {
 	return out, nil
 }
 
-func (s *Store) attachView(d Date, viewer *User) (DateView, error) {
+func (s *Store) attachView(d Date, viewer *User, comments []Comment) (DateView, error) {
 	roster, err := s.roster(d)
 	if err != nil {
 		return DateView{}, err
+	}
+	if comments == nil {
+		comments = []Comment{}
 	}
 	view := DateView{
 		Date:          d,
 		MyChoice:      VoteUnknown,
 		Roster:        roster,
 		SubroleCounts: countsFor(d.Roles, roster),
+		Comments:      comments,
 	}
 	if viewer != nil {
 		for _, entry := range roster {
@@ -623,7 +741,7 @@ func (s *Store) attachView(d Date, viewer *User) (DateView, error) {
 }
 
 func (s *Store) listDates() ([]Date, error) {
-	rows, err := s.db.Query(`SELECT id, title, starts_at, ends_at, location, notes, status, created_at FROM dates ORDER BY starts_at`)
+	rows, err := s.db.Query(`SELECT id, title, category, starts_at, ends_at, location, notes, status, bring_mic, bring_cable, bring_stand, bring_dress, created_at FROM dates ORDER BY starts_at`)
 	if err != nil {
 		return nil, err
 	}
@@ -656,7 +774,7 @@ func (s *Store) listDates() ([]Date, error) {
 
 func (s *Store) dateRow(id string) (Date, error) {
 	d, err := scanDateRow(s.db.QueryRow(
-		`SELECT id, title, starts_at, ends_at, location, notes, status, created_at FROM dates WHERE id=?`, id,
+		`SELECT id, title, category, starts_at, ends_at, location, notes, status, bring_mic, bring_cable, bring_stand, bring_dress, created_at FROM dates WHERE id=?`, id,
 	))
 	if err != nil {
 		return Date{}, err
@@ -805,7 +923,8 @@ func scanDate(rs rowScanner) (Date, error) {
 	var d Date
 	var starts, created string
 	var ends sql.NullString
-	if err := rs.Scan(&d.ID, &d.Title, &starts, &ends, &d.Location, &d.Notes, &d.Status, &created); err != nil {
+	var mic, cable, stand int
+	if err := rs.Scan(&d.ID, &d.Title, &d.Category, &starts, &ends, &d.Location, &d.Notes, &d.Status, &mic, &cable, &stand, &d.Bring.Dress, &created); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Date{}, ErrNotFound
 		}
@@ -814,6 +933,9 @@ func scanDate(rs rowScanner) (Date, error) {
 	d.StartsAt = parseTime(starts)
 	d.EndsAt = parseTimePtr(ends)
 	d.CreatedAt = parseTime(created)
+	d.Bring.Mic = mic != 0
+	d.Bring.Cable = cable != 0
+	d.Bring.Stand = stand != 0
 	return d, nil
 }
 
@@ -838,4 +960,20 @@ func slicesContains(list []string, v string) bool {
 
 func isUnique(err error) bool {
 	return err != nil && strings.Contains(strings.ToLower(err.Error()), "unique")
+}
+
+func boolInt(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
+}
+
+func normalizeBring(b Bring) (Bring, error) {
+	dress, err := NormalizeDress(b.Dress)
+	if err != nil {
+		return Bring{}, err
+	}
+	b.Dress = dress
+	return b, nil
 }

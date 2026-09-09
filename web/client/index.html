@@ -1,38 +1,90 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>New Spirit</title>
+  <title data-i18n-page="pageMember">New Spirit</title>
+  <link rel="icon" href="/static/nsgc-symbol.png" type="image/png" />
   <link rel="stylesheet" href="/static/app.css" />
 </head>
 <body>
   <section id="login-view" class="gate">
     <form id="login-form" class="gate-card">
-      <p class="brand">New Spirit</p>
-      <h1>Sign in</h1>
-      <p class="lede">Use the email and password from the controller. You will see dates for your role and everyone’s votes.</p>
-      <label for="email">Email</label>
+      <div class="lang-switch" role="group" data-i18n-aria="lang">
+        <button type="button" class="lang-btn" data-lang="de">DE</button>
+        <button type="button" class="lang-btn" data-lang="en">EN</button>
+      </div>
+      <img class="logo logo-login" src="/static/nsgc-symbol.png" alt="New Spirit Gospel Choir" />
+      <p class="brand" data-i18n="brand">New Spirit</p>
+      <h1 data-i18n="signIn">Anmelden</h1>
+      <p class="lede" data-i18n="loginLede">Melde dich mit E-Mail und Passwort aus der Verwaltung an. Du siehst die Termine deiner Rolle und alle Stimmen.</p>
+      <label for="email" data-i18n="email">E-Mail</label>
       <input id="email" name="email" type="email" required autocomplete="username" />
-      <label for="password">Password</label>
+      <label for="password" data-i18n="password">Passwort</label>
       <input id="password" name="password" type="password" required autocomplete="current-password" />
-      <button type="submit">Enter</button>
+      <button type="submit" data-i18n="enter">Weiter</button>
       <p id="login-error" class="error" hidden></p>
     </form>
   </section>
 
   <section id="app-view" class="app" hidden>
     <header class="top">
-      <div>
-        <p class="brand">New Spirit</p>
-        <h1 id="who-name">Dates</h1>
-        <p id="who-meta" class="muted"></p>
+      <div class="top-brand">
+        <img class="logo logo-bar" src="/static/nsgc-symbol.png" alt="New Spirit Gospel Choir" />
+        <div>
+          <p class="brand" data-i18n="brand">New Spirit</p>
+          <h1 id="who-name">Termine</h1>
+          <p id="who-meta" class="muted"></p>
+        </div>
       </div>
-      <button type="button" id="btn-logout" class="btn ghost">Sign out</button>
+      <div class="top-actions">
+        <div class="lang-switch" role="group" data-i18n-aria="lang">
+          <button type="button" class="lang-btn" data-lang="de">DE</button>
+          <button type="button" class="lang-btn" data-lang="en">EN</button>
+        </div>
+        <button type="button" id="btn-logout" class="btn ghost" data-i18n="signOut">Abmelden</button>
+      </div>
     </header>
+    <section id="overview" class="overview" hidden>
+      <h2 data-i18n="nextMonths">Nächste drei Monate</h2>
+      <div class="table-wrap">
+        <table class="overview-table">
+          <thead>
+            <tr>
+              <th data-i18n="when">Wann</th>
+              <th data-i18n="category">Kategorie</th>
+              <th data-i18n="event">Termin</th>
+              <th data-i18n="bring">Mitbringen</th>
+              <th data-i18n="status">Status</th>
+              <th data-i18n="yourVote">Deine Stimme</th>
+            </tr>
+          </thead>
+          <tbody id="overview-body"></tbody>
+        </table>
+      </div>
+      <p id="overview-empty" class="muted" hidden data-i18n="noUpcoming">Keine Termine in den nächsten drei Monaten.</p>
+    </section>
     <div id="dates" class="dates"></div>
-    <p id="empty" class="lede empty" hidden>No dates for your role yet.</p>
+    <p id="empty" class="lede empty" hidden data-i18n="noDatesRole">Noch keine Termine für deine Rolle.</p>
   </section>
+
+  <dialog id="comment-dialog" class="dialog">
+    <div class="dialog-head">
+      <div>
+        <p class="brand" data-i18n="commentBrand">Kommentare</p>
+        <h2 id="comment-title">Termin</h2>
+      </div>
+      <button type="button" id="comment-close" class="btn ghost" data-i18n="close">Schließen</button>
+    </div>
+    <div id="comment-list" class="comment-list"></div>
+    <form id="comment-form" class="comment-form">
+      <label for="comment-text" data-i18n="addComment">Kommentar schreiben</label>
+      <textarea id="comment-text" required maxlength="2000" rows="3"></textarea>
+      <p id="comment-error" class="error" hidden></p>
+      <button type="submit" data-i18n="postComment">Kommentar senden</button>
+    </form>
+  </dialog>
+  <script src="/static/i18n.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

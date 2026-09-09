@@ -51,6 +51,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/me", s.handleMe)
 	mux.HandleFunc("GET /api/dates", s.handleDates)
 	mux.HandleFunc("POST /api/dates/{id}/vote", s.handleVote)
+	mux.HandleFunc("POST /api/dates/{id}/comments", s.handleAddComment)
 	mux.HandleFunc("GET /ws/client", s.handleMemberWS)
 
 	mux.HandleFunc("POST /api/controller/login", s.handleControllerLogin)
@@ -201,6 +202,32 @@ func (s *Server) handleVote(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"date": view})
 }
 
+func (s *Server) handleAddComment(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var body struct {
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if _, err := s.Store.AddComment(user.ID, r.PathValue("id"), body.Text); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	view, err := s.Store.DateView(r.PathValue("id"), &user)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusCreated, map[string]any{"date": view})
+}
+
 func (s *Server) handleControllerLogin(w http.ResponseWriter, r *http.Request) {
 	if s.ControllerSecret == "" {
 		writeError(w, http.StatusServiceUnavailable, "CONTROLLER_SECRET not configured")
@@ -316,12 +343,14 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 }
 
 type dateBody struct {
-	Title    string   `json:"title"`
-	StartsAt string   `json:"startsAt"`
-	EndsAt   string   `json:"endsAt"`
-	Location string   `json:"location"`
-	Notes    string   `json:"notes"`
-	Roles    []string `json:"roles"`
+	Title    string      `json:"title"`
+	Category string      `json:"category"`
+	StartsAt string      `json:"startsAt"`
+	EndsAt   string      `json:"endsAt"`
+	Location string      `json:"location"`
+	Notes    string      `json:"notes"`
+	Roles    []string    `json:"roles"`
+	Bring    store.Bring `json:"bring"`
 }
 
 func parseDateBody(r *http.Request) (dateBody, time.Time, *time.Time, error) {
@@ -366,7 +395,7 @@ func (s *Server) handleCreateDate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	d, err := s.Store.CreateDate(body.Title, starts, ends, body.Location, body.Notes, body.Roles)
+	d, err := s.Store.CreateDate(body.Title, body.Category, starts, ends, body.Location, body.Notes, body.Roles, body.Bring)
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -389,7 +418,7 @@ func (s *Server) handleUpdateDate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if _, err := s.Store.UpdateDate(r.PathValue("id"), body.Title, starts, ends, body.Location, body.Notes, body.Roles); err != nil {
+	if _, err := s.Store.UpdateDate(r.PathValue("id"), body.Title, body.Category, starts, ends, body.Location, body.Notes, body.Roles, body.Bring); err != nil {
 		writeStoreError(w, err)
 		return
 	}

@@ -1,4 +1,3 @@
-const ROLE_LABELS = { choir: "Choir", band: "Band", orchestra: "Orchestra", technician: "Technician" };
 
 const gate = document.getElementById("gate");
 const dash = document.getElementById("dash");
@@ -6,7 +5,7 @@ const gateError = document.getElementById("gate-error");
 const peopleError = document.getElementById("people-error");
 const dateError = document.getElementById("date-error");
 
-let catalog = { roles: [] };
+let catalog = { roles: [], categories: [] };
 let state = { users: [], dates: [], online: 0 };
 let selectedUser = "";
 let selectedDate = "";
@@ -18,7 +17,7 @@ async function api(path, opts = {}) {
     ...opts,
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || res.statusText);
+  if (!res.ok) throw new Error(I18N.error(data.error || res.statusText));
   return data;
 }
 
@@ -27,17 +26,41 @@ function showError(el, msg) {
   el.textContent = msg || "";
 }
 
-function labelRole(role) {
-  return ROLE_LABELS[role] || role;
+function bringList(bring) {
+  const items = [];
+  if (bring?.mic) items.push(I18N.gear("mic"));
+  if (bring?.cable) items.push(I18N.gear("cable"));
+  if (bring?.stand) items.push(I18N.gear("stand"));
+  if (bring?.dress) items.push(I18N.dress(bring.dress));
+  return items;
+}
+
+function setBringForm(bring = {}) {
+  document.getElementById("bring-mic").checked = !!bring.mic;
+  document.getElementById("bring-cable").checked = !!bring.cable;
+  document.getElementById("bring-stand").checked = !!bring.stand;
+  const dress = bring.dress || "";
+  document.querySelectorAll("input[name=dress]").forEach((el) => {
+    el.checked = el.value === dress;
+  });
+}
+
+function readBringForm() {
+  return {
+    mic: document.getElementById("bring-mic").checked,
+    cable: document.getElementById("bring-cable").checked,
+    stand: document.getElementById("bring-stand").checked,
+    dress: document.querySelector("input[name=dress]:checked")?.value || "",
+  };
 }
 
 function voteLabel(choice) {
-  return ({ yes: "Yes", maybe: "Maybe", no: "No", unknown: "Unknown" }[choice] || "Unknown");
+  return I18N.vote(choice || "unknown");
 }
 
 function formatWhen(iso) {
   if (!iso) return "";
-  return new Date(iso).toLocaleString(undefined, {
+  return new Date(iso).toLocaleString(I18N.locale(), {
     weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
   });
 }
@@ -60,17 +83,27 @@ function subrolesFor(role) {
 
 function fillRoleSelects() {
   const roleSel = document.getElementById("user-role");
-  roleSel.innerHTML = catalog.roles.map((r) => `<option value="${r.id}">${r.label}</option>`).join("");
+  const roleVal = roleSel.value;
+  const catVal = document.getElementById("date-category").value;
+  const checkedRoles = [...document.querySelectorAll("#date-roles input:checked")].map((el) => el.value);
+  roleSel.innerHTML = catalog.roles.map((r) => `<option value="${r.id}">${I18N.role(r.id)}</option>`).join("");
+  if (roleVal) roleSel.value = roleVal;
   fillSubroles();
   document.getElementById("date-roles").innerHTML = catalog.roles.map((r) => `
-    <label><input type="checkbox" name="role" value="${r.id}" /> ${r.label}</label>
+    <label><input type="checkbox" name="role" value="${r.id}" ${checkedRoles.includes(r.id) ? "checked" : ""} /> ${I18N.role(r.id)}</label>
   `).join("");
+  const catSel = document.getElementById("date-category");
+  catSel.innerHTML = (catalog.categories || []).map((c) => `<option value="${c.id}">${I18N.category(c.id)}</option>`).join("");
+  catSel.value = catVal || catSel.value;
+  if (!catSel.value) catSel.value = "event";
 }
 
 function fillSubroles() {
   const role = document.getElementById("user-role").value;
   const sel = document.getElementById("user-subrole");
-  sel.innerHTML = subrolesFor(role).map((s) => `<option value="${s}">${s}</option>`).join("");
+  const cur = sel.value;
+  sel.innerHTML = subrolesFor(role).map((s) => `<option value="${s}">${I18N.subrole(s)}</option>`).join("");
+  if (cur) sel.value = cur;
 }
 
 document.getElementById("user-role").addEventListener("change", fillSubroles);
@@ -81,8 +114,8 @@ function renderPeople() {
     <tr data-id="${u.id}" class="${u.id === selectedUser ? "active" : ""}">
       <td>${escapeHtml(u.nickname)}</td>
       <td>${escapeHtml(u.email)}</td>
-      <td>${escapeHtml(labelRole(u.role))}</td>
-      <td>${escapeHtml(u.subrole)}</td>
+      <td>${escapeHtml(I18N.role(u.role))}</td>
+      <td>${escapeHtml(I18N.subrole(u.subrole))}</td>
     </tr>
   `).join("");
 }
@@ -92,12 +125,13 @@ function renderDates() {
   document.getElementById("stat-online").textContent = state.online;
   document.getElementById("date-list").innerHTML = state.dates.map((d) => `
     <article class="date-item ${d.id === selectedDate ? "active" : ""}" data-id="${d.id}">
-      <span class="badge ${d.status}">${d.status}</span>
+      <span class="badge ${d.status}">${I18N.status(d.status)}</span>
       <h3>${escapeHtml(d.title)}</h3>
+      <p>${escapeHtml(I18N.category(d.category))}${bringList(d.bring).length ? " · " + escapeHtml(bringList(d.bring).join(", ")) : ""}</p>
       <p>${escapeHtml(formatWhen(d.startsAt))}${d.location ? " · " + escapeHtml(d.location) : ""}</p>
-      <p>${d.roles.map(labelRole).join(" · ")}</p>
+      <p>${d.roles.map((r) => I18N.role(r)).join(" · ")}</p>
     </article>
-  `).join("") || `<p class="lede" style="padding:1rem">No dates yet.</p>`;
+  `).join("") || `<p class="lede" style="padding:1rem">${I18N.t("noDatesYet")}</p>`;
   renderDateDetail();
 }
 
@@ -113,28 +147,32 @@ function renderDateDetail() {
   fin.hidden = d.status !== "voting";
   const counts = (d.subroleCounts || []).map((c) => `
     <div class="count">
-      <strong>${escapeHtml(labelRole(c.role))} · ${escapeHtml(c.subrole)}</strong>
-      <span>Yes ${c.yes} · Maybe ${c.maybe} · No ${c.no} · Unknown ${c.unknown}</span>
+      <strong>${escapeHtml(I18N.role(c.role))} · ${escapeHtml(I18N.subrole(c.subrole))}</strong>
+      <span>${I18N.t("yes")} ${c.yes} · ${I18N.t("maybe")} ${c.maybe} · ${I18N.t("no")} ${c.no} · ${I18N.t("unknown")} ${c.unknown}</span>
     </div>`).join("");
   const rows = (d.roster || []).map((e) => {
-    const changed = d.status === "accepted" && e.initialChoice && e.initialChoice !== e.choice;
+    const changed = e.initialChoice && e.initialChoice !== e.choice;
     const vote = changed
-      ? `<span class="badge ${e.choice}">${voteLabel(e.choice)}</span> <span class="changed">was ${voteLabel(e.initialChoice)}</span>`
+      ? `<span class="badge ${e.choice}">${voteLabel(e.choice)}</span> <span class="changed">${I18N.t("firstVote")} ${voteLabel(e.initialChoice)}</span>`
       : `<span class="badge ${e.choice}">${voteLabel(e.choice)}</span>`;
-    return `<tr><td>${escapeHtml(e.nickname)}</td><td>${escapeHtml(e.subrole)}</td><td>${vote}</td></tr>`;
+    return `<tr><td>${escapeHtml(e.nickname)}</td><td>${escapeHtml(I18N.subrole(e.subrole))}</td><td>${vote}</td></tr>`;
   }).join("");
+  const commentCount = (d.comments || []).length;
   box.innerHTML = `
-    <h3>Votes</h3>
+    <h3>${I18N.t("votes")}</h3>
     <div class="counts">${counts}</div>
     <table>
-      <thead><tr><th>Name</th><th>Subrole</th><th>Vote</th></tr></thead>
-      <tbody>${rows || `<tr><td colspan="3" class="muted">No people in these roles yet.</td></tr>`}</tbody>
-    </table>`;
+      <thead><tr><th>${I18N.t("name")}</th><th>${I18N.t("subrole")}</th><th>${I18N.t("vote")}</th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="3" class="muted">${I18N.t("noPeopleRoles")}</td></tr>`}</tbody>
+    </table>
+    <div class="drawer-actions">
+      <button type="button" class="btn ghost" id="btn-comments">${I18N.t("comments")}${commentCount ? ` (${commentCount})` : ""}</button>
+    </div>`;
 }
 
 function resetUserForm() {
   selectedUser = "";
-  document.getElementById("people-form-title").textContent = "Add person";
+  document.getElementById("people-form-title").textContent = I18N.t("addPerson");
   document.getElementById("user-id").value = "";
   document.getElementById("user-nickname").value = "";
   document.getElementById("user-email").value = "";
@@ -150,13 +188,13 @@ function resetUserForm() {
 
 function fillUserForm(u) {
   selectedUser = u.id;
-  document.getElementById("people-form-title").textContent = "Edit person";
+  document.getElementById("people-form-title").textContent = I18N.t("editPerson");
   document.getElementById("user-id").value = u.id;
   document.getElementById("user-nickname").value = u.nickname;
   document.getElementById("user-email").value = u.email;
   document.getElementById("user-password").value = "";
   document.getElementById("user-password").required = false;
-  document.getElementById("pw-hint").textContent = "(leave blank to keep)";
+  document.getElementById("pw-hint").textContent = I18N.t("passwordKeep");
   document.getElementById("user-role").value = u.role;
   fillSubroles();
   document.getElementById("user-subrole").value = u.subrole;
@@ -166,14 +204,16 @@ function fillUserForm(u) {
 
 function resetDateForm() {
   selectedDate = "";
-  document.getElementById("date-form-title").textContent = "Add date";
+  document.getElementById("date-form-title").textContent = I18N.t("addDate");
   document.getElementById("date-id").value = "";
   document.getElementById("date-title").value = "";
+  document.getElementById("date-category").value = "event";
   document.getElementById("date-start").value = "";
   document.getElementById("date-end").value = "";
   document.getElementById("date-location").value = "";
   document.getElementById("date-notes").value = "";
   document.querySelectorAll("#date-roles input").forEach((el) => { el.checked = false; });
+  setBringForm();
   document.getElementById("btn-date-delete").disabled = true;
   renderDates();
   showError(dateError, "");
@@ -181,9 +221,10 @@ function resetDateForm() {
 
 function fillDateForm(d) {
   selectedDate = d.id;
-  document.getElementById("date-form-title").textContent = "Edit date";
+  document.getElementById("date-form-title").textContent = I18N.t("editDate");
   document.getElementById("date-id").value = d.id;
   document.getElementById("date-title").value = d.title;
+  document.getElementById("date-category").value = d.category || "event";
   document.getElementById("date-start").value = toLocalInput(d.startsAt);
   document.getElementById("date-end").value = toLocalInput(d.endsAt);
   document.getElementById("date-location").value = d.location || "";
@@ -191,6 +232,7 @@ function fillDateForm(d) {
   document.querySelectorAll("#date-roles input").forEach((el) => {
     el.checked = (d.roles || []).includes(el.value);
   });
+  setBringForm(d.bring);
   document.getElementById("btn-date-delete").disabled = false;
   renderDates();
 }
@@ -216,6 +258,8 @@ async function boot() {
     catalog = await api("/api/catalog");
     fillRoleSelects();
     await loadState();
+    document.getElementById("people-form-title").textContent = selectedUser ? I18N.t("editPerson") : I18N.t("addPerson");
+    document.getElementById("date-form-title").textContent = selectedDate ? I18N.t("editDate") : I18N.t("addDate");
     gate.hidden = true;
     dash.hidden = false;
     connectWS();
@@ -285,7 +329,7 @@ document.getElementById("people-form").addEventListener("submit", async (e) => {
 
 document.getElementById("btn-user-delete").addEventListener("click", async () => {
   const id = document.getElementById("user-id").value;
-  if (!id || !confirm("Delete this person?")) return;
+  if (!id || !confirm(I18N.t("confirmDeletePerson"))) return;
   try {
     await api(`/api/controller/users/${id}`, { method: "DELETE" });
     resetUserForm();
@@ -310,11 +354,13 @@ document.getElementById("date-form").addEventListener("submit", async (e) => {
   const id = document.getElementById("date-id").value;
   const body = {
     title: document.getElementById("date-title").value,
+    category: document.getElementById("date-category").value,
     startsAt: toISO(document.getElementById("date-start").value),
     endsAt: toISO(document.getElementById("date-end").value),
     location: document.getElementById("date-location").value,
     notes: document.getElementById("date-notes").value,
     roles: [...document.querySelectorAll("#date-roles input:checked")].map((el) => el.value),
+    bring: readBringForm(),
   };
   try {
     const data = id
@@ -329,7 +375,7 @@ document.getElementById("date-form").addEventListener("submit", async (e) => {
 
 document.getElementById("btn-date-delete").addEventListener("click", async () => {
   const id = document.getElementById("date-id").value;
-  if (!id || !confirm("Delete this date?")) return;
+  if (!id || !confirm(I18N.t("confirmDeleteDate"))) return;
   try {
     await api(`/api/controller/dates/${id}`, { method: "DELETE" });
     resetDateForm();
@@ -357,11 +403,61 @@ async function setStatus(status) {
 document.getElementById("btn-accept").addEventListener("click", () => setStatus("accepted"));
 document.getElementById("btn-cancel").addEventListener("click", () => setStatus("cancelled"));
 
+document.getElementById("date-detail").addEventListener("click", (e) => {
+  if (!e.target.closest("#btn-comments") || !selectedDate) return;
+  const d = state.dates.find((x) => x.id === selectedDate);
+  if (!d) return;
+  document.getElementById("comment-title").textContent = d.title;
+  const items = d.comments || [];
+  document.getElementById("comment-list").innerHTML = items.length
+    ? items.map((c) => `
+      <article class="comment-card">
+        <p class="meta">${escapeHtml(c.nickname)} · ${escapeHtml(formatWhen(c.createdAt))}</p>
+        <p>${escapeHtml(c.text)}</p>
+      </article>`).join("")
+    : `<p class="muted">${I18N.t("noComments")}</p>`;
+  document.getElementById("comment-dialog").showModal();
+});
+
+document.getElementById("comment-close").addEventListener("click", () => {
+  document.getElementById("comment-dialog").close();
+});
+
 function connectWS() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   const ws = new WebSocket(`${proto}://${location.host}/ws/controller`);
   ws.onmessage = () => { loadState().catch(() => {}); };
   ws.onclose = () => { if (!dash.hidden) setTimeout(connectWS, 2000); };
 }
+
+I18N.onChange(() => {
+  I18N.apply();
+  if (catalog.roles.length) fillRoleSelects();
+  const peopleTitle = document.getElementById("people-form-title");
+  const dateTitle = document.getElementById("date-form-title");
+  peopleTitle.textContent = selectedUser ? I18N.t("editPerson") : I18N.t("addPerson");
+  dateTitle.textContent = selectedDate ? I18N.t("editDate") : I18N.t("addDate");
+  const pwHint = document.getElementById("pw-hint");
+  if (selectedUser) pwHint.textContent = I18N.t("passwordKeep");
+  if (!dash.hidden) {
+    renderPeople();
+    renderDates();
+    const dialog = document.getElementById("comment-dialog");
+    if (dialog.open && selectedDate) {
+      const d = state.dates.find((x) => x.id === selectedDate);
+      if (d) {
+        document.getElementById("comment-title").textContent = d.title;
+        const items = d.comments || [];
+        document.getElementById("comment-list").innerHTML = items.length
+          ? items.map((c) => `
+            <article class="comment-card">
+              <p class="meta">${escapeHtml(c.nickname)} · ${escapeHtml(formatWhen(c.createdAt))}</p>
+              <p>${escapeHtml(c.text)}</p>
+            </article>`).join("")
+          : `<p class="muted">${I18N.t("noComments")}</p>`;
+      }
+    }
+  }
+});
 
 boot();
