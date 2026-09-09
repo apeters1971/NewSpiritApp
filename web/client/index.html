@@ -3,8 +3,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#10161c" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="New Spirit" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title data-i18n-page="pageMember">New Spirit</title>
+  <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/nsgc-symbol.png" type="image/png" />
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
   <link rel="stylesheet" href="/static/app.css" />
 </head>
 <body>
@@ -23,6 +29,7 @@
       <label for="password" data-i18n="password">Passwort</label>
       <input id="password" name="password" type="password" required autocomplete="current-password" />
       <button type="submit" data-i18n="enter">Weiter</button>
+      <button type="button" class="btn ghost install-open" data-i18n="addToHome">Zum Home-Bildschirm</button>
       <p id="login-error" class="error" hidden></p>
     </form>
   </section>
@@ -72,6 +79,7 @@
         </div>
         <button type="button" id="btn-calendar" class="btn calendar" data-i18n="subscribeCalendar">Kalender</button>
         <button type="button" id="btn-directory" class="btn book" data-i18n="addressBook">Adressbuch</button>
+        <button type="button" class="btn install install-open" data-i18n="addToHome">Zum Home-Bildschirm</button>
         <button type="button" id="btn-propose" class="btn song" data-i18n="proposeSong">Song vorschlagen</button>
         <button type="button" id="btn-proposals" class="btn song" data-i18n="songProposals">Songvorschläge</button>
         <div class="lang-switch" role="group" data-i18n-aria="lang">
@@ -145,6 +153,22 @@
       <p id="info-error" class="error" hidden></p>
       <button type="submit" data-i18n="save">Speichern</button>
     </form>
+  </dialog>
+  <dialog id="install-dialog" class="dialog">
+    <div class="dialog-head">
+      <div>
+        <p class="brand" data-i18n="addToHome">Zum Home-Bildschirm</p>
+        <h2 data-i18n="addToHomeTitle">Als App öffnen</h2>
+      </div>
+      <button type="button" id="install-close" class="btn ghost" data-i18n="close">Schließen</button>
+    </div>
+    <p class="muted" data-i18n="addToHomeLede">Lege New Spirit auf den Home-Bildschirm, dann öffnet es sich wie eine App.</p>
+    <p class="muted" data-i18n="addToHomeIOS">iPhone oder iPad: Teilen-Symbol → Zum Home-Bildschirm.</p>
+    <p class="muted" data-i18n="addToHomeAndroid">Android: Menü ⋮ → App installieren oder Zum Startbildschirm hinzufügen.</p>
+    <p id="install-installed" class="muted" hidden data-i18n="addToHomeInstalled">New Spirit ist schon auf diesem Gerät installiert.</p>
+    <div class="photo-actions">
+      <button type="button" id="install-now" class="btn" hidden data-i18n="addToHomeInstall">Jetzt installieren</button>
+    </div>
   </dialog>
   <dialog id="calendar-dialog" class="dialog">
     <div class="dialog-head">

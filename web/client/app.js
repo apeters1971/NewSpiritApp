@@ -562,7 +562,59 @@ async function enterApp() {
   connectWS();
 }
 
+let installPrompt = null;
+
+function isStandaloneApp() {
+  return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+}
+
+function paintInstallButtons() {
+  document.querySelectorAll(".install-open").forEach((btn) => {
+    btn.hidden = isStandaloneApp();
+  });
+}
+
+function openInstallDialog() {
+  const installed = document.getElementById("install-installed");
+  const now = document.getElementById("install-now");
+  installed.hidden = !isStandaloneApp();
+  now.hidden = !installPrompt;
+  document.getElementById("install-dialog").showModal();
+}
+
+function registerInstall() {
+  paintInstallButtons();
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {});
+  }
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    installPrompt = e;
+    paintInstallButtons();
+  });
+  window.addEventListener("appinstalled", () => {
+    installPrompt = null;
+    paintInstallButtons();
+    document.getElementById("install-dialog").close();
+  });
+  document.querySelectorAll(".install-open").forEach((btn) => {
+    btn.addEventListener("click", openInstallDialog);
+  });
+  document.getElementById("install-close").addEventListener("click", () => {
+    document.getElementById("install-dialog").close();
+  });
+  document.getElementById("install-now").addEventListener("click", async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    const choice = await installPrompt.userChoice.catch(() => null);
+    if (choice?.outcome === "accepted") installPrompt = null;
+    paintInstallButtons();
+    document.getElementById("install-dialog").close();
+  });
+}
+
 async function boot() {
+  registerInstall();
   try {
     const data = await api("/api/me");
     me = data.user;
@@ -954,6 +1006,7 @@ function connectWS() {
 
 I18N.onChange(() => {
   I18N.apply();
+  paintInstallButtons();
   if (me && !me.mustChangePassword) {
     document.getElementById("who-name").textContent = me.nickname;
     document.getElementById("who-meta").textContent = `${I18N.role(me.role)} · ${I18N.subrole(me.subrole)} · ${me.email}`;

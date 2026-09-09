@@ -175,6 +175,26 @@ button.avatar { cursor: pointer; appearance: none; }
   border-color: #7fd99a;
   color: #c8f0d4;
 }
+.btn.install,
+.btn.install-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.btn.install {
+  background: rgba(61, 214, 198, 0.16);
+  border-color: var(--accent);
+  color: #9eefe6;
+}
+.btn.install-open::before {
+  content: "";
+  width: 1.05em;
+  height: 1.05em;
+  flex: 0 0 auto;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M7 3.5h10A2.5 2.5 0 0 1 19.5 6v8A2.5 2.5 0 0 1 17 16.5h-3.2v2.2l-2.55-1.7-2.55 1.7v-2.2H7A2.5 2.5 0 0 1 4.5 14V6A2.5 2.5 0 0 1 7 3.5zm5 2.2v2.3H9.7v1.8H12v2.3h1.8v-2.3h2.3V8H13.8V5.7z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M7 3.5h10A2.5 2.5 0 0 1 19.5 6v8A2.5 2.5 0 0 1 17 16.5h-3.2v2.2l-2.55-1.7-2.55 1.7v-2.2H7A2.5 2.5 0 0 1 4.5 14V6A2.5 2.5 0 0 1 7 3.5zm5 2.2v2.3H9.7v1.8H12v2.3h1.8v-2.3h2.3V8H13.8V5.7z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
 a.btn { display: inline-block; text-decoration: none; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 

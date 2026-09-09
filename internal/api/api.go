@@ -105,6 +105,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/controller/proposals/{id}", s.handleControllerDeleteProposal)
 	mux.HandleFunc("GET /ws/controller", s.handleControllerWS)
 
+	mux.HandleFunc("GET /manifest.webmanifest", s.serveManifest)
+	mux.HandleFunc("GET /sw.js", s.serveServiceWorker)
 	mux.HandleFunc("GET /controller", s.serveControllerIndex)
 	mux.HandleFunc("GET /controller/", s.serveControllerIndex)
 	mux.Handle("GET /controller/static/", http.StripPrefix("/controller/static/", http.FileServer(http.FS(s.ControllerFS))))
@@ -1493,6 +1495,18 @@ func (s *Server) readLoop(conn *websocket.Conn) {
 			return
 		}
 	}
+}
+
+func (s *Server) serveManifest(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/manifest+json")
+	serveFSFile(w, r, s.ClientFS, "manifest.webmanifest")
+}
+
+func (s *Server) serveServiceWorker(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Service-Worker-Allowed", "/")
+	w.Header().Set("Cache-Control", "no-cache")
+	serveFSFile(w, r, s.ClientFS, "sw.js")
 }
 
 func (s *Server) serveClientIndex(w http.ResponseWriter, r *http.Request) {
