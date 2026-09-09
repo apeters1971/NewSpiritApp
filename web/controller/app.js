@@ -26,10 +26,25 @@ function hasInfo(user) {
   return !!(user?.address || user?.phone || user?.birthday);
 }
 
+function paintInfoButton(btn, user) {
+  if (!btn) return;
+  btn.textContent = I18N.t(user?.birthday ? "modifyInfo" : "addInfo");
+  btn.classList.toggle("has-info", hasInfo(user));
+}
+
+function formatBirthday(iso) {
+  if (!iso) return "";
+  const parts = String(iso).split("-");
+  if (parts.length !== 3) return iso;
+  const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(I18N.locale(), { day: "numeric", month: "short", year: "numeric" });
+}
+
 function paintPersonPhoto() {
   const person = currentPerson();
   Photo.paint(document.getElementById("user-photo"), person, pendingPhotoURL);
-  document.getElementById("user-info")?.classList.toggle("has-info", hasInfo(person));
+  paintInfoButton(document.getElementById("user-info"), person);
 }
 
 function fillInfoForm(user = {}) {
@@ -210,6 +225,32 @@ function renderPeople() {
   `).join("");
 }
 
+function renderContacts() {
+  const body = document.getElementById("contacts-body");
+  if (!state.users.length) {
+    body.innerHTML = `<tr><td colspan="6" class="muted">${I18N.t("noContacts")}</td></tr>`;
+    return;
+  }
+  body.innerHTML = state.users.map((u) => `
+    <tr data-id="${u.id}">
+      <td>${Photo.html(u, "sm")}</td>
+      <td>${escapeHtml(u.nickname)}</td>
+      <td>${escapeHtml(u.email)}</td>
+      <td>${escapeHtml(u.address || "")}</td>
+      <td>${escapeHtml(u.phone || "")}</td>
+      <td>${escapeHtml(formatBirthday(u.birthday))}</td>
+    </tr>
+  `).join("");
+}
+
+function showTab(name) {
+  document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === name));
+  document.getElementById("tab-people").hidden = name !== "people";
+  document.getElementById("tab-contacts").hidden = name !== "contacts";
+  document.getElementById("tab-dates").hidden = name !== "dates";
+  document.getElementById("tab-ranking").hidden = name !== "ranking";
+}
+
 function renderDates() {
   document.getElementById("stat-dates").textContent = state.dates.length;
   document.getElementById("stat-online").textContent = state.online;
@@ -371,6 +412,7 @@ async function loadState() {
     renderPeople();
     renderDates();
   }
+  renderContacts();
   renderRanking();
   paintPersonPhoto();
 }
@@ -459,12 +501,7 @@ document.getElementById("btn-logout").addEventListener("click", async () => {
 });
 
 document.querySelectorAll(".tab").forEach((tab) => {
-  tab.addEventListener("click", () => {
-    document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === tab));
-    document.getElementById("tab-people").hidden = tab.dataset.tab !== "people";
-    document.getElementById("tab-dates").hidden = tab.dataset.tab !== "dates";
-    document.getElementById("tab-ranking").hidden = tab.dataset.tab !== "ranking";
-  });
+  tab.addEventListener("click", () => showTab(tab.dataset.tab));
 });
 
 document.getElementById("people-body").addEventListener("click", (e) => {
@@ -472,6 +509,15 @@ document.getElementById("people-body").addEventListener("click", (e) => {
   if (!row) return;
   const user = state.users.find((u) => u.id === row.dataset.id);
   if (user) fillUserForm(user);
+});
+
+document.getElementById("contacts-body").addEventListener("click", (e) => {
+  const row = e.target.closest("tr[data-id]");
+  if (!row) return;
+  const user = state.users.find((u) => u.id === row.dataset.id);
+  if (!user) return;
+  fillUserForm(user);
+  showTab("people");
 });
 
 document.getElementById("btn-user-new").addEventListener("click", resetUserForm);
@@ -731,6 +777,7 @@ I18N.onChange(() => {
   renderPollRows();
   if (!dash.hidden) {
     renderPeople();
+    renderContacts();
     renderDates();
     renderRanking();
     paintPersonPhoto();

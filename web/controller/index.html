@@ -50,6 +50,7 @@
 
     <nav class="tabs" role="tablist">
       <button type="button" class="tab active" data-tab="people" data-i18n="tabPeople">Personen</button>
+      <button type="button" class="tab" data-tab="contacts" data-i18n="tabContacts">Kontakte</button>
       <button type="button" class="tab" data-tab="dates" data-i18n="tabDates">Termine</button>
       <button type="button" class="tab" data-tab="ranking" data-i18n="tabRanking">Rang</button>
     </nav>
@@ -77,7 +78,7 @@
               <span class="avatar-placeholder">+</span>
               <img alt="" hidden />
             </button>
-            <button type="button" id="user-info" class="btn ghost info-btn" data-i18n="addInfo">Info hinzufügen</button>
+            <button type="button" id="user-info" class="btn ghost info-btn">Info hinzufügen</button>
           </div>
           <p class="muted photo-hint" data-i18n="photoLede">Wähle ein Bild oder nimm eines mit der Kamera auf.</p>
           <input type="hidden" id="user-id" />
@@ -98,6 +99,25 @@
             <button type="button" id="btn-user-delete" class="btn ghost danger" data-i18n="delete" disabled>Löschen</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <div id="tab-contacts" class="tab-panel" hidden>
+      <h2 data-i18n="tabContacts">Kontakte</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th class="photo-col" data-i18n="photo">Foto</th>
+              <th data-i18n="name">Name</th>
+              <th data-i18n="email">E-Mail</th>
+              <th data-i18n="address">Adresse</th>
+              <th data-i18n="phone">Telefon</th>
+              <th data-i18n="birthday">Geburtstag</th>
+            </tr>
+          </thead>
+          <tbody id="contacts-body"></tbody>
+        </table>
       </div>
     </div>
 

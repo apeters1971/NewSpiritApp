@@ -398,6 +398,7 @@ function hasInfo(user) {
 
 function paintInfoButton(btn, user) {
   if (!btn) return;
+  btn.textContent = I18N.t(user?.birthday ? "modifyInfo" : "addInfo");
   btn.classList.toggle("has-info", hasInfo(user));
 }
 

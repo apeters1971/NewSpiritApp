@@ -229,6 +229,7 @@ button.avatar { cursor: pointer; appearance: none; }
   margin-bottom: -1px;
 }
 .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab-panel > h2 { margin: 0 0 0.7rem; font-size: 1.2rem; }
 
 .layout {
   display: grid;
