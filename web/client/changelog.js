@@ -4,6 +4,9 @@
       date: "2026-09-10",
       items: {
         de: [
+          "Oben neben dem Chat liegen kleine Werkzeug-Icons für Adressbuch, Archiv, Song vorschlagen, Songvorschläge, Add App und Kalender.",
+          "Im Notenarchiv gibt es MIDI/MusicXML als eigenen Bereich. Archiv, Songvorschläge und Adressbuch füllen das Fenster und haben unten Schließen.",
+          "Kanäle, Nächster Termin und Meine Termine sind zugeklappte Paneele. Unten zeigt ein Vor/Zurück nur einen Termin, Chat füllt das Fenster und springt zur zuletzt gesehenen Nachricht.",
           "Jeder Chat hat unten einen Schließen-Knopf — Live, Chor, Band, Orchester und Termin, auch in der Verwaltung.",
           "Streamer können Kamera, eine Videodatei oder ein Fenster/Tab (z. B. YouTube) senden.",
           "Neben dem Live-Video liegt ein Live-Chat — dieselben Funktionen wie im normalen Chat, Video 75 %, Chat 25 %.",
@@ -27,6 +30,9 @@
           "Sprachnachrichten im Chat mit automatischer Abschrift. Chorleiter können Kanäle haben.",
         ],
         en: [
+          "Small tool icons sit on the top bar next to chat: address book, archive, propose a song, song proposals, Add App, and calendar.",
+          "The music archive has a MIDI/MusicXML slot. Archive, song proposals, and the address book fill the window and have Close at the bottom.",
+          "Channels, Next Date, and My Dates start folded. A back/forward control shows one date at a time, chat fills the window, and opens at the last message you saw.",
           "Every chat has a Close button at the bottom — live, choir, band, orchestra, and event, including in the controller.",
           "Streamers can send the camera, a video file, or a window/tab (for example YouTube).",
           "A live chat sits beside the live video — the same features as the normal chat, video 75%, chat 25%.",

@@ -101,6 +101,26 @@
           <button type="button" id="btn-header-play" class="btn ghost header-stream header-play" disabled data-i18n-aria="streamPlay" aria-label="Live-Stream ansehen">
             <span class="header-play-icon" aria-hidden="true"></span>
           </button>
+          <div id="header-tools" class="header-tools">
+            <button type="button" class="btn ghost header-tool" data-tool="directory" data-i18n-aria="addressBook" aria-label="Adressbuch">
+              <span class="header-tool-icon book" aria-hidden="true"></span>
+            </button>
+            <button type="button" class="btn ghost header-tool" data-tool="archive" data-i18n-aria="tabArchive" aria-label="Notenarchiv">
+              <span class="header-tool-icon notes" aria-hidden="true"></span>
+            </button>
+            <button type="button" class="btn ghost header-tool" data-tool="propose" data-i18n-aria="proposeSong" aria-label="Song vorschlagen">
+              <span class="header-tool-icon propose" aria-hidden="true"></span>
+            </button>
+            <button type="button" class="btn ghost header-tool" data-tool="proposals" data-i18n-aria="songProposals" aria-label="Songvorschläge">
+              <span class="header-tool-icon proposals" aria-hidden="true"></span>
+            </button>
+            <button type="button" class="btn ghost header-tool install-open" data-tool="install" data-i18n-aria="addToHome" aria-label="Add App">
+              <span class="header-tool-icon install" aria-hidden="true"></span>
+            </button>
+            <button type="button" class="btn ghost header-tool" data-tool="calendar" data-i18n-aria="subscribeCalendar" aria-label="Kalender">
+              <span class="header-tool-icon calendar" aria-hidden="true"></span>
+            </button>
+          </div>
           <button type="button" id="btn-header-chat" class="btn ghost header-chat" hidden data-i18n-aria="chatBrand" aria-label="Chat">
             <span class="header-chat-icon" aria-hidden="true"></span>
             <span id="header-chat-unread" class="menu-unread" hidden></span>
@@ -131,14 +151,30 @@
         <button type="button" id="btn-logout-menu" class="btn ghost menu-logout" data-i18n="signOut">Abmelden</button>
       </nav>
     </header>
-    <section id="my-channels" class="my-channels" hidden></section>
+    <details id="fold-channels" class="fold fold-channels" hidden>
+      <summary class="fold-head"><span class="brand" data-i18n="channels">Kanäle</span></summary>
+      <section id="my-channels" class="my-channels fold-body"></section>
+    </details>
+    <details id="fold-next" class="fold fold-next" open hidden>
+      <summary class="fold-head"><span class="brand" data-i18n="nextUp">Nächster Termin</span></summary>
+      <div id="next-up" class="fold-body next-up-body"></div>
+    </details>
+    <details id="fold-overview" class="fold fold-overview">
+      <summary class="fold-head"><span class="brand" data-i18n="myDates">Meine Termine</span></summary>
+      <div class="fold-body">
+        <div id="overview-list" class="overview-box"></div>
+        <p id="overview-empty" class="muted" hidden data-i18n="noUpcoming">Keine kommenden Termine.</p>
+      </div>
+    </details>
     <section id="spirit" class="spirit" hidden></section>
-    <section id="next-up" class="next-up" hidden></section>
-    <section id="overview" class="overview" hidden>
-      <p class="brand" data-i18n="myDates">Meine Termine</p>
-      <div id="overview-list" class="overview-box"></div>
-      <p id="overview-empty" class="muted" hidden data-i18n="noUpcoming">Keine kommenden Termine.</p>
-    </section>
+    <nav id="date-nav" class="date-nav" hidden>
+      <button type="button" id="date-prev" class="btn ghost date-nav-btn" data-i18n-aria="datePrev" aria-label="Vorheriger Termin">‹</button>
+      <div class="date-nav-meta">
+        <p id="date-nav-title" class="date-nav-title"></p>
+        <p id="date-nav-label" class="date-nav-label muted"></p>
+      </div>
+      <button type="button" id="date-next" class="btn ghost date-nav-btn" data-i18n-aria="dateNext" aria-label="Nächster Termin">›</button>
+    </nav>
     <div id="dates" class="dates"></div>
     <p id="empty" class="lede empty" hidden data-i18n="noDatesRole">Noch keine Termine für deine Rolle.</p>
   </section>
@@ -235,7 +271,7 @@
       <a id="calendar-open" class="btn ghost" data-i18n="openSubscribe">Abonnieren</a>
     </div>
   </dialog>
-  <dialog id="propose-dialog" class="dialog">
+  <dialog id="propose-dialog" class="dialog app-dialog">
     <div class="dialog-head">
       <div>
         <p class="brand" data-i18n="proposeSong">Song vorschlagen</p>
@@ -243,17 +279,20 @@
       </div>
       <button type="button" id="propose-close" class="btn ghost" data-i18n="close">Schließen</button>
     </div>
-    <p class="muted" data-i18n="proposeSongLede">Schlage einen Song vor. Eine URL zu Noten oder einem Video ist optional.</p>
-    <form id="propose-form" class="info-form">
-      <label for="propose-title" data-i18n="songName">Songname</label>
-      <input id="propose-title" type="text" required maxlength="200" autocomplete="off" />
-      <label for="propose-url" data-i18n="songURLOptional">URL (optional)</label>
-      <input id="propose-url" type="url" maxlength="500" autocomplete="off" placeholder="https://" />
-      <p id="propose-error" class="error" hidden></p>
-      <button type="submit" data-i18n="proposeSubmit">Vorschlagen</button>
-    </form>
+    <div class="app-dialog-body">
+      <p class="muted" data-i18n="proposeSongLede">Schlage einen Song vor. Eine URL zu Noten oder einem Video ist optional.</p>
+      <form id="propose-form" class="info-form">
+        <label for="propose-title" data-i18n="songName">Songname</label>
+        <input id="propose-title" type="text" required maxlength="200" autocomplete="off" />
+        <label for="propose-url" data-i18n="songURLOptional">URL (optional)</label>
+        <input id="propose-url" type="url" maxlength="500" autocomplete="off" placeholder="https://" />
+        <p id="propose-error" class="error" hidden></p>
+        <button type="submit" data-i18n="proposeSubmit">Vorschlagen</button>
+      </form>
+    </div>
+    <button type="button" id="propose-close-bottom" class="btn ghost chat-close-bottom" data-i18n="close">Schließen</button>
   </dialog>
-  <dialog id="directory-dialog" class="dialog directory-dialog">
+  <dialog id="directory-dialog" class="dialog directory-dialog app-dialog">
     <div class="dialog-head">
       <div>
         <p class="brand" data-i18n="addressBook">Adressbuch</p>
@@ -261,12 +300,15 @@
       </div>
       <button type="button" id="directory-close" class="btn ghost" data-i18n="close">Schließen</button>
     </div>
-    <p class="muted" data-i18n="addressBookLede">E-Mails und Telefon aller Personen.</p>
-    <label for="directory-search" data-i18n="search">Suchen</label>
-    <input id="directory-search" type="search" autocomplete="off" />
-    <div id="directory-list" class="directory-list"></div>
+    <div class="app-dialog-body">
+      <p class="muted" data-i18n="addressBookLede">E-Mails und Telefon aller Personen.</p>
+      <label for="directory-search" data-i18n="search">Suchen</label>
+      <input id="directory-search" type="search" autocomplete="off" />
+      <div id="directory-list" class="directory-list"></div>
+    </div>
+    <button type="button" id="directory-close-bottom" class="btn ghost chat-close-bottom" data-i18n="close">Schließen</button>
   </dialog>
-  <dialog id="proposals-dialog" class="dialog">
+  <dialog id="proposals-dialog" class="dialog app-dialog">
     <div class="dialog-head">
       <div>
         <p class="brand" data-i18n="songProposals">Songvorschläge</p>
@@ -274,7 +316,10 @@
       </div>
       <button type="button" id="proposals-close" class="btn ghost" data-i18n="close">Schließen</button>
     </div>
-    <div id="proposals-list" class="proposals-list"></div>
+    <div class="app-dialog-body">
+      <div id="proposals-list" class="proposals-list"></div>
+    </div>
+    <button type="button" id="proposals-close-bottom" class="btn ghost chat-close-bottom" data-i18n="close">Schließen</button>
   </dialog>
   <dialog id="schedule-dialog" class="dialog">
     <div class="dialog-head">
@@ -286,7 +331,7 @@
     </div>
     <div id="schedule-body" class="schedule-body"></div>
   </dialog>
-  <dialog id="archive-dialog" class="dialog directory-dialog">
+  <dialog id="archive-dialog" class="dialog directory-dialog app-dialog">
     <div class="dialog-head">
       <div>
         <p class="brand" data-i18n="tabArchive">Notenarchiv</p>
@@ -294,26 +339,29 @@
       </div>
       <button type="button" id="archive-close" class="btn ghost" data-i18n="close">Schließen</button>
     </div>
-    <p class="muted" data-i18n="archiveLede">Audio, Tracks, Texte und Noten. Lege Songs an und hänge Dateien an.</p>
-    <div id="archive-toolbar" class="archive-toolbar">
-      <button type="button" id="archive-new" class="btn" data-i18n="addSong">Song hinzufügen</button>
-    </div>
-    <form id="archive-create" class="info-form archive-create" hidden>
-      <label for="archive-create-title" data-i18n="songName">Songname</label>
-      <input id="archive-create-title" required maxlength="200" autocomplete="off" />
-      <label for="archive-create-composer" data-i18n="archiveComposerOpt">Komponist (optional)</label>
-      <input id="archive-create-composer" maxlength="120" autocomplete="off" />
-      <p id="archive-create-error" class="error" hidden></p>
-      <div class="archive-create-actions">
-        <button type="submit" data-i18n="save">Speichern</button>
-        <button type="button" id="archive-create-cancel" class="btn ghost" data-i18n="cancel">Abbrechen</button>
+    <div class="app-dialog-body">
+      <p class="muted" data-i18n="archiveLede">Audio, Tracks, Texte, Noten und MIDI/MusicXML. Lege Songs an und hänge Dateien an.</p>
+      <div id="archive-toolbar" class="archive-toolbar">
+        <button type="button" id="archive-new" class="btn" data-i18n="addSong">Song hinzufügen</button>
       </div>
-    </form>
-    <label for="archive-search" data-i18n="search">Suchen</label>
-    <input id="archive-search" type="search" autocomplete="off" />
-    <div id="archive-list" class="titles-list"></div>
-    <div id="archive-detail" class="title-detail" hidden></div>
+      <form id="archive-create" class="info-form archive-create" hidden>
+        <label for="archive-create-title" data-i18n="songName">Songname</label>
+        <input id="archive-create-title" required maxlength="200" autocomplete="off" />
+        <label for="archive-create-composer" data-i18n="archiveComposerOpt">Komponist (optional)</label>
+        <input id="archive-create-composer" maxlength="120" autocomplete="off" />
+        <p id="archive-create-error" class="error" hidden></p>
+        <div class="archive-create-actions">
+          <button type="submit" data-i18n="save">Speichern</button>
+          <button type="button" id="archive-create-cancel" class="btn ghost" data-i18n="cancel">Abbrechen</button>
+        </div>
+      </form>
+      <label for="archive-search" data-i18n="search">Suchen</label>
+      <input id="archive-search" type="search" autocomplete="off" />
+      <div id="archive-list" class="titles-list"></div>
+      <div id="archive-detail" class="title-detail" hidden></div>
+    </div>
     <input id="archive-member-file" type="file" hidden />
+    <button type="button" id="archive-close-bottom" class="btn ghost chat-close-bottom" data-i18n="close">Schließen</button>
   </dialog>
   <dialog id="gallery-dialog" class="dialog gallery-dialog">
     <div class="dialog-head">

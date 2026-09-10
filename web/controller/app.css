@@ -286,21 +286,24 @@ button.avatar {
   clip: rect(0, 0, 0, 0);
   border: 0;
 }
-.chat-dialog[open] {
+.chat-dialog[open],
+.chat-dialog[open].full {
   display: flex;
   flex-direction: column;
-  width: min(420px, calc(100vw - 2rem));
-  max-height: min(85vh, 720px);
+  width: 100vw;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
   padding: 0;
+  padding-top: env(safe-area-inset-top, 0px);
   overflow: hidden;
   background: #0c141a;
 }
-.chat-dialog[open].full {
-  width: calc(100vw - 1rem);
-  max-width: none;
-  height: calc(100dvh - 1rem);
-  max-height: none;
-}
+.chat-dialog .chat-dot.shrink,
+.chat-dialog .chat-dot.expand { display: none; }
 .chat-dialog .dialog-head {
   margin: 0;
   padding: 0.7rem 0.85rem;

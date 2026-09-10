@@ -15,8 +15,9 @@ const (
 	ArchiveKindAudio  = "audio"
 	ArchiveKindTracks = "tracks"
 	ArchiveKindLyrics = "lyrics"
-	ArchiveKindSheet      = "sheet"
-	ArchiveKindLink       = "link"
+	ArchiveKindSheet  = "sheet"
+	ArchiveKindMIDI   = "midi"
+	ArchiveKindLink   = "link"
 	ArchiveStatusPending  = "pending"
 	ArchiveStatusAccepted = "accepted"
 	ArchiveMaxAudio       = 25 << 20
@@ -26,7 +27,7 @@ const (
 	archiveURLMax         = 2000
 )
 
-var ArchiveKinds = []string{ArchiveKindAudio, ArchiveKindTracks, ArchiveKindLyrics, ArchiveKindSheet, ArchiveKindLink}
+var ArchiveKinds = []string{ArchiveKindAudio, ArchiveKindTracks, ArchiveKindLyrics, ArchiveKindSheet, ArchiveKindMIDI, ArchiveKindLink}
 
 type ArchiveFileMeta struct {
 	ID        string    `json:"id"`
@@ -786,7 +787,39 @@ func sniffArchiveMIME(kind, filename string, data []byte) (string, error) {
 			return "image/webp", nil
 		}
 		return "", fmt.Errorf("file type is not allowed")
+	case ArchiveKindMIDI:
+		return sniffArchiveMIDI(ext, data)
 	default:
 		return "", fmt.Errorf("unknown archive file")
 	}
+}
+
+func sniffArchiveMIDI(ext string, data []byte) (string, error) {
+	if isMIDIData(data) && (ext == "" || ext == ".mid" || ext == ".midi" || ext == ".kar") {
+		return "audio/midi", nil
+	}
+	if isMXLData(data) && ext == ".mxl" {
+		return "application/vnd.recordare.musicxml", nil
+	}
+	if isMusicXMLData(data) && (ext == "" || ext == ".xml" || ext == ".musicxml") {
+		return "application/vnd.recordare.musicxml+xml", nil
+	}
+	return "", fmt.Errorf("file type is not allowed")
+}
+
+func isMIDIData(data []byte) bool {
+	return len(data) >= 8 && string(data[:4]) == "MThd"
+}
+
+func isMXLData(data []byte) bool {
+	return len(data) >= 4 && data[0] == 'P' && data[1] == 'K' && (data[2] == 3 || data[2] == 5 || data[2] == 7)
+}
+
+func isMusicXMLData(data []byte) bool {
+	n := len(data)
+	if n > 8192 {
+		n = 8192
+	}
+	head := strings.ToLower(string(data[:n]))
+	return strings.Contains(head, "score-partwise") || strings.Contains(head, "score-timewise") || strings.Contains(head, "musicxml.org") || strings.Contains(head, "recordare")
 }

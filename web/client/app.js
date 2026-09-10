@@ -23,6 +23,7 @@ let chatRoom = "";
 let chatMessages = [];
 let chatUnread = {};
 let savedChat = null;
+let focusedDateId = "";
 let mixer = { channels: [], people: [] };
 let memberWS = null;
 let liveStream = null;
@@ -324,8 +325,15 @@ function needsVote(d) {
   return !!(canVote() && d && d.status !== "cancelled" && !hasAnswered(d));
 }
 
-function upcomingDates() {
-  return dates.filter(dateIsUpcoming).slice(0, 8);
+function defaultFocusedDateId() {
+  const next = dates.find((d) => dateIsUpcoming(d));
+  if (next) return next.id;
+  return dates.length ? dates[dates.length - 1].id : "";
+}
+
+function focusedDateIndex() {
+  const i = dates.findIndex((d) => d.id === focusedDateId);
+  return i >= 0 ? i : 0;
 }
 
 function nextParticipatingDate() {
@@ -341,6 +349,7 @@ function canAssignChannels() {
 }
 
 function paintMyChannels() {
+  const fold = document.getElementById("fold-channels");
   const box = document.getElementById("my-channels");
   if (box) box.classList.toggle("mixer-desk", canAssignChannels());
   if (canAssignChannels()) {
@@ -364,10 +373,10 @@ function paintMyChannels() {
       return `${I18N.t("channel")} ${ch.number}${note}${v48}`;
     }).join(" · ");
   }
+  if (fold) fold.hidden = channels.length === 0;
   if (box) {
-    box.hidden = channels.length === 0;
     box.innerHTML = channels.length
-      ? `<p class="brand">${I18N.t("channels")}</p>` + channels.map((ch) => {
+      ? channels.map((ch) => {
         const draft = Object.hasOwn(dirty, String(ch.number));
         const value = draft ? dirty[String(ch.number)] : (ch.comment || "");
         return `
@@ -393,6 +402,7 @@ function savedMixerComment(n) {
 }
 
 function paintMixerDesk() {
+  const fold = document.getElementById("fold-channels");
   const header = document.getElementById("who-channels");
   const box = document.getElementById("my-channels");
   if (!box) return;
@@ -426,9 +436,8 @@ function paintMixerDesk() {
       <td><button type="button" class="btn ghost v48-btn${ch.v48 ? " on" : ""}" data-mixer-v48="${ch.number}" aria-pressed="${ch.v48 ? "true" : "false"}">${I18N.t("channel48v")}</button></td>
     </tr>`;
   }).join("");
-  box.hidden = false;
+  if (fold) fold.hidden = false;
   box.innerHTML = `
-    <p class="brand">${I18N.t("channels")}</p>
     <p class="muted mixer-lede">${I18N.t("channelsAssignHint")}</p>
     <label class="mixer-search-label" for="mixer-search">${I18N.t("search")}</label>
     <input id="mixer-search" type="search" autocomplete="off" value="${escapeHtml(q)}" />
@@ -483,28 +492,45 @@ async function saveMixerChannel(number, v48) {
 }
 
 function jumpToDate(id) {
+  if (!dates.some((d) => d.id === id)) return;
+  focusedDateId = id;
+  render();
+  const nav = document.getElementById("date-nav");
   const card = document.getElementById(`date-${id}`);
-  if (!card) return;
-  card.closest(".card")?.classList.add("flash");
-  card.scrollIntoView({ behavior: "smooth", block: "start" });
-  setTimeout(() => card.closest(".card")?.classList.remove("flash"), 1600);
+  const target = nav || card?.closest(".card") || datesEl;
+  card?.closest(".card")?.classList.add("flash");
+  target?.scrollIntoView({ behavior: "smooth", block: "start" });
+  setTimeout(() => card?.closest(".card")?.classList.remove("flash"), 1600);
+}
+
+function stepFocusedDate(delta) {
+  if (!dates.length) return;
+  if (!dates.some((d) => d.id === focusedDateId)) {
+    focusedDateId = defaultFocusedDateId();
+  }
+  const next = focusedDateIndex() + delta;
+  if (next < 0 || next >= dates.length) return;
+  const top = window.scrollY;
+  focusedDateId = dates[next].id;
+  render();
+  window.scrollTo(0, top);
 }
 
 function renderNextUp() {
+  const fold = document.getElementById("fold-next");
   const box = document.getElementById("next-up");
   const next = nextParticipatingDate();
   if (!next) {
-    box.hidden = true;
+    if (fold) fold.hidden = true;
     box.innerHTML = "";
     return;
   }
   const when = pollOpen(next)
     ? I18N.t("severalTimes") + (next.location ? " · " + next.location : "")
     : formatRange(next);
-  box.hidden = false;
+  if (fold) fold.hidden = false;
   box.innerHTML = `
     ${moodHTML(next)}
-    <p class="brand">${I18N.t("nextUp")}</p>
     <div class="next-up-row">
       <div>
         <strong>${escapeHtml(next.title)}</strong>
@@ -527,11 +553,9 @@ function renderNextUp() {
 }
 
 function renderOverview() {
-  const overview = document.getElementById("overview");
   const list = document.getElementById("overview-list");
   const empty = document.getElementById("overview-empty");
-  overview.hidden = false;
-  const rows = upcomingDates();
+  const rows = dates;
   empty.hidden = rows.length > 0;
   list.hidden = rows.length === 0;
   list.innerHTML = rows.map((d) => {
@@ -542,7 +566,8 @@ function renderOverview() {
         ? `<span class="badge voting">${escapeHtml(overviewPollVote(d))}</span>`
         : `<span class="badge ${d.myChoice}">${voteLabel(d.myChoice)}</span>`;
     const pending = needsVote(d);
-    return `<button type="button" class="overview-item${pending ? " needs-vote" : ""}" data-jump="${d.id}"${pending ? ` title="${escapeHtml(I18N.t("voteNeeded"))}"` : ""}">
+    const current = d.id === focusedDateId ? " current" : "";
+    return `<button type="button" class="overview-item${pending ? " needs-vote" : ""}${current}" data-jump="${d.id}"${pending ? ` title="${escapeHtml(I18N.t("voteNeeded"))}"` : ""}">
       <div>
         <strong>${escapeHtml(d.title)}</strong>
         <p>${escapeHtml(when)} · ${escapeHtml(I18N.category(d.category))}</p>
@@ -619,11 +644,41 @@ function renderSpirit() {
     </div>`;
 }
 
+function renderDates() {
+  const nav = document.getElementById("date-nav");
+  const titleEl = document.getElementById("date-nav-title");
+  const labelEl = document.getElementById("date-nav-label");
+  const prev = document.getElementById("date-prev");
+  const next = document.getElementById("date-next");
+  if (!dates.length) {
+    focusedDateId = "";
+    datesEl.innerHTML = "";
+    if (nav) nav.hidden = true;
+    return;
+  }
+  if (!dates.some((d) => d.id === focusedDateId)) {
+    focusedDateId = defaultFocusedDateId();
+  }
+  const i = focusedDateIndex();
+  const d = dates[i];
+  datesEl.innerHTML = renderDate(d);
+  if (nav) nav.hidden = false;
+  if (titleEl) titleEl.textContent = d.title || "";
+  if (labelEl) labelEl.textContent = `${i + 1} / ${dates.length}`;
+  if (prev) prev.disabled = i <= 0;
+  if (next) next.disabled = i >= dates.length - 1;
+}
+
 function render() {
+  if (!dates.length) {
+    focusedDateId = "";
+  } else if (!dates.some((d) => d.id === focusedDateId)) {
+    focusedDateId = defaultFocusedDateId();
+  }
   renderSpirit();
   renderNextUp();
   renderOverview();
-  datesEl.innerHTML = dates.map(renderDate).join("");
+  renderDates();
   emptyEl.hidden = dates.length > 0;
   if (commentDateId && document.getElementById("comment-dialog").open) {
     fillCommentDialog(dates.find((d) => d.id === commentDateId));
@@ -673,6 +728,7 @@ function archiveFileLabel(file, kindLabel) {
 function archiveKindAccept(kind) {
   if (kind === "audio" || kind === "tracks") return "audio/*";
   if (kind === "lyrics") return "application/pdf,text/plain,image/*";
+  if (kind === "midi") return ".mid,.midi,.kar,.xml,.musicxml,.mxl,audio/midi,application/xml,application/vnd.recordare.musicxml+xml,application/vnd.recordare.musicxml";
   return "application/pdf,image/*";
 }
 
@@ -682,6 +738,7 @@ function archiveManageHTML(item) {
     { kind: "tracks", label: I18N.t("archiveTracks") },
     { kind: "lyrics", label: I18N.t("archiveLyrics") },
     { kind: "sheet", label: I18N.t("archiveSheet") },
+    { kind: "midi", label: I18N.t("archiveMIDI") },
   ];
   const slots = kinds.map((slot) => `
     <section class="archive-kind">
@@ -711,6 +768,7 @@ function titleMaterialHTML(item, back) {
   const tracks = files.filter((f) => f.kind === "tracks");
   const lyrics = files.filter((f) => f.kind === "lyrics");
   const sheets = files.filter((f) => f.kind === "sheet");
+  const midis = files.filter((f) => f.kind === "midi");
   const links = files.filter((f) => f.kind === "link" && f.url);
   const preferred = sheets.filter((f) => f.role && f.role === me?.role);
   const rest = sheets.filter((f) => !preferred.includes(f));
@@ -734,11 +792,14 @@ function titleMaterialHTML(item, back) {
   [...preferred, ...rest].forEach((f) => {
     html += filePreviewHTML(item.id, f, archiveFileLabel(f, I18N.t("archiveSheet")));
   });
+  midis.forEach((f) => {
+    html += filePreviewHTML(item.id, f, archiveFileLabel(f, I18N.t("archiveMIDI")));
+  });
   links.forEach((f) => {
     const label = f.name || I18N.t("archiveShareURL");
     html += `<div><p class="label">${escapeHtml(label)}</p><a class="btn ghost" href="${escapeHtml(f.url)}" target="_blank" rel="noopener">${escapeHtml(f.url)}</a></div>`;
   });
-  if (!audios.length && !tracks.length && !lyrics.length && !sheets.length && !links.length) {
+  if (!audios.length && !tracks.length && !lyrics.length && !sheets.length && !midis.length && !links.length) {
     html += `<p class="muted">${I18N.t("archiveNoFile")}</p>`;
   }
   return html;
@@ -1290,6 +1351,15 @@ document.getElementById("stream-dialog").addEventListener("close", () => {
   setStreamChatVisible(true);
   unloadLiveChat();
 });
+document.getElementById("header-tools").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-tool]");
+  if (!btn) return;
+  setMenuOpen(false);
+  if (btn.classList.contains("install-open")) return;
+  const target = document.getElementById(`btn-${btn.dataset.tool}`);
+  if (target) target.click();
+});
+
 document.getElementById("btn-header-chat").addEventListener("click", async () => {
   const room = primaryChatRoom();
   if (!room) return;
@@ -1407,6 +1477,9 @@ document.getElementById("overview-list").addEventListener("click", (e) => {
   if (!row) return;
   jumpToDate(row.dataset.jump);
 });
+
+document.getElementById("date-prev").addEventListener("click", () => stepFocusedDate(-1));
+document.getElementById("date-next").addEventListener("click", () => stepFocusedDate(1));
 
 document.getElementById("next-up").addEventListener("click", async (e) => {
   const jump = e.target.closest("[data-jump]");
@@ -1880,7 +1953,31 @@ function chatMessageHTML(m, stacked) {
   </article>`;
 }
 
-function renderChat(keepTop) {
+function chatTimeMs(iso) {
+  const t = Date.parse(iso);
+  return Number.isNaN(t) ? 0 : t;
+}
+
+function scrollChatToLastSeen(lastSeen) {
+  const list = chatListEl();
+  if (!list) return;
+  const seenMs = chatTimeMs(lastSeen);
+  if (seenMs) {
+    let lastRead = null;
+    for (const m of chatMessages) {
+      if (chatTimeMs(m.createdAt) <= seenMs) lastRead = m;
+    }
+    const el = lastRead && list.querySelector(`[data-msg="${lastRead.id}"]`);
+    if (el) {
+      const top = el.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop;
+      list.scrollTop = Math.max(0, top - Math.max(0, (list.clientHeight - el.offsetHeight) / 2));
+      return;
+    }
+  }
+  list.scrollTop = list.scrollHeight;
+}
+
+function renderChat(keepTop, lastSeen) {
   const list = chatListEl();
   if (!list) return;
   const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 48;
@@ -1896,7 +1993,15 @@ function renderChat(keepTop) {
     }).join("")
     : `<p class="muted">${I18N.t("noMessages")}</p>`;
   list.querySelectorAll("audio[data-voice-audio]").forEach(bindVoiceAudio);
-  list.scrollTop = keepTop != null && !atBottom ? keepTop : list.scrollHeight;
+  if (keepTop != null && !atBottom) {
+    list.scrollTop = keepTop;
+    return;
+  }
+  if (lastSeen) {
+    scrollChatToLastSeen(lastSeen);
+    return;
+  }
+  list.scrollTop = list.scrollHeight;
 }
 
 function applyReactions(messageId, reactions) {
@@ -2184,12 +2289,12 @@ async function openChat(room, title) {
   chatMessages = data.messages || [];
   chatUnread[room] = 0;
   renderChatTabs();
-  renderChat();
   const input = document.getElementById("chat-text");
   input.placeholder = I18N.t("chatWrite");
   document.getElementById("chat-dialog").showModal();
-  if (window.matchMedia("(max-width: 720px)").matches) setChatFull(true);
+  setChatFull(true);
   paintChatSize();
+  renderChat(undefined, data.lastSeen || "");
   input.focus();
 }
 
@@ -2281,7 +2386,7 @@ async function loadLiveChat() {
   showError(chatErrorEl(), "");
   const data = await api(`/api/chats/${encodeURIComponent(LIVE_ROOM)}`);
   chatMessages = data.messages || [];
-  renderChat();
+  renderChat(undefined, data.lastSeen || "");
 }
 
 function unloadLiveChat() {
@@ -3197,6 +3302,9 @@ document.getElementById("btn-archive").addEventListener("click", async () => {
 document.getElementById("archive-close").addEventListener("click", () => {
   document.getElementById("archive-dialog").close();
 });
+document.getElementById("archive-close-bottom").addEventListener("click", () => {
+  document.getElementById("archive-dialog").close();
+});
 
 document.getElementById("archive-dialog").addEventListener("close", () => {
   document.getElementById("archive-detail").innerHTML = "";
@@ -3305,6 +3413,9 @@ document.getElementById("btn-directory").addEventListener("click", async () => {
 document.getElementById("directory-close").addEventListener("click", () => {
   document.getElementById("directory-dialog").close();
 });
+document.getElementById("directory-close-bottom").addEventListener("click", () => {
+  document.getElementById("directory-dialog").close();
+});
 
 document.getElementById("directory-search").addEventListener("input", renderDirectory);
 
@@ -3361,6 +3472,9 @@ document.getElementById("btn-propose").addEventListener("click", () => {
 document.getElementById("propose-close").addEventListener("click", () => {
   document.getElementById("propose-dialog").close();
 });
+document.getElementById("propose-close-bottom").addEventListener("click", () => {
+  document.getElementById("propose-dialog").close();
+});
 
 document.getElementById("propose-form").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -3390,6 +3504,9 @@ document.getElementById("btn-proposals").addEventListener("click", async () => {
 });
 
 document.getElementById("proposals-close").addEventListener("click", () => {
+  document.getElementById("proposals-dialog").close();
+});
+document.getElementById("proposals-close-bottom").addEventListener("click", () => {
   document.getElementById("proposals-dialog").close();
 });
 

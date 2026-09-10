@@ -728,6 +728,49 @@ func TestArchiveLinks(t *testing.T) {
 	}
 }
 
+func TestArchiveMIDI(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "archive-midi.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	song, err := st.CreateArchiveItem("Score", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	midi := []byte{0x4d, 0x54, 0x68, 0x64, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x01, 0x00, 0x60}
+	item, err := st.AddArchiveFile(song.ID, ArchiveKindMIDI, "piano", "demo.mid", midi)
+	if err != nil || len(item.Files) != 1 || item.Files[0].Kind != ArchiveKindMIDI || item.Files[0].MIME != "audio/midi" {
+		t.Fatalf("midi %+v %v", item, err)
+	}
+	xml := []byte(`<?xml version="1.0"?><score-partwise version="3.1"><part-list></part-list></score-partwise>`)
+	item, err = st.AddArchiveFile(song.ID, ArchiveKindMIDI, "choir", "demo.musicxml", xml)
+	if err != nil || !archiveHasMIME(item, "application/vnd.recordare.musicxml+xml") {
+		t.Fatalf("musicxml %+v %v", item, err)
+	}
+	mxl := []byte{'P', 'K', 3, 4, 0, 0, 0, 0}
+	item, err = st.AddArchiveFile(song.ID, ArchiveKindMIDI, "", "demo.mxl", mxl)
+	if err != nil || !archiveHasMIME(item, "application/vnd.recordare.musicxml") {
+		t.Fatalf("mxl %+v %v", item, err)
+	}
+	if _, err := st.AddArchiveFile(song.ID, ArchiveKindMIDI, "", "note.xml", []byte(`<?xml version="1.0"?><root/>`)); err == nil {
+		t.Fatal("plain xml")
+	}
+	if _, err := st.AddArchiveFile(song.ID, ArchiveKindSheet, "", "demo.mid", midi); err == nil {
+		t.Fatal("midi as sheet")
+	}
+}
+
+func archiveHasMIME(item ArchiveItem, mime string) bool {
+	for _, f := range item.Files {
+		if f.MIME == mime {
+			return true
+		}
+	}
+	return false
+}
+
 func TestUserStreamer(t *testing.T) {
 	st, err := Open(filepath.Join(t.TempDir(), "streamer.db"))
 	if err != nil {
@@ -1055,6 +1098,12 @@ func TestChatUnread(t *testing.T) {
 	}
 	if err := st.MarkChatRead(ben.ID, RoleChoir, ben.Role); err != nil {
 		t.Fatal(err)
+	}
+	if st.ChatLastSeen(ben.ID, RoleChoir) == "" {
+		t.Fatal("expected last seen after mark")
+	}
+	if st.ChatLastSeen(ada.ID, RoleChoir) != "" {
+		t.Fatal("ada should have no last seen")
 	}
 	benUnread, err = st.MemberChatUnread(ben)
 	if err != nil || benUnread[RoleChoir] != 0 {

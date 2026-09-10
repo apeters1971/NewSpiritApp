@@ -714,6 +714,7 @@ function archiveRoleLabel(role) {
 function archiveKindAccept(kind) {
   if (kind === "audio" || kind === "tracks") return "audio/*";
   if (kind === "lyrics") return "application/pdf,text/plain,image/*";
+  if (kind === "midi") return ".mid,.midi,.kar,.xml,.musicxml,.mxl,audio/midi,application/xml,application/vnd.recordare.musicxml+xml,application/vnd.recordare.musicxml";
   return "application/pdf,image/*";
 }
 
@@ -747,6 +748,7 @@ function renderArchive() {
       <td>${count("tracks")}</td>
       <td>${count("lyrics")}</td>
       <td>${escapeHtml(sheetRoles)}</td>
+      <td>${count("midi")}</td>
       <td>${count("link")}</td>
     </tr>`;
   }).join("");
@@ -793,6 +795,7 @@ function renderArchiveFiles() {
     { kind: "tracks", label: I18N.t("archiveTracks") },
     { kind: "lyrics", label: I18N.t("archiveLyrics") },
     { kind: "sheet", label: I18N.t("archiveSheet") },
+    { kind: "midi", label: I18N.t("archiveMIDI") },
   ];
   const fileSections = kinds.map((slot) => {
     const files = archiveFilesOf(item, slot.kind);
@@ -1690,7 +1693,31 @@ function chatMessageHTML(m, stacked) {
   </article>`;
 }
 
-function renderChat(keepTop) {
+function chatTimeMs(iso) {
+  const t = Date.parse(iso);
+  return Number.isNaN(t) ? 0 : t;
+}
+
+function scrollChatToLastSeen(lastSeen) {
+  const list = document.getElementById("chat-list");
+  if (!list) return;
+  const seenMs = chatTimeMs(lastSeen);
+  if (seenMs) {
+    let lastRead = null;
+    for (const m of chatMessages) {
+      if (chatTimeMs(m.createdAt) <= seenMs) lastRead = m;
+    }
+    const el = lastRead && list.querySelector(`[data-msg="${lastRead.id}"]`);
+    if (el) {
+      const top = el.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop;
+      list.scrollTop = Math.max(0, top - Math.max(0, (list.clientHeight - el.offsetHeight) / 2));
+      return;
+    }
+  }
+  list.scrollTop = list.scrollHeight;
+}
+
+function renderChat(keepTop, lastSeen) {
   const list = document.getElementById("chat-list");
   const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 48;
   list.innerHTML = chatMessages.length
@@ -1705,7 +1732,15 @@ function renderChat(keepTop) {
     }).join("")
     : `<p class="muted">${I18N.t("noMessages")}</p>`;
   list.querySelectorAll("audio[data-voice-audio]").forEach(bindVoiceAudio);
-  list.scrollTop = keepTop != null && !atBottom ? keepTop : list.scrollHeight;
+  if (keepTop != null && !atBottom) {
+    list.scrollTop = keepTop;
+    return;
+  }
+  if (lastSeen) {
+    scrollChatToLastSeen(lastSeen);
+    return;
+  }
+  list.scrollTop = list.scrollHeight;
 }
 
 function applyReactions(messageId, reactions) {
@@ -1959,11 +1994,12 @@ async function openChat(room, title) {
   showError(document.getElementById("chat-error"), "");
   const data = await api(`/api/controller/chats/${encodeURIComponent(room)}`);
   chatMessages = data.messages || [];
-  renderChat();
   const input = document.getElementById("chat-text");
   input.placeholder = I18N.t("chatWrite");
   document.getElementById("chat-dialog").showModal();
+  setChatFull(true);
   paintChatSize();
+  renderChat(undefined, data.lastSeen || "");
   input.focus();
 }
 

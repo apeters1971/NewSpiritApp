@@ -588,6 +588,15 @@ CREATE TABLE IF NOT EXISTS chat_reads (
 	return err
 }
 
+func (s *Store) ChatLastSeen(actor, room string) string {
+	var seen string
+	err := s.db.QueryRow(`SELECT last_seen FROM chat_reads WHERE actor=? AND room=?`, actor, room).Scan(&seen)
+	if err != nil {
+		return ""
+	}
+	return seen
+}
+
 func (s *Store) MarkChatRead(actor, room, role string) error {
 	if err := s.resolveChatRoom(room, role, false); err != nil {
 		return err

@@ -667,8 +667,9 @@ func (s *Server) handleChatList(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
+	lastSeen := s.Store.ChatLastSeen(user.ID, room)
 	_ = s.Store.MarkChatRead(user.ID, room, user.Role)
-	writeJSON(w, http.StatusOK, map[string]any{"messages": msgs})
+	writeJSON(w, http.StatusOK, map[string]any{"messages": msgs, "lastSeen": lastSeen})
 }
 
 func (s *Server) handleChatRead(w http.ResponseWriter, r *http.Request) {
@@ -859,8 +860,9 @@ func (s *Server) handleControllerChatList(w http.ResponseWriter, r *http.Request
 		writeStoreError(w, err)
 		return
 	}
+	lastSeen := s.Store.ChatLastSeen(store.ChatReadController, room)
 	_ = s.Store.MarkChatRead(store.ChatReadController, room, "")
-	writeJSON(w, http.StatusOK, map[string]any{"messages": msgs})
+	writeJSON(w, http.StatusOK, map[string]any{"messages": msgs, "lastSeen": lastSeen})
 }
 
 func (s *Server) handleControllerChatRead(w http.ResponseWriter, r *http.Request) {
