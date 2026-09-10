@@ -1573,6 +1573,7 @@ function chatBodyHTML(m) {
       <button type="button" class="chat-voice-play" data-voice="${m.id}" aria-label="${escapeHtml(I18N.t("chatVoicePlay"))}"></button>
       <span class="chat-voice-track" aria-hidden="true"><i data-voice-bar="${m.id}"></i></span>
       <span class="chat-voice-dur" data-voice-dur="${m.id}">${formatVoiceDur(m.durationMs)}</span>
+      <button type="button" class="chat-voice-del" data-voice-delete="${m.id}" aria-label="${escapeHtml(I18N.t("chatVoiceDelete"))}"></button>
       <audio preload="none" src="${escapeHtml(src)}" data-voice-audio="${m.id}"></audio>
     </div>${text}`;
   }
@@ -1643,6 +1644,17 @@ function upsertChat(msg) {
   const list = document.getElementById("chat-list");
   chatMessages[i] = { ...chatMessages[i], ...msg };
   renderChat(list?.scrollTop);
+}
+
+async function deleteChatMessage(id) {
+  if (!chatRoom || !id) return;
+  if (!confirm(I18N.t("confirmDeleteMessage"))) return;
+  try {
+    await api(`/api/controller/chats/${encodeURIComponent(chatRoom)}/messages/${encodeURIComponent(id)}`, { method: "DELETE" });
+    removeChat(id);
+  } catch (err) {
+    showError(document.getElementById("chat-error"), err.message);
+  }
 }
 
 function removeChat(id) {
@@ -2005,16 +2017,15 @@ document.getElementById("chat-list").addEventListener("dblclick", async (e) => {
   if (e.target.closest(".chat-reacts, .chat-voice")) return;
   const bubble = e.target.closest("[data-msg]");
   if (!bubble || !chatRoom) return;
-  if (!confirm(I18N.t("confirmDeleteMessage"))) return;
-  try {
-    await api(`/api/controller/chats/${encodeURIComponent(chatRoom)}/messages/${encodeURIComponent(bubble.dataset.msg)}`, { method: "DELETE" });
-    removeChat(bubble.dataset.msg);
-  } catch (err) {
-    showError(document.getElementById("chat-error"), err.message);
-  }
+  await deleteChatMessage(bubble.dataset.msg);
 });
 
 document.getElementById("chat-list").addEventListener("click", async (e) => {
+  const trash = e.target.closest("[data-voice-delete]");
+  if (trash) {
+    await deleteChatMessage(trash.dataset.voiceDelete);
+    return;
+  }
   const voice = e.target.closest("[data-voice]");
   if (voice) {
     toggleChatVoice(voice.dataset.voice);

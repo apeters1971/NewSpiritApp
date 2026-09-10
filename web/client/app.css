@@ -270,6 +270,7 @@ button.avatar {
   .chat-emoji-panel button:hover,
   .chat-voice-btn:hover,
   .chat-voice-play:hover,
+  .chat-voice-del:hover,
   .chat-rec-cancel:hover,
   .chat-rec-send:hover {
     background: rgba(61, 214, 198, 0.16);
@@ -647,6 +648,32 @@ button.avatar {
   width: 1.85rem;
   height: 1.85rem;
   background: rgba(232, 238, 245, 0.08);
+}
+.chat-voice-del {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: rgba(232, 238, 245, 0.55);
+  width: 1.7rem;
+  height: 1.7rem;
+  padding: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.chat-voice-del::before {
+  content: "";
+  display: block;
+  width: 1rem;
+  height: 1rem;
+  margin: 0 auto;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M9 3.5h6l.85 1.75H20a.75.75 0 0 1 0 1.5h-.78l-.82 11.2A2.25 2.25 0 0 1 16.16 20H7.84a2.25 2.25 0 0 1-2.24-2.05L4.78 6.75H4a.75.75 0 0 1 0-1.5h4.15L9 3.5Zm1.6 1.5-.6 1.25h3.99L13.4 5H10.6ZM8.1 8.25l.72 9.75h6.36l.72-9.75H8.1Z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M9 3.5h6l.85 1.75H20a.75.75 0 0 1 0 1.5h-.78l-.82 11.2A2.25 2.25 0 0 1 16.16 20H7.84a2.25 2.25 0 0 1-2.24-2.05L4.78 6.75H4a.75.75 0 0 1 0-1.5h4.15L9 3.5Zm1.6 1.5-.6 1.25h3.99L13.4 5H10.6ZM8.1 8.25l.72 9.75h6.36l.72-9.75H8.1Z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.chat-voice-del:hover {
+  color: #f07178;
+  background: rgba(240, 113, 120, 0.16);
 }
 .chat-voice-track {
   position: relative;
