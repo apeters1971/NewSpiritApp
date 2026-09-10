@@ -1030,7 +1030,7 @@ function chatNoticeBody(m) {
 function notifyChatMessage(m) {
   if (!m?.room) return;
   if (me && !m.isAdmin && m.userId === me.id) return;
-  const openHere = (document.getElementById("chat-dialog")?.open && chatRoom === m.room)
+  const openHere = (paneVisible("chat-dialog") && chatRoom === m.room)
     || (document.getElementById("stream-dialog")?.open && m.room === LIVE_ROOM);
   if (openHere && document.visibilityState === "visible") return;
   const date = m.room.startsWith("event:")
@@ -1095,6 +1095,7 @@ function showGate(which) {
   loginView.hidden = which !== "login";
   pwView.hidden = which !== "password";
   appView.hidden = which !== "app";
+  if (which !== "app") showTab("home");
 }
 
 async function enterApp() {
@@ -1106,6 +1107,7 @@ async function enterApp() {
   paintMyChannels();
   renderChatTabs();
   paintStreamButtons();
+  showTab("home");
   await loadDates();
   await loadMixer().catch(() => {});
   connectWS();
@@ -1129,6 +1131,7 @@ function openInstallDialog() {
   const now = document.getElementById("install-now");
   installed.hidden = !isStandaloneApp();
   now.hidden = !installPrompt;
+  if (appView && !appView.hidden) markTab("install");
   document.getElementById("install-dialog").showModal();
 }
 
@@ -1152,10 +1155,14 @@ function registerInstall() {
     document.getElementById("install-dialog").close();
   });
   document.querySelectorAll(".install-open").forEach((btn) => {
+    if (btn.dataset.tab) return;
     btn.addEventListener("click", openInstallDialog);
   });
   document.getElementById("install-close").addEventListener("click", () => {
     document.getElementById("install-dialog").close();
+  });
+  document.getElementById("install-dialog").addEventListener("close", () => {
+    if (appTab === "install") showTab("home");
   });
   document.getElementById("install-now").addEventListener("click", async () => {
     if (!installPrompt) return;
@@ -1250,6 +1257,118 @@ function setMenuOpen(open) {
   btn.setAttribute("aria-expanded", open ? "true" : "false");
 }
 
+const TAB_PANES = {
+  home: "tab-home",
+  directory: "directory-dialog",
+  archive: "archive-dialog",
+  propose: "propose-dialog",
+  proposals: "proposals-dialog",
+  calendar: "calendar-dialog",
+  chat: "chat-dialog",
+};
+
+let appTab = "home";
+
+function paneVisible(id) {
+  const el = document.getElementById(id);
+  return !!(el && !el.hidden);
+}
+
+function markTab(tab) {
+  appTab = tab;
+  document.querySelectorAll("[data-tab]").forEach((btn) => {
+    const on = btn.dataset.tab === tab;
+    btn.classList.toggle("on", on);
+    if (btn.closest("#app-tabs")) btn.setAttribute("aria-selected", on ? "true" : "false");
+  });
+}
+
+function leaveChatPane() {
+  setChatEmojiOpen(false);
+  if (streamChatOpen()) {
+    savedChat = null;
+    return;
+  }
+  discardVoiceRecord();
+  editingChatId = "";
+  chatRoom = "";
+  chatMessages = [];
+  renderChatTabs();
+}
+
+function leaveArchivePane() {
+  const detail = document.getElementById("archive-detail");
+  if (detail) detail.innerHTML = "";
+}
+
+function showTab(tab) {
+  if (!TAB_PANES[tab]) tab = "home";
+  if (appTab === "chat" && tab !== "chat") leaveChatPane();
+  if (appTab === "archive" && tab !== "archive") leaveArchivePane();
+  Object.entries(TAB_PANES).forEach(([name, id]) => {
+    const el = document.getElementById(id);
+    if (el) el.hidden = name !== tab;
+  });
+  markTab(tab);
+  setMenuOpen(false);
+  window.scrollTo(0, 0);
+}
+
+async function activateTab(tab) {
+  try {
+    if (tab === "home") {
+      showTab("home");
+      return;
+    }
+    if (tab === "chat") {
+      const room = chatRoom && (chatRoom.startsWith("event:") || canUseChatRoom(chatRoom))
+        ? chatRoom
+        : primaryChatRoom();
+      if (room) await openChat(room);
+      else showTab("chat");
+      return;
+    }
+    if (tab === "directory") {
+      document.getElementById("directory-search").value = "";
+      await loadDirectory();
+      showTab("directory");
+      document.getElementById("directory-search").focus();
+      return;
+    }
+    if (tab === "archive") {
+      document.getElementById("archive-search").value = "";
+      await loadArchive();
+      showArchiveList();
+      showTab("archive");
+      document.getElementById("archive-search").focus();
+      return;
+    }
+    if (tab === "propose") {
+      document.getElementById("propose-form").reset();
+      showError(document.getElementById("propose-error"), "");
+      showTab("propose");
+      document.getElementById("propose-title").focus();
+      return;
+    }
+    if (tab === "proposals") {
+      await loadProposals();
+      showTab("proposals");
+      return;
+    }
+    if (tab === "calendar") {
+      await openCalendar();
+      return;
+    }
+    if (tab === "install") {
+      openInstallDialog();
+      return;
+    }
+    showTab("home");
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
 function setAvatarMenuOpen(open) {
   const menu = document.getElementById("avatar-menu");
   const btn = document.getElementById("who-photo");
@@ -1342,7 +1461,7 @@ document.getElementById("stream-chat-show").addEventListener("click", () => {
   setStreamChatVisible(true);
 });
 document.getElementById("chat-close-bottom").addEventListener("click", () => {
-  document.getElementById("chat-dialog").close();
+  showTab("home");
 });
 document.getElementById("stream-dialog").addEventListener("close", () => {
   const video = document.getElementById("stream-video");
@@ -1351,29 +1470,22 @@ document.getElementById("stream-dialog").addEventListener("close", () => {
   setStreamChatVisible(true);
   unloadLiveChat();
 });
-document.getElementById("header-tools").addEventListener("click", (e) => {
-  const btn = e.target.closest("[data-tool]");
+document.getElementById("app-tabs").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-tab]");
   if (!btn) return;
-  setMenuOpen(false);
-  if (btn.classList.contains("install-open")) return;
-  const target = document.getElementById(`btn-${btn.dataset.tool}`);
-  if (target) target.click();
+  activateTab(btn.dataset.tab);
 });
-
-document.getElementById("btn-header-chat").addEventListener("click", async () => {
-  const room = primaryChatRoom();
-  if (!room) return;
-  try {
-    await openChat(room);
-  } catch (err) {
-    alert(err.message);
-  }
+document.getElementById("top-actions").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-tab]");
+  if (!btn) return;
+  activateTab(btn.dataset.tab);
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     setMenuOpen(false);
     setAvatarMenuOpen(false);
     setStreamSourceOpen(false);
+    if (!document.querySelector("dialog[open]") && appTab !== "home") showTab("home");
   }
 });
 document.addEventListener("pointerdown", (e) => {
@@ -1831,13 +1943,14 @@ function paintMenuUnread() {
 
 function paintHeaderChat() {
   const btn = document.getElementById("btn-header-chat");
-  if (!btn) return;
+  const menu = document.getElementById("btn-menu-chat");
   const room = primaryChatRoom();
-  btn.hidden = !room;
+  if (btn) btn.hidden = !room;
+  if (menu) menu.hidden = !room;
   const n = chatUnreadTotal();
   paintUnreadBadge("header-chat-unread", n);
   const label = room ? I18N.t(`chat.${room}`) : I18N.t("chatBrand");
-  btn.setAttribute("aria-label", n ? `${label}, ${n}` : label);
+  if (btn) btn.setAttribute("aria-label", n ? `${label}, ${n}` : label);
 }
 
 function chatAuthorKey(m) {
@@ -2291,7 +2404,7 @@ async function openChat(room, title) {
   renderChatTabs();
   const input = document.getElementById("chat-text");
   input.placeholder = I18N.t("chatWrite");
-  document.getElementById("chat-dialog").showModal();
+  showTab("chat");
   setChatFull(true);
   paintChatSize();
   renderChat(undefined, data.lastSeen || "");
@@ -2372,7 +2485,7 @@ function setStreamChatVisible(open) {
 }
 
 async function loadLiveChat() {
-  if (chatRoom && chatRoom !== LIVE_ROOM && document.getElementById("chat-dialog")?.open) {
+  if (chatRoom && chatRoom !== LIVE_ROOM && paneVisible("chat-dialog")) {
     savedChat = { room: chatRoom, title: document.getElementById("chat-title").textContent, messages: chatMessages };
   }
   discardVoiceRecord();
@@ -2392,7 +2505,7 @@ async function loadLiveChat() {
 function unloadLiveChat() {
   discardVoiceRecord();
   editingChatId = "";
-  if (savedChat && document.getElementById("chat-dialog")?.open) {
+  if (savedChat && paneVisible("chat-dialog")) {
     chatRoom = savedChat.room;
     chatMessages = savedChat.messages;
     document.getElementById("chat-title").textContent = savedChat.title;
@@ -2720,9 +2833,9 @@ function connectWS() {
       }).catch(() => {});
       if (!me?.mustChangePassword) {
         loadDates().catch(() => {});
-        if (document.getElementById("proposals-dialog").open) loadProposals().catch(() => {});
-        if (document.getElementById("directory-dialog").open) loadDirectory().catch(() => {});
-        if (document.getElementById("archive-dialog").open) loadArchive().catch(() => {});
+        if (paneVisible("proposals-dialog")) loadProposals().catch(() => {});
+        if (paneVisible("directory-dialog")) loadDirectory().catch(() => {});
+        if (paneVisible("archive-dialog")) loadArchive().catch(() => {});
         if (document.getElementById("gallery-dialog").open && galleryDateId) openGallery(galleryDateId).catch(() => {});
       }
     }
@@ -2752,7 +2865,7 @@ I18N.onChange(() => {
       if (input) input.placeholder = I18N.t("chatWrite");
       if (chatRoom === LIVE_ROOM) renderChat(chatListEl()?.scrollTop);
     }
-    if (document.getElementById("chat-dialog").open && chatRoom && chatRoom !== LIVE_ROOM) {
+    if (paneVisible("chat-dialog") && chatRoom && chatRoom !== LIVE_ROOM) {
       const date = chatRoom.startsWith("event:")
         ? dates.find((d) => d.id === chatRoom.slice("event:".length))
         : null;
@@ -2760,14 +2873,14 @@ I18N.onChange(() => {
       document.getElementById("chat-text").placeholder = I18N.t("chatWrite");
       renderChat(document.getElementById("chat-list").scrollTop);
     }
-    if (document.getElementById("proposals-dialog").open) renderProposalList();
-    if (document.getElementById("directory-dialog").open) renderDirectory();
-    if (document.getElementById("archive-dialog").open) renderArchive();
+    if (paneVisible("proposals-dialog")) renderProposalList();
+    if (paneVisible("directory-dialog")) renderDirectory();
+    if (paneVisible("archive-dialog")) renderArchive();
     if (document.getElementById("gallery-dialog").open) {
       paintGallerySize();
       renderGallery();
     }
-    if (document.getElementById("calendar-dialog").open) {
+    if (paneVisible("calendar-dialog")) {
       document.getElementById("calendar-copy").textContent = I18N.t("copyLink");
     }
     render();
@@ -2804,23 +2917,8 @@ function setChatFull(full) {
   if (list) list.scrollTop = list.scrollHeight;
 }
 
-document.getElementById("chat-shrink").addEventListener("click", () => setChatFull(false));
-document.getElementById("chat-expand").addEventListener("click", () => setChatFull(true));
-
 document.getElementById("chat-close").addEventListener("click", () => {
-  document.getElementById("chat-dialog").close();
-});
-
-document.getElementById("chat-dialog").addEventListener("close", () => {
-  if (streamChatOpen()) {
-    savedChat = null;
-    return;
-  }
-  discardVoiceRecord();
-  editingChatId = "";
-  chatRoom = "";
-  chatMessages = [];
-  renderChatTabs();
+  showTab("home");
 });
 
 async function sendChat() {
@@ -2935,7 +3033,6 @@ document.addEventListener("pointerdown", (e) => {
   if (e.target.closest(".chat-emoji")) return;
   setChatEmojiOpen(false);
 });
-document.getElementById("chat-dialog").addEventListener("close", () => setChatEmojiOpen(false));
 document.getElementById("stream-dialog").addEventListener("close", () => setChatEmojiOpen(false));
 
 document.getElementById("schedule-close").addEventListener("click", () => {
@@ -3287,27 +3384,11 @@ async function openArchiveItem(itemId) {
   }
 }
 
-document.getElementById("btn-archive").addEventListener("click", async () => {
-  try {
-    document.getElementById("archive-search").value = "";
-    await loadArchive();
-    showArchiveList();
-    document.getElementById("archive-dialog").showModal();
-    document.getElementById("archive-search").focus();
-  } catch (err) {
-    alert(err.message);
-  }
-});
-
 document.getElementById("archive-close").addEventListener("click", () => {
-  document.getElementById("archive-dialog").close();
+  showTab("home");
 });
 document.getElementById("archive-close-bottom").addEventListener("click", () => {
-  document.getElementById("archive-dialog").close();
-});
-
-document.getElementById("archive-dialog").addEventListener("close", () => {
-  document.getElementById("archive-detail").innerHTML = "";
+  showTab("home");
 });
 
 document.getElementById("archive-search").addEventListener("input", renderArchive);
@@ -3399,22 +3480,11 @@ document.getElementById("archive-member-file").addEventListener("change", async 
   }
 });
 
-document.getElementById("btn-directory").addEventListener("click", async () => {
-  try {
-    document.getElementById("directory-search").value = "";
-    await loadDirectory();
-    document.getElementById("directory-dialog").showModal();
-    document.getElementById("directory-search").focus();
-  } catch (err) {
-    alert(err.message);
-  }
-});
-
 document.getElementById("directory-close").addEventListener("click", () => {
-  document.getElementById("directory-dialog").close();
+  showTab("home");
 });
 document.getElementById("directory-close-bottom").addEventListener("click", () => {
-  document.getElementById("directory-dialog").close();
+  showTab("home");
 });
 
 document.getElementById("directory-search").addEventListener("input", renderDirectory);
@@ -3432,19 +3502,17 @@ async function openCalendar() {
     const data = await api("/api/me/calendar");
     urlEl.value = data.url || "";
     if (data.webcalUrl) openEl.href = data.webcalUrl;
-    document.getElementById("calendar-dialog").showModal();
+    showTab("calendar");
     urlEl.focus();
     urlEl.select();
   } catch (err) {
     showError(errEl, err.message);
-    document.getElementById("calendar-dialog").showModal();
+    showTab("calendar");
   }
 }
 
-document.getElementById("btn-calendar").addEventListener("click", openCalendar);
-
 document.getElementById("calendar-close").addEventListener("click", () => {
-  document.getElementById("calendar-dialog").close();
+  showTab("home");
 });
 
 document.getElementById("calendar-copy").addEventListener("click", async () => {
@@ -3462,18 +3530,11 @@ document.getElementById("calendar-copy").addEventListener("click", async () => {
   }
 });
 
-document.getElementById("btn-propose").addEventListener("click", () => {
-  document.getElementById("propose-form").reset();
-  showError(document.getElementById("propose-error"), "");
-  document.getElementById("propose-dialog").showModal();
-  document.getElementById("propose-title").focus();
-});
-
 document.getElementById("propose-close").addEventListener("click", () => {
-  document.getElementById("propose-dialog").close();
+  showTab("home");
 });
 document.getElementById("propose-close-bottom").addEventListener("click", () => {
-  document.getElementById("propose-dialog").close();
+  showTab("home");
 });
 
 document.getElementById("propose-form").addEventListener("submit", async (e) => {
@@ -3488,26 +3549,18 @@ document.getElementById("propose-form").addEventListener("submit", async (e) => 
         url: document.getElementById("propose-url").value,
       }),
     });
-    document.getElementById("propose-dialog").close();
+    await loadProposals();
+    showTab("proposals");
   } catch (err) {
     showError(errEl, err.message);
   }
 });
 
-document.getElementById("btn-proposals").addEventListener("click", async () => {
-  try {
-    await loadProposals();
-    document.getElementById("proposals-dialog").showModal();
-  } catch (err) {
-    alert(err.message);
-  }
-});
-
 document.getElementById("proposals-close").addEventListener("click", () => {
-  document.getElementById("proposals-dialog").close();
+  showTab("home");
 });
 document.getElementById("proposals-close-bottom").addEventListener("click", () => {
-  document.getElementById("proposals-dialog").close();
+  showTab("home");
 });
 
 Photo.bind({

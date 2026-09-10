@@ -941,7 +941,9 @@
       document.title = t(el.dataset.i18nPage);
     });
     document.querySelectorAll("[data-i18n-aria]").forEach((el) => {
-      el.setAttribute("aria-label", t(el.dataset.i18nAria));
+      const label = t(el.dataset.i18nAria);
+      el.setAttribute("aria-label", label);
+      if (el.hasAttribute("data-tip")) el.setAttribute("data-tip", label);
     });
     document.querySelectorAll("[data-lang]").forEach((el) => {
       el.classList.toggle("on", el.dataset.lang === lang);

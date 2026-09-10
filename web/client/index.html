@@ -101,30 +101,6 @@
           <button type="button" id="btn-header-play" class="btn ghost header-stream header-play" disabled data-i18n-aria="streamPlay" aria-label="Live-Stream ansehen">
             <span class="header-play-icon" aria-hidden="true"></span>
           </button>
-          <div id="header-tools" class="header-tools">
-            <button type="button" class="btn ghost header-tool" data-tool="directory" data-i18n-aria="addressBook" aria-label="Adressbuch">
-              <span class="header-tool-icon book" aria-hidden="true"></span>
-            </button>
-            <button type="button" class="btn ghost header-tool" data-tool="archive" data-i18n-aria="tabArchive" aria-label="Notenarchiv">
-              <span class="header-tool-icon notes" aria-hidden="true"></span>
-            </button>
-            <button type="button" class="btn ghost header-tool" data-tool="propose" data-i18n-aria="proposeSong" aria-label="Song vorschlagen">
-              <span class="header-tool-icon propose" aria-hidden="true"></span>
-            </button>
-            <button type="button" class="btn ghost header-tool" data-tool="proposals" data-i18n-aria="songProposals" aria-label="Songvorschläge">
-              <span class="header-tool-icon proposals" aria-hidden="true"></span>
-            </button>
-            <button type="button" class="btn ghost header-tool install-open" data-tool="install" data-i18n-aria="addToHome" aria-label="Add App">
-              <span class="header-tool-icon install" aria-hidden="true"></span>
-            </button>
-            <button type="button" class="btn ghost header-tool" data-tool="calendar" data-i18n-aria="subscribeCalendar" aria-label="Kalender">
-              <span class="header-tool-icon calendar" aria-hidden="true"></span>
-            </button>
-          </div>
-          <button type="button" id="btn-header-chat" class="btn ghost header-chat" hidden data-i18n-aria="chatBrand" aria-label="Chat">
-            <span class="header-chat-icon" aria-hidden="true"></span>
-            <span id="header-chat-unread" class="menu-unread" hidden></span>
-          </button>
           <button type="button" id="btn-menu" class="btn ghost menu-toggle" aria-expanded="false" aria-controls="top-actions" data-i18n-aria="menu" aria-label="Menü">
             <span class="menu-toggle-bars" aria-hidden="true"></span>
             <span id="menu-unread" class="menu-unread" hidden></span>
@@ -132,25 +108,82 @@
           <button type="button" id="btn-logout" class="btn ghost" data-i18n="signOut">Abmelden</button>
         </div>
       </div>
-      <nav id="top-actions" class="top-actions">
-        <div class="menu-head">
-          <h2 data-i18n="menu">Menü</h2>
-          <button type="button" id="menu-close" class="btn ghost" data-i18n="close">Schließen</button>
-        </div>
-        <div id="chat-tabs" class="chat-tabs" hidden>
-          <button type="button" class="btn ghost chat-tab" data-chat="choir" hidden>Chor</button>
-          <button type="button" class="btn ghost chat-tab" data-chat="band" hidden>Band</button>
-          <button type="button" class="btn ghost chat-tab" data-chat="orchestra" hidden>Orchester</button>
-        </div>
-        <button type="button" id="btn-directory" class="btn book" data-i18n="addressBook">Adressbuch</button>
-        <button type="button" id="btn-archive" class="btn notes" data-i18n="tabArchive">Notenarchiv</button>
-        <button type="button" id="btn-propose" class="btn song" data-i18n="proposeSong">Song vorschlagen</button>
-        <button type="button" id="btn-proposals" class="btn song" data-i18n="songProposals">Songvorschläge</button>
-        <button type="button" class="btn install install-open" data-i18n="addToHome">Add App</button>
-        <button type="button" id="btn-calendar" class="btn calendar" data-i18n="subscribeCalendar">Kalender</button>
-        <button type="button" id="btn-logout-menu" class="btn ghost menu-logout" data-i18n="signOut">Abmelden</button>
+      <nav id="app-tabs" class="app-tabs" role="tablist">
+        <button type="button" class="btn ghost header-tool on" data-tab="home" role="tab" aria-selected="true" data-i18n-aria="dates" aria-label="Termine" data-tip="Termine">
+          <span class="header-tool-icon home" aria-hidden="true"></span>
+        </button>
+        <button type="button" class="btn ghost header-tool" data-tab="directory" role="tab" aria-selected="false" data-i18n-aria="addressBook" aria-label="Adressbuch" data-tip="Adressbuch">
+          <span class="header-tool-icon book" aria-hidden="true"></span>
+        </button>
+        <button type="button" class="btn ghost header-tool" data-tab="archive" role="tab" aria-selected="false" data-i18n-aria="tabArchive" aria-label="Notenarchiv" data-tip="Notenarchiv">
+          <span class="header-tool-icon notes" aria-hidden="true"></span>
+        </button>
+        <button type="button" class="btn ghost header-tool" data-tab="propose" role="tab" aria-selected="false" data-i18n-aria="proposeSong" aria-label="Song vorschlagen" data-tip="Song vorschlagen">
+          <span class="header-tool-icon propose" aria-hidden="true"></span>
+        </button>
+        <button type="button" class="btn ghost header-tool" data-tab="proposals" role="tab" aria-selected="false" data-i18n-aria="songProposals" aria-label="Songvorschläge" data-tip="Songvorschläge">
+          <span class="header-tool-icon proposals" aria-hidden="true"></span>
+        </button>
+        <button type="button" class="btn ghost header-tool install-open" data-tab="install" role="tab" aria-selected="false" data-i18n-aria="addToHome" aria-label="Add App" data-tip="Add App">
+          <span class="header-tool-icon install" aria-hidden="true"></span>
+        </button>
+        <button type="button" class="btn ghost header-tool" data-tab="calendar" role="tab" aria-selected="false" data-i18n-aria="subscribeCalendar" aria-label="Kalender" data-tip="Kalender">
+          <span class="header-tool-icon calendar" aria-hidden="true"></span>
+        </button>
+        <button type="button" id="btn-header-chat" class="btn ghost header-chat header-tool" data-tab="chat" role="tab" aria-selected="false" hidden data-i18n-aria="chatBrand" aria-label="Chat" data-tip="Chat">
+          <span class="header-chat-icon" aria-hidden="true"></span>
+          <span id="header-chat-unread" class="menu-unread" hidden></span>
+        </button>
       </nav>
     </header>
+    <nav id="top-actions" class="top-actions">
+      <div class="menu-head">
+        <h2 data-i18n="menu">Menü</h2>
+        <button type="button" id="menu-close" class="btn ghost" data-i18n="close">Schließen</button>
+      </div>
+      <div id="chat-tabs" class="chat-tabs" hidden>
+        <button type="button" class="btn ghost chat-tab" data-chat="choir" hidden>Chor</button>
+        <button type="button" class="btn ghost chat-tab" data-chat="band" hidden>Band</button>
+        <button type="button" class="btn ghost chat-tab" data-chat="orchestra" hidden>Orchester</button>
+      </div>
+      <button type="button" id="btn-home" class="btn" data-tab="home">
+        <span class="header-tool-icon home" aria-hidden="true"></span>
+        <span data-i18n="dates">Termine</span>
+      </button>
+      <button type="button" id="btn-directory" class="btn book" data-tab="directory">
+        <span class="header-tool-icon book" aria-hidden="true"></span>
+        <span data-i18n="addressBook">Adressbuch</span>
+      </button>
+      <button type="button" id="btn-archive" class="btn notes" data-tab="archive">
+        <span class="header-tool-icon notes" aria-hidden="true"></span>
+        <span data-i18n="tabArchive">Notenarchiv</span>
+      </button>
+      <button type="button" id="btn-propose" class="btn song" data-tab="propose">
+        <span class="header-tool-icon propose" aria-hidden="true"></span>
+        <span data-i18n="proposeSong">Song vorschlagen</span>
+      </button>
+      <button type="button" id="btn-proposals" class="btn song" data-tab="proposals">
+        <span class="header-tool-icon proposals" aria-hidden="true"></span>
+        <span data-i18n="songProposals">Songvorschläge</span>
+      </button>
+      <button type="button" class="btn install install-open" data-tab="install">
+        <span class="header-tool-icon install" aria-hidden="true"></span>
+        <span data-i18n="addToHome">Add App</span>
+      </button>
+      <button type="button" id="btn-calendar" class="btn calendar" data-tab="calendar">
+        <span class="header-tool-icon calendar" aria-hidden="true"></span>
+        <span data-i18n="subscribeCalendar">Kalender</span>
+      </button>
+      <button type="button" id="btn-menu-chat" class="btn ghost" data-tab="chat" hidden>
+        <span class="header-chat-icon" aria-hidden="true"></span>
+        <span data-i18n="chatBrand">Chat</span>
+      </button>
+      <button type="button" id="btn-logout-menu" class="btn ghost menu-logout">
+        <span class="header-tool-icon logout" aria-hidden="true"></span>
+        <span data-i18n="signOut">Abmelden</span>
+      </button>
+    </nav>
+    <div id="tab-home" class="app-pane">
     <details id="fold-channels" class="fold fold-channels" hidden>
       <summary class="fold-head"><span class="brand" data-i18n="channels">Kanäle</span></summary>
       <section id="my-channels" class="my-channels fold-body"></section>
@@ -177,7 +210,7 @@
     </nav>
     <div id="dates" class="dates"></div>
     <p id="empty" class="lede empty" hidden data-i18n="noDatesRole">Noch keine Termine für deine Rolle.</p>
-  </section>
+    </div>
 
   <dialog id="comment-dialog" class="dialog">
     <div class="dialog-head">
@@ -252,7 +285,7 @@
       <button type="button" id="install-now" class="btn" hidden data-i18n="addToHomeInstall">Jetzt installieren</button>
     </div>
   </dialog>
-  <dialog id="calendar-dialog" class="dialog">
+  <section id="calendar-dialog" class="app-pane" hidden>
     <div class="dialog-head">
       <div>
         <p class="brand" data-i18n="subscribeCalendar">Kalender</p>
@@ -270,8 +303,8 @@
       <button type="button" id="calendar-copy" class="btn" data-i18n="copyLink">Link kopieren</button>
       <a id="calendar-open" class="btn ghost" data-i18n="openSubscribe">Abonnieren</a>
     </div>
-  </dialog>
-  <dialog id="propose-dialog" class="dialog app-dialog">
+  </section>
+  <section id="propose-dialog" class="app-pane app-dialog" hidden>
     <div class="dialog-head">
       <div>
         <p class="brand" data-i18n="proposeSong">Song vorschlagen</p>
@@ -291,8 +324,8 @@
       </form>
     </div>
     <button type="button" id="propose-close-bottom" class="btn ghost chat-close-bottom" data-i18n="close">Schließen</button>
-  </dialog>
-  <dialog id="directory-dialog" class="dialog directory-dialog app-dialog">
+  </section>
+  <section id="directory-dialog" class="app-pane directory-dialog app-dialog" hidden>
     <div class="dialog-head">
       <div>
         <p class="brand" data-i18n="addressBook">Adressbuch</p>
@@ -307,8 +340,8 @@
       <div id="directory-list" class="directory-list"></div>
     </div>
     <button type="button" id="directory-close-bottom" class="btn ghost chat-close-bottom" data-i18n="close">Schließen</button>
-  </dialog>
-  <dialog id="proposals-dialog" class="dialog app-dialog">
+  </section>
+  <section id="proposals-dialog" class="app-pane app-dialog" hidden>
     <div class="dialog-head">
       <div>
         <p class="brand" data-i18n="songProposals">Songvorschläge</p>
@@ -320,7 +353,7 @@
       <div id="proposals-list" class="proposals-list"></div>
     </div>
     <button type="button" id="proposals-close-bottom" class="btn ghost chat-close-bottom" data-i18n="close">Schließen</button>
-  </dialog>
+  </section>
   <dialog id="schedule-dialog" class="dialog">
     <div class="dialog-head">
       <div>
@@ -331,7 +364,7 @@
     </div>
     <div id="schedule-body" class="schedule-body"></div>
   </dialog>
-  <dialog id="archive-dialog" class="dialog directory-dialog app-dialog">
+  <section id="archive-dialog" class="app-pane directory-dialog app-dialog" hidden>
     <div class="dialog-head">
       <div>
         <p class="brand" data-i18n="tabArchive">Notenarchiv</p>
@@ -362,7 +395,7 @@
     </div>
     <input id="archive-member-file" type="file" hidden />
     <button type="button" id="archive-close-bottom" class="btn ghost chat-close-bottom" data-i18n="close">Schließen</button>
-  </dialog>
+  </section>
   <dialog id="gallery-dialog" class="dialog gallery-dialog">
     <div class="dialog-head">
       <div class="win-dots" role="group">
@@ -438,6 +471,7 @@
           <button type="button" id="stream-chat-media" class="chat-media-btn" data-i18n-aria="chatMedia" aria-label="Foto oder Video"></button>
           <input id="stream-chat-media-file" type="file" accept="image/*,video/*" hidden />
           <button type="button" id="stream-chat-voice" class="chat-voice-btn" data-i18n-aria="chatVoice" aria-label="Sprachnachricht"></button>
+          <button type="submit" class="chat-send-btn" data-i18n-aria="chatSend" aria-label="Senden"></button>
           <div id="stream-chat-rec" class="chat-rec" hidden>
             <button type="button" id="stream-chat-rec-cancel" class="chat-rec-cancel" data-i18n-aria="chatVoiceCancel" aria-label="Abbrechen">×</button>
             <span class="chat-rec-dot" aria-hidden="true"></span>
@@ -461,17 +495,13 @@
       <pre id="changelog-body" class="changelog-term"></pre>
     </div>
   </dialog>
-  <dialog id="chat-dialog" class="dialog chat-dialog">
+  <section id="chat-dialog" class="app-pane chat-dialog" hidden>
     <div class="dialog-head">
-      <div class="chat-traffic" role="group">
-        <button type="button" id="chat-close" class="chat-dot close" data-i18n-aria="close" aria-label="Schließen"></button>
-        <button type="button" id="chat-shrink" class="chat-dot shrink" data-i18n-aria="chatReduce" aria-label="Klein"></button>
-        <button type="button" id="chat-expand" class="chat-dot expand" data-i18n-aria="chatExpand" aria-label="Vollbild"></button>
-      </div>
-      <div class="chat-head-text">
+      <div>
         <p class="brand" data-i18n="chatBrand">Chat</p>
         <h2 id="chat-title">Chat</h2>
       </div>
+      <button type="button" id="chat-close" class="btn ghost" data-i18n="close">Schließen</button>
     </div>
     <div id="chat-list" class="chat-list"></div>
     <form id="chat-form" class="chat-composer">
@@ -484,6 +514,7 @@
       <button type="button" id="chat-media" class="chat-media-btn" data-i18n-aria="chatMedia" aria-label="Foto oder Video"></button>
       <input id="chat-media-file" type="file" accept="image/*,video/*" hidden />
       <button type="button" id="chat-voice" class="chat-voice-btn" data-i18n-aria="chatVoice" aria-label="Sprachnachricht"></button>
+      <button type="submit" class="chat-send-btn" data-i18n-aria="chatSend" aria-label="Senden"></button>
       <div id="chat-rec" class="chat-rec" hidden>
         <button type="button" id="chat-rec-cancel" class="chat-rec-cancel" data-i18n-aria="chatVoiceCancel" aria-label="Abbrechen">×</button>
         <span class="chat-rec-dot" aria-hidden="true"></span>
@@ -493,7 +524,8 @@
       <p id="chat-error" class="error" hidden></p>
     </form>
     <button type="button" id="chat-close-bottom" class="btn ghost chat-close-bottom" data-i18n="close">Schließen</button>
-  </dialog>
+  </section>
+  </section>
   <div id="notice-toast" class="notice-toast" hidden>
     <button type="button" id="notice-toast-open" class="notice-toast-open">
       <strong id="notice-toast-title"></strong>

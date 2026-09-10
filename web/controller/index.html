@@ -359,15 +359,11 @@
 
   <dialog id="chat-dialog" class="dialog chat-dialog">
     <div class="dialog-head">
-      <div class="chat-traffic" role="group">
-        <button type="button" id="chat-close" class="chat-dot close" data-i18n-aria="close" aria-label="Schließen"></button>
-        <button type="button" id="chat-shrink" class="chat-dot shrink" data-i18n-aria="chatReduce" aria-label="Klein"></button>
-        <button type="button" id="chat-expand" class="chat-dot expand" data-i18n-aria="chatExpand" aria-label="Vollbild"></button>
-      </div>
-      <div class="chat-head-text">
+      <div>
         <p class="brand" data-i18n="chatBrand">Chat</p>
         <h2 id="chat-title">Chat</h2>
       </div>
+      <button type="button" id="chat-close" class="btn ghost" data-i18n="close">Schließen</button>
     </div>
     <div id="chat-list" class="chat-list"></div>
     <form id="chat-form" class="chat-composer">
@@ -380,6 +376,7 @@
       <button type="button" id="chat-media" class="chat-media-btn" data-i18n-aria="chatMedia" aria-label="Foto oder Video"></button>
       <input id="chat-media-file" type="file" accept="image/*,video/*" hidden />
       <button type="button" id="chat-voice" class="chat-voice-btn" data-i18n-aria="chatVoice" aria-label="Sprachnachricht"></button>
+      <button type="submit" class="chat-send-btn" data-i18n-aria="chatSend" aria-label="Senden"></button>
       <div id="chat-rec" class="chat-rec" hidden>
         <button type="button" id="chat-rec-cancel" class="chat-rec-cancel" data-i18n-aria="chatVoiceCancel" aria-label="Abbrechen">×</button>
         <span class="chat-rec-dot" aria-hidden="true"></span>

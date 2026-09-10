@@ -2082,9 +2082,6 @@ function setChatFull(full) {
   if (list) list.scrollTop = list.scrollHeight;
 }
 
-document.getElementById("chat-shrink").addEventListener("click", () => setChatFull(false));
-document.getElementById("chat-expand").addEventListener("click", () => setChatFull(true));
-
 document.getElementById("chat-close").addEventListener("click", () => {
   discardVoiceRecord();
   document.getElementById("chat-dialog").close();

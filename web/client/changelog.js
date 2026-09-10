@@ -4,7 +4,10 @@
       date: "2026-09-10",
       items: {
         de: [
-          "Oben neben dem Chat liegen kleine Werkzeug-Icons für Adressbuch, Archiv, Song vorschlagen, Songvorschläge, Add App und Kalender.",
+          "Im Chat gibt es neben dem Eingabefeld ein Senden-Symbol. Return geht weiter.",
+          "Die Tab-Icons zeigen beim Überfahren den Menütext in einem kleinen Popup.",
+          "Chats schließen oben rechts mit Schließen — wie Adressbuch, ohne den roten Knopf links.",
+          "Oben liegt eine Tab-Leiste: Haus, Adressbuch, Archiv, Vorschlagen, Vorschläge, Add App, Kalender und Chat. Jedes Icon — und derselbe Eintrag im Menü — wechselt die Ansicht, ohne den Kopf zu überdecken.",
           "Im Notenarchiv gibt es MIDI/MusicXML als eigenen Bereich. Archiv, Songvorschläge und Adressbuch füllen das Fenster und haben unten Schließen.",
           "Kanäle, Nächster Termin und Meine Termine sind zugeklappte Paneele. Unten zeigt ein Vor/Zurück nur einen Termin, Chat füllt das Fenster und springt zur zuletzt gesehenen Nachricht.",
           "Jeder Chat hat unten einen Schließen-Knopf — Live, Chor, Band, Orchester und Termin, auch in der Verwaltung.",
@@ -30,7 +33,10 @@
           "Sprachnachrichten im Chat mit automatischer Abschrift. Chorleiter können Kanäle haben.",
         ],
         en: [
-          "Small tool icons sit on the top bar next to chat: address book, archive, propose a song, song proposals, Add App, and calendar.",
+          "Chat has a send arrow next to the message field. Return still works.",
+          "Hovering a tab icon shows the menu label in a small popup.",
+          "Chats close with Close on the top right — like the address book, without the red button on the left.",
+          "A tab bar on top switches the main view: home, address book, archive, propose, proposals, Add App, calendar, and chat. The menu opens the same views, and the header stays visible.",
           "The music archive has a MIDI/MusicXML slot. Archive, song proposals, and the address book fill the window and have Close at the bottom.",
           "Channels, Next Date, and My Dates start folded. A back/forward control shows one date at a time, chat fills the window, and opens at the last message you saw.",
           "Every chat has a Close button at the bottom — live, choir, band, orchestra, and event, including in the controller.",

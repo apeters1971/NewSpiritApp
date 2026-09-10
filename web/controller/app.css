@@ -591,6 +591,7 @@ button.avatar {
 }
 .chat-voice-btn,
 .chat-media-btn,
+.chat-send-btn,
 .chat-rec-cancel,
 .chat-rec-send,
 .chat-voice-play {
@@ -607,6 +608,7 @@ button.avatar {
 }
 .chat-voice-btn::before,
 .chat-media-btn::before,
+.chat-send-btn::before,
 .chat-rec-send::before,
 .chat-voice-play::before {
   content: "";
@@ -617,6 +619,10 @@ button.avatar {
   background: currentColor;
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M12 3.25A3.75 3.75 0 0 0 8.25 7v5a3.75 3.75 0 1 0 7.5 0V7A3.75 3.75 0 0 0 12 3.25ZM6 12a.75.75 0 0 0-1.5 0 7.5 7.5 0 0 0 6.75 7.46V21h-2.5a.75.75 0 0 0 0 1.5h5.5a.75.75 0 0 0 0-1.5H13.5v-1.54A7.5 7.5 0 0 0 19.5 12a.75.75 0 0 0-1.5 0 6 6 0 1 1-12 0Z'/%3E%3C/svg%3E") center / contain no-repeat;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M12 3.25A3.75 3.75 0 0 0 8.25 7v5a3.75 3.75 0 1 0 7.5 0V7A3.75 3.75 0 0 0 12 3.25ZM6 12a.75.75 0 0 0-1.5 0 7.5 7.5 0 0 0 6.75 7.46V21h-2.5a.75.75 0 0 0 0 1.5h5.5a.75.75 0 0 0 0-1.5H13.5v-1.54A7.5 7.5 0 0 0 19.5 12a.75.75 0 0 0-1.5 0 6 6 0 1 1-12 0Z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.chat-send-btn::before {
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M3.2 12 20.4 4.6 14.1 20.8l-1.4-6.2-5.6-1.5 6.4-2.4z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M3.2 12 20.4 4.6 14.1 20.8l-1.4-6.2-5.6-1.5 6.4-2.4z'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 .chat-media-btn::before {
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M4.8 5.5h14.4A1.7 1.7 0 0 1 20.9 7.2v9.6a1.7 1.7 0 0 1-1.7 1.7H4.8a1.7 1.7 0 0 1-1.7-1.7V7.2A1.7 1.7 0 0 1 4.8 5.5Zm1.5 10.3 3.2-3.8 2.2 2.6 2.8-3.7 3.9 4.9H6.3ZM8.6 9.2a1.35 1.35 0 1 0 0 2.7 1.35 1.35 0 0 0 0-2.7Z'/%3E%3C/svg%3E") center / contain no-repeat;
@@ -667,7 +673,8 @@ button.avatar {
 .chat-composer.recording .chat-emoji,
 .chat-composer.recording textarea,
 .chat-composer.recording .chat-media-btn,
-.chat-composer.recording .chat-voice-btn { display: none; }
+.chat-composer.recording .chat-voice-btn,
+.chat-composer.recording .chat-send-btn { display: none; }
 .chat-media {
   position: relative;
   margin: 0.2rem 0 0.1rem;
