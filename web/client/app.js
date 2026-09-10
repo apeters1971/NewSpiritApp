@@ -22,6 +22,7 @@ let galleryItems = [];
 let chatRoom = "";
 let chatMessages = [];
 let chatUnread = {};
+let savedChat = null;
 let mixer = { channels: [], people: [] };
 let memberWS = null;
 let liveStream = null;
@@ -30,6 +31,7 @@ let pubPeers = {};
 let subPeer = null;
 
 const CHAT_ROOMS = ["choir", "band", "orchestra"];
+const LIVE_ROOM = "live";
 const CHAT_API = "/api/chats";
 const VOICE_MAX_MS = 120000;
 const CHAT_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
@@ -965,7 +967,8 @@ function chatNoticeBody(m) {
 function notifyChatMessage(m) {
   if (!m?.room) return;
   if (me && !m.isAdmin && m.userId === me.id) return;
-  const openHere = document.getElementById("chat-dialog")?.open && chatRoom === m.room;
+  const openHere = (document.getElementById("chat-dialog")?.open && chatRoom === m.room)
+    || (document.getElementById("stream-dialog")?.open && m.room === LIVE_ROOM);
   if (openHere && document.visibilityState === "visible") return;
   const date = m.room.startsWith("event:")
     ? dates.find((d) => d.id === m.room.slice("event:".length))
@@ -992,6 +995,10 @@ async function handleNotifyClick(data) {
   if (!me || me.mustChangePassword) return;
   try {
     if (data?.kind === "chat" && data.room) {
+      if (data.room === LIVE_ROOM) {
+        if (liveStream) await startWatch();
+        return;
+      }
       const title = data.room.startsWith("event:")
         ? dates.find((d) => d.id === data.room.slice("event:".length))?.title
         : "";
@@ -1232,6 +1239,7 @@ document.getElementById("stream-dialog").addEventListener("close", () => {
   const video = document.getElementById("stream-video");
   if (!pubStream && video) video.srcObject = null;
   if (!pubStream) stopWatch(false);
+  unloadLiveChat();
 });
 document.getElementById("btn-header-chat").addEventListener("click", async () => {
   const room = primaryChatRoom();
@@ -1820,7 +1828,8 @@ function chatMessageHTML(m, stacked) {
 }
 
 function renderChat(keepTop) {
-  const list = document.getElementById("chat-list");
+  const list = chatListEl();
+  if (!list) return;
   const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 48;
   list.innerHTML = chatMessages.length
     ? chatMessages.map((m, i) => {
@@ -1840,9 +1849,9 @@ function renderChat(keepTop) {
 function applyReactions(messageId, reactions) {
   const m = chatMessages.find((x) => x.id === messageId);
   if (!m) return;
-  const list = document.getElementById("chat-list");
+  const list = chatListEl();
   m.reactions = reactions || [];
-  renderChat(list.scrollTop);
+  renderChat(list?.scrollTop);
 }
 
 function appendChat(msg) {
@@ -1858,7 +1867,7 @@ function upsertChat(msg) {
     appendChat(msg);
     return;
   }
-  const list = document.getElementById("chat-list");
+  const list = chatListEl();
   chatMessages[i] = { ...chatMessages[i], ...msg };
   renderChat(list?.scrollTop);
 }
@@ -1866,9 +1875,9 @@ function upsertChat(msg) {
 function removeChat(id) {
   const next = chatMessages.filter((m) => m.id !== id);
   if (next.length === chatMessages.length) return;
-  const list = document.getElementById("chat-list");
+  const list = chatListEl();
   chatMessages = next;
-  renderChat(list.scrollTop);
+  renderChat(list?.scrollTop);
 }
 
 let editingChatId = "";
@@ -1887,7 +1896,7 @@ async function saveChatEdit(id, text) {
     editingChatId = "";
     upsertChat(data.message);
   } catch (err) {
-    showError(document.getElementById("chat-error"), err.message);
+    showError(chatErrorEl(), err.message);
   }
 }
 
@@ -1898,12 +1907,49 @@ async function deleteChatMessage(id) {
     await api(`/api/chats/${encodeURIComponent(chatRoom)}/messages/${encodeURIComponent(id)}`, { method: "DELETE" });
     removeChat(id);
   } catch (err) {
-    showError(document.getElementById("chat-error"), err.message);
+    showError(chatErrorEl(), err.message);
   }
+}
+
+function streamChatOpen() {
+  return !!document.getElementById("stream-dialog")?.open;
+}
+
+function chatListEl() {
+  return document.getElementById(streamChatOpen() ? "stream-chat-list" : "chat-list");
+}
+
+function chatTextEl() {
+  return document.getElementById(streamChatOpen() ? "stream-chat-text" : "chat-text");
+}
+
+function chatErrorEl() {
+  return document.getElementById(streamChatOpen() ? "stream-chat-error" : "chat-error");
+}
+
+function chatFormEl() {
+  return document.getElementById(streamChatOpen() ? "stream-chat-form" : "chat-form");
+}
+
+function chatRecEl() {
+  return document.getElementById(streamChatOpen() ? "stream-chat-rec" : "chat-rec");
+}
+
+function chatRecTimeEl() {
+  return document.getElementById(streamChatOpen() ? "stream-chat-rec-time" : "chat-rec-time");
+}
+
+function chatEmojiToggleEl() {
+  return document.getElementById(streamChatOpen() ? "stream-chat-emoji-toggle" : "chat-emoji-toggle");
+}
+
+function chatEmojiPanelEl() {
+  return document.getElementById(streamChatOpen() ? "stream-chat-emoji-panel" : "chat-emoji-panel");
 }
 
 function chatTitle(room, title) {
   if (title) return title;
+  if (room === LIVE_ROOM) return I18N.t("chat.live");
   if (CHAT_ROOMS.includes(room)) return I18N.t(`chat.${room}`);
   return I18N.t("eventChat");
 }
@@ -1920,8 +1966,8 @@ function voiceMime() {
 }
 
 function setVoiceRecording(on) {
-  const form = document.getElementById("chat-form");
-  const rec = document.getElementById("chat-rec");
+  const form = chatFormEl();
+  const rec = chatRecEl();
   if (form) form.classList.toggle("recording", on);
   if (rec) rec.hidden = !on;
 }
@@ -1939,12 +1985,12 @@ function discardVoiceRecord() {
   stopVoiceTracks();
   voiceRec = null;
   setVoiceRecording(false);
-  const time = document.getElementById("chat-rec-time");
+  const time = chatRecTimeEl();
   if (time) time.textContent = "0:00";
 }
 
 async function startVoiceRecord() {
-  const errEl = document.getElementById("chat-error");
+  const errEl = chatErrorEl();
   showError(errEl, "");
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
     showError(errEl, I18N.t("errVoiceUnsupported"));
@@ -1980,7 +2026,7 @@ async function startVoiceRecord() {
     discard: false,
     timer: setInterval(() => {
       const ms = Date.now() - started;
-      const time = document.getElementById("chat-rec-time");
+      const time = chatRecTimeEl();
       if (time) time.textContent = formatVoiceDur(ms);
       if (ms >= VOICE_MAX_MS) finishVoiceRecord(false);
     }, 200),
@@ -2003,7 +2049,7 @@ function finishVoiceRecord(discard) {
 }
 
 async function sendVoice(blob, ms) {
-  const errEl = document.getElementById("chat-error");
+  const errEl = chatErrorEl();
   if (!chatRoom || !blob || blob.size < 64 || ms < 400) {
     showError(errEl, I18N.t("errVoiceEmpty"));
     return;
@@ -2147,6 +2193,44 @@ function openStreamDialog(publishing) {
   }
   const dialog = document.getElementById("stream-dialog");
   if (!dialog.open) dialog.showModal();
+  loadLiveChat().catch((err) => showError(chatErrorEl(), err.message));
+}
+
+async function loadLiveChat() {
+  if (chatRoom && chatRoom !== LIVE_ROOM && document.getElementById("chat-dialog")?.open) {
+    savedChat = { room: chatRoom, title: document.getElementById("chat-title").textContent, messages: chatMessages };
+  }
+  discardVoiceRecord();
+  editingChatId = "";
+  chatRoom = LIVE_ROOM;
+  const input = chatTextEl();
+  if (input) {
+    input.value = "";
+    input.placeholder = I18N.t("chatWrite");
+  }
+  showError(chatErrorEl(), "");
+  const data = await api(`/api/chats/${encodeURIComponent(LIVE_ROOM)}`);
+  chatMessages = data.messages || [];
+  renderChat();
+}
+
+function unloadLiveChat() {
+  discardVoiceRecord();
+  editingChatId = "";
+  if (savedChat && document.getElementById("chat-dialog")?.open) {
+    chatRoom = savedChat.room;
+    chatMessages = savedChat.messages;
+    document.getElementById("chat-title").textContent = savedChat.title;
+    savedChat = null;
+    renderChat();
+    renderChatTabs();
+    return;
+  }
+  savedChat = null;
+  if (chatRoom === LIVE_ROOM) {
+    chatRoom = "";
+    chatMessages = [];
+  }
 }
 
 function closeStreamDialog() {
@@ -2411,7 +2495,12 @@ I18N.onChange(() => {
     paintNoticesButton();
     paintStreamButtons();
     paintChatSize();
-    if (document.getElementById("chat-dialog").open && chatRoom) {
+    if (document.getElementById("stream-dialog").open) {
+      const input = chatTextEl();
+      if (input) input.placeholder = I18N.t("chatWrite");
+      if (chatRoom === LIVE_ROOM) renderChat(chatListEl()?.scrollTop);
+    }
+    if (document.getElementById("chat-dialog").open && chatRoom && chatRoom !== LIVE_ROOM) {
       const date = chatRoom.startsWith("event:")
         ? dates.find((d) => d.id === chatRoom.slice("event:".length))
         : null;
@@ -2467,15 +2556,14 @@ document.getElementById("chat-shrink").addEventListener("click", () => setChatFu
 document.getElementById("chat-expand").addEventListener("click", () => setChatFull(true));
 
 document.getElementById("chat-close").addEventListener("click", () => {
-  discardVoiceRecord();
-  editingChatId = "";
   document.getElementById("chat-dialog").close();
-  chatRoom = "";
-  chatMessages = [];
-  renderChatTabs();
 });
 
 document.getElementById("chat-dialog").addEventListener("close", () => {
+  if (streamChatOpen()) {
+    savedChat = null;
+    return;
+  }
   discardVoiceRecord();
   editingChatId = "";
   chatRoom = "";
@@ -2485,8 +2573,8 @@ document.getElementById("chat-dialog").addEventListener("close", () => {
 
 async function sendChat() {
   if (!chatRoom) return;
-  const input = document.getElementById("chat-text");
-  const errEl = document.getElementById("chat-error");
+  const input = chatTextEl();
+  const errEl = chatErrorEl();
   showError(errEl, "");
   const text = input.value.trim();
   if (!text) return;
@@ -2504,30 +2592,39 @@ async function sendChat() {
   }
 }
 
-document.getElementById("chat-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  await sendChat();
-});
-
-document.getElementById("chat-text").addEventListener("keydown", (e) => {
-  if (e.key !== "Enter" || e.shiftKey) return;
-  e.preventDefault();
-  sendChat();
-});
-
-document.getElementById("chat-voice").addEventListener("click", () => startVoiceRecord());
-document.getElementById("chat-media").addEventListener("click", () => {
-  document.getElementById("chat-media-file").click();
-});
-document.getElementById("chat-media-file").addEventListener("change", async (e) => {
-  const file = e.target.files?.[0];
-  e.target.value = "";
-  if (!file) return;
-  await sendChatMedia(file);
-});
+function bindChatComposer(prefix) {
+  const form = document.getElementById(`${prefix}chat-form`);
+  const text = document.getElementById(`${prefix}chat-text`);
+  const voice = document.getElementById(`${prefix}chat-voice`);
+  const media = document.getElementById(`${prefix}chat-media`);
+  const file = document.getElementById(`${prefix}chat-media-file`);
+  const cancel = document.getElementById(`${prefix}chat-rec-cancel`);
+  const send = document.getElementById(`${prefix}chat-rec-send`);
+  form?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    await sendChat();
+  });
+  text?.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || e.shiftKey) return;
+    e.preventDefault();
+    sendChat();
+  });
+  voice?.addEventListener("click", () => startVoiceRecord());
+  media?.addEventListener("click", () => file?.click());
+  file?.addEventListener("change", async (e) => {
+    const picked = e.target.files?.[0];
+    e.target.value = "";
+    if (!picked) return;
+    await sendChatMedia(picked);
+  });
+  cancel?.addEventListener("click", () => finishVoiceRecord(true));
+  send?.addEventListener("click", () => finishVoiceRecord(false));
+}
+bindChatComposer("");
+bindChatComposer("stream-");
 
 async function sendChatMedia(file) {
-  const errEl = document.getElementById("chat-error");
+  const errEl = chatErrorEl();
   if (!chatRoom || !file) return;
   const form = new FormData();
   form.append("file", file, file.name || "media");
@@ -2545,19 +2642,16 @@ async function sendChatMedia(file) {
     showError(errEl, err.message);
   }
 }
-document.getElementById("chat-rec-cancel").addEventListener("click", () => finishVoiceRecord(true));
-document.getElementById("chat-rec-send").addEventListener("click", () => finishVoiceRecord(false));
-
 function setChatEmojiOpen(open) {
-  const toggle = document.getElementById("chat-emoji-toggle");
-  const panel = document.getElementById("chat-emoji-panel");
+  const toggle = chatEmojiToggleEl();
+  const panel = chatEmojiPanelEl();
   if (!toggle || !panel) return;
   panel.hidden = !open;
   toggle.setAttribute("aria-expanded", open ? "true" : "false");
 }
 
 function insertChatEmoji(emoji) {
-  const input = document.getElementById("chat-text");
+  const input = chatTextEl();
   const start = input.selectionStart ?? input.value.length;
   const end = input.selectionEnd ?? input.value.length;
   const next = input.value.slice(0, start) + emoji + input.value.slice(end);
@@ -2568,9 +2662,9 @@ function insertChatEmoji(emoji) {
   input.setSelectionRange(pos, pos);
 }
 
-(function setupChatEmojiPicker() {
-  const toggle = document.getElementById("chat-emoji-toggle");
-  const panel = document.getElementById("chat-emoji-panel");
+function setupChatEmojiPicker(toggleId, panelId) {
+  const toggle = document.getElementById(toggleId);
+  const panel = document.getElementById(panelId);
   if (!toggle || !panel) return;
   panel.innerHTML = COMPOSE_EMOJIS.map((emoji) => `<button type="button" data-emoji="${emoji}">${emoji}</button>`).join("");
   toggle.addEventListener("click", (e) => {
@@ -2582,13 +2676,15 @@ function insertChatEmoji(emoji) {
     if (!btn) return;
     insertChatEmoji(btn.dataset.emoji);
   });
-  document.addEventListener("pointerdown", (e) => {
-    if (panel.hidden) return;
-    if (e.target.closest(".chat-emoji")) return;
-    setChatEmojiOpen(false);
-  });
-  document.getElementById("chat-dialog").addEventListener("close", () => setChatEmojiOpen(false));
-})();
+}
+setupChatEmojiPicker("chat-emoji-toggle", "chat-emoji-panel");
+setupChatEmojiPicker("stream-chat-emoji-toggle", "stream-chat-emoji-panel");
+document.addEventListener("pointerdown", (e) => {
+  if (e.target.closest(".chat-emoji")) return;
+  setChatEmojiOpen(false);
+});
+document.getElementById("chat-dialog").addEventListener("close", () => setChatEmojiOpen(false));
+document.getElementById("stream-dialog").addEventListener("close", () => setChatEmojiOpen(false));
 
 document.getElementById("schedule-close").addEventListener("click", () => {
   document.getElementById("schedule-dialog").close();
@@ -2671,25 +2767,25 @@ document.getElementById("title-detail").addEventListener("click", (e) => {
   showTitlesList();
 });
 
-document.getElementById("chat-list").addEventListener("submit", async (e) => {
+async function onChatListSubmit(e) {
   const form = e.target.closest("[data-chat-save]");
   if (!form) return;
   e.preventDefault();
   const text = form.querySelector("textarea")?.value || "";
   await saveChatEdit(form.dataset.chatSave, text);
-});
+}
 
-document.getElementById("chat-list").addEventListener("click", async (e) => {
+async function onChatListClick(e) {
   const edit = e.target.closest("[data-chat-edit]");
   if (edit) {
     editingChatId = edit.dataset.chatEdit;
-    renderChat(document.getElementById("chat-list").scrollTop);
+    renderChat(chatListEl()?.scrollTop);
     document.querySelector(`[data-chat-save="${editingChatId}"] textarea`)?.focus();
     return;
   }
   if (e.target.closest("[data-chat-edit-cancel]")) {
     editingChatId = "";
-    renderChat(document.getElementById("chat-list").scrollTop);
+    renderChat(chatListEl()?.scrollTop);
     return;
   }
   const trash = e.target.closest("[data-voice-delete]");
@@ -2718,9 +2814,14 @@ document.getElementById("chat-list").addEventListener("click", async (e) => {
     });
     applyReactions(data.message.id, data.message.reactions);
   } catch (err) {
-    showError(document.getElementById("chat-error"), err.message);
+    showError(chatErrorEl(), err.message);
   }
-});
+}
+
+document.getElementById("chat-list").addEventListener("submit", onChatListSubmit);
+document.getElementById("stream-chat-list").addEventListener("submit", onChatListSubmit);
+document.getElementById("chat-list").addEventListener("click", onChatListClick);
+document.getElementById("stream-chat-list").addEventListener("click", onChatListClick);
 
 function hasInfo(user) {
   return !!(user?.address || user?.phone || user?.birthday || user?.altEmail);

@@ -250,6 +250,16 @@ button.avatar {
   border-color: var(--warn);
   color: var(--warn);
 }
+.chat-tab[data-chat="live"] {
+  background: rgba(240, 80, 90, 0.16);
+  border-color: rgba(240, 80, 90, 0.55);
+  color: var(--danger);
+}
+.chat-tab[data-chat="live"].on {
+  background: rgba(240, 80, 90, 0.28);
+  border-color: var(--danger);
+  color: var(--danger);
+}
 .btn.chat-tab,
 #btn-event-chat {
   display: inline-flex;

@@ -361,8 +361,34 @@
       </div>
       <button type="button" id="stream-close" class="btn ghost" data-i18n="close">Schließen</button>
     </div>
-    <video id="stream-video" autoplay playsinline></video>
-    <p id="stream-status" class="muted"></p>
+    <div class="stream-layout">
+      <div class="stream-video-col">
+        <video id="stream-video" autoplay playsinline></video>
+        <p id="stream-status" class="muted"></p>
+      </div>
+      <div class="stream-chat-col">
+        <p class="stream-chat-label" data-i18n="chat.live">Live-Chat</p>
+        <div id="stream-chat-list" class="chat-list"></div>
+        <form id="stream-chat-form" class="chat-composer">
+          <div class="chat-emoji">
+            <button type="button" id="stream-chat-emoji-toggle" class="chat-emoji-toggle" data-i18n-aria="chatEmoji" aria-expanded="false">+</button>
+            <div id="stream-chat-emoji-panel" class="chat-emoji-panel" hidden></div>
+          </div>
+          <label class="visually-hidden" for="stream-chat-text" data-i18n="chatWrite">Nachricht schreiben</label>
+          <textarea id="stream-chat-text" required maxlength="2000" rows="1"></textarea>
+          <button type="button" id="stream-chat-media" class="chat-media-btn" data-i18n-aria="chatMedia" aria-label="Foto oder Video"></button>
+          <input id="stream-chat-media-file" type="file" accept="image/*,video/*" hidden />
+          <button type="button" id="stream-chat-voice" class="chat-voice-btn" data-i18n-aria="chatVoice" aria-label="Sprachnachricht"></button>
+          <div id="stream-chat-rec" class="chat-rec" hidden>
+            <button type="button" id="stream-chat-rec-cancel" class="chat-rec-cancel" data-i18n-aria="chatVoiceCancel" aria-label="Abbrechen">×</button>
+            <span class="chat-rec-dot" aria-hidden="true"></span>
+            <span id="stream-chat-rec-time" class="chat-rec-time">0:00</span>
+            <button type="button" id="stream-chat-rec-send" class="chat-rec-send" data-i18n-aria="chatVoiceSend" aria-label="Senden"></button>
+          </div>
+          <p id="stream-chat-error" class="error" hidden></p>
+        </form>
+      </div>
+    </div>
   </dialog>
   <dialog id="changelog-dialog" class="dialog changelog-dialog">
     <div class="changelog-window">

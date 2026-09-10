@@ -25,7 +25,7 @@ let chatUnread = {};
 let galleryDateId = "";
 let galleryItems = [];
 
-const CHAT_ROOMS = ["choir", "band", "orchestra"];
+const CHAT_ROOMS = ["choir", "band", "orchestra", "live"];
 const CHAT_API = "/api/controller/chats";
 const VOICE_MAX_MS = 120000;
 const CHAT_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
@@ -1582,7 +1582,7 @@ function noteChatMessage(m) {
 function renderChatTabs() {
   document.querySelectorAll("#chat-tabs [data-chat]").forEach((btn) => {
     const n = unreadCount(btn.dataset.chat);
-    const label = I18N.role(btn.dataset.chat);
+    const label = btn.dataset.chat === "live" ? I18N.t("chat.live") : I18N.role(btn.dataset.chat);
     btn.innerHTML = `${escapeHtml(label)}${chatBadge(n)}`;
     btn.setAttribute("aria-label", n ? `${label}, ${n}` : label);
     btn.classList.toggle("on", chatRoom === btn.dataset.chat);

@@ -392,6 +392,26 @@ func TestChatRoom(t *testing.T) {
 	if _, err := st.AddAdminChatMessage(RoleTechnician, "nope"); err == nil {
 		t.Fatal("technician has no chat")
 	}
+	tech, err := st.CreateUser("Tim", "tim@example.com", "secret1", RoleTechnician, "Sound")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.AddChatMessage(ada.ID, ChatRoomLive, "hello live"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.AddChatMessage(cara.ID, ChatRoomLive, "band live"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.AddChatMessage(tech.ID, ChatRoomLive, "tech live"); err != nil {
+		t.Fatal(err)
+	}
+	live, err := st.ListChatMessages(tech.Role, ChatRoomLive, tech.ID)
+	if err != nil || len(live) != 3 {
+		t.Fatalf("live %+v %v", live, err)
+	}
+	if roles := st.ChatRoomRoles(ChatRoomLive); len(roles) != len(Roles) {
+		t.Fatalf("live roles %+v", roles)
+	}
 	lead, err := st.CreateUser("Lea", "lea@example.com", "secret1", RoleChorleiter, "Chorleiter")
 	if err != nil {
 		t.Fatal(err)

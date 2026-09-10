@@ -4,6 +4,7 @@
       date: "2026-09-10",
       items: {
         de: [
+          "Neben dem Live-Video liegt ein Live-Chat — dieselben Funktionen wie im normalen Chat, Video 75 %, Chat 25 %.",
           "Streamer können oben mit Aufnehmen einen Live-Stream vom Computer oder Handy starten. Alle können mit Abspielen zuschauen. Die Streamer-Rolle steht im Profil in der Verwaltung.",
           "Im Notenarchiv gibt es Share URL: YouTube, Spotify und ähnliche Links, ohne Datei.",
           "Oben schaltet eine rote Wecker-Glocke Benachrichtigungen — standardmäßig an. Neue Chats und Termine erscheinen als Hinweis in der App, solange sie offen ist.",
@@ -24,6 +25,7 @@
           "Sprachnachrichten im Chat mit automatischer Abschrift. Chorleiter können Kanäle haben.",
         ],
         en: [
+          "A live chat sits beside the live video — the same features as the normal chat, video 75%, chat 25%.",
           "Streamers can start a live stream from a computer or phone with the Record button on top. Everyone can watch with Play. The streamer role is a checkbox on the person in the controller.",
           "The music archive has Share URL: YouTube, Spotify, and similar links, with no file upload.",
           "A red alarm-clock icon in the header toggles notifications — on by default. New chats and dates show as a banner in the app while it is open.",

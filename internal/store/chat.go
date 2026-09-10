@@ -11,6 +11,7 @@ const (
 	ChatAdminName      = "Admin"
 	ChatReadController = "controller"
 	EventRoomPrefix    = "event:"
+	ChatRoomLive       = "live"
 	chatReactionActor  = ""
 )
 
@@ -54,7 +55,14 @@ func ValidChatRoom(room string) bool {
 	return room == RoleChoir || room == RoleBand || room == RoleOrchestra
 }
 
+func IsLiveChatRoom(room string) bool {
+	return room == ChatRoomLive
+}
+
 func CanUseChat(role, room string) bool {
+	if IsLiveChatRoom(room) {
+		return role != ""
+	}
 	if !ValidChatRoom(room) {
 		return false
 	}
@@ -128,6 +136,9 @@ func prepareChatText(text string) (string, error) {
 }
 
 func (s *Store) resolveChatRoom(room string, role string, write bool) error {
+	if IsLiveChatRoom(room) {
+		return nil
+	}
 	if ValidChatRoom(room) {
 		if role != "" && !CanUseChat(role, room) {
 			return fmt.Errorf("%w: this chat is not for your role", ErrForbidden)
@@ -155,6 +166,9 @@ func (s *Store) resolveChatRoom(room string, role string, write bool) error {
 }
 
 func (s *Store) ChatRoomRoles(room string) []string {
+	if IsLiveChatRoom(room) {
+		return append([]string{}, Roles...)
+	}
 	if ValidChatRoom(room) {
 		if room == RoleChoir {
 			return []string{room, RoleChorleiter, RoleEhemalige}
@@ -590,7 +604,7 @@ func (s *Store) MemberChatUnread(u User) (map[string]int, error) {
 }
 
 func (s *Store) ControllerChatUnread() (map[string]int, error) {
-	return s.chatUnreadCounts(ChatReadController, []string{RoleChoir, RoleBand, RoleOrchestra}, "", true)
+	return s.chatUnreadCounts(ChatReadController, []string{RoleChoir, RoleBand, RoleOrchestra, ChatRoomLive}, "", true)
 }
 
 func (s *Store) chatUnreadCounts(actor string, rooms []string, excludeUserID string, excludeAdmin bool) (map[string]int, error) {

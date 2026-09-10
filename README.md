@@ -49,7 +49,7 @@ go test ./...
 - Song proposals, address book (email + phone), personal info, and a profile photo
 - Spirit of the Year (choir, choir director, and alumni; names and attendance, no scores)
 - Calendar subscribe link for accepted dates of their role
-- Live stream: streamers start it with Record in the header; everyone can watch with Play (computer or phone)
+- Live stream: streamers start it with Record in the header; everyone can watch with Play (computer or phone). A live chat with the same tools sits beside the video.
 - German / English
 
 **Ehemalige** see choir dates and the choir chat so they can follow along. They cannot vote. They can have mixer channels.
