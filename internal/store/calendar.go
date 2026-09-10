@@ -71,7 +71,7 @@ func (s *Store) ListAcceptedDatesForRole(role string) ([]Date, error) {
 	}
 	out := []Date{}
 	for _, d := range dates {
-		if d.Status != StatusAccepted || !slicesContains(d.Roles, role) {
+		if d.Status != StatusAccepted || !RoleSeesDate(role, d.Roles) {
 			continue
 		}
 		out = append(out, d)

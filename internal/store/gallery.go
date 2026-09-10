@@ -56,7 +56,7 @@ func (s *Store) MemberCanSeeDate(user User, dateID string) error {
 	if err != nil {
 		return err
 	}
-	if !slicesContains(d.Roles, user.Role) {
+	if !RoleSeesDate(user.Role, d.Roles) {
 		return fmt.Errorf("%w: this date is not for your role", ErrForbidden)
 	}
 	return nil

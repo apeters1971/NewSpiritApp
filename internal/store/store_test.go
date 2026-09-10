@@ -1074,3 +1074,98 @@ func TestChatVoice(t *testing.T) {
 		t.Fatal("deleted voice should be gone")
 	}
 }
+
+func TestEhemaligeChoirInfo(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "alumni.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	ada, err := st.CreateUser("Ada", "ada@example.com", "secret1", RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	alumni, err := st.CreateUser("Ute", "ute@example.com", "secret1", RoleEhemalige, "Ehemalige")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !RoleSeesDate(alumni.Role, []string{RoleChoir}) || RoleSeesDate(alumni.Role, []string{RoleBand}) {
+		t.Fatal("alumni should see choir dates only")
+	}
+	if RoleCanVote(alumni.Role) || !RoleCanVote(ada.Role) {
+		t.Fatal("alumni should not vote")
+	}
+	if !CanUseChat(alumni.Role, RoleChoir) || CanUseChat(alumni.Role, RoleBand) {
+		t.Fatal("alumni choir chat")
+	}
+	if rooms := ChatRoomsForRole(alumni.Role); len(rooms) != 1 || rooms[0] != RoleChoir {
+		t.Fatalf("alumni rooms %+v", rooms)
+	}
+
+	start := time.Date(2026, 11, 1, 18, 0, 0, 0, time.UTC)
+	choirDate, err := st.CreateDate("Choir night", CategoryConcert, start, nil, "Hall", "", "", []string{RoleChoir}, Bring{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bandDate, err := st.CreateDate("Band only", CategoryRehearsal, start.Add(24*time.Hour), nil, "", "", "", []string{RoleBand}, Bring{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.SetDateStatus(choirDate.ID, StatusAccepted); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := st.MemberCanSeeDate(alumni, choirDate.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.MemberCanSeeDate(alumni, bandDate.ID); err == nil {
+		t.Fatal("alumni should not see band dates")
+	}
+	views, err := st.ListDateViews(&alumni)
+	if err != nil || len(views) != 1 || views[0].ID != choirDate.ID {
+		t.Fatalf("alumni dates %+v %v", views, err)
+	}
+	cal, err := st.ListAcceptedDatesForRole(alumni.Role)
+	if err != nil || len(cal) != 1 || cal[0].ID != choirDate.ID {
+		t.Fatalf("alumni calendar %+v %v", cal, err)
+	}
+	if err := st.SetVote(alumni.ID, choirDate.ID, VoteYes); err == nil {
+		t.Fatal("alumni should not vote")
+	}
+
+	sat := time.Date(2026, 11, 7, 18, 0, 0, 0, time.UTC)
+	sun := time.Date(2026, 11, 8, 16, 0, 0, 0, time.UTC)
+	poll, err := st.CreateDate("Weekend", CategoryConcert, time.Time{}, nil, "", "", "", []string{RoleChoir}, Bring{}, []PollOptionInput{
+		{StartsAt: sat},
+		{StartsAt: sun},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetPollVote(alumni.ID, poll.ID, poll.Options[0].ID, VoteYes); err == nil {
+		t.Fatal("alumni should not poll-vote")
+	}
+
+	if _, err := st.AddChatMessage(alumni.ID, RoleChoir, "hello from alumni"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.AddChatMessage(alumni.ID, RoleBand, "nope"); err == nil {
+		t.Fatal("alumni should not post in band")
+	}
+	list, err := st.ListChatMessages(alumni.Role, RoleChoir, alumni.ID)
+	if err != nil || len(list) != 1 {
+		t.Fatalf("alumni choir read %+v %v", list, err)
+	}
+	if _, err := st.ListChatMessages(alumni.Role, RoleBand, alumni.ID); err == nil {
+		t.Fatal("alumni should not read band")
+	}
+	roles := st.ChatRoomRoles(RoleChoir)
+	if !slicesContains(roles, RoleEhemalige) || !slicesContains(roles, RoleChorleiter) {
+		t.Fatalf("choir room roles %+v", roles)
+	}
+	eventRoles := st.ChatRoomRoles(EventChatRoom(choirDate.ID))
+	if !slicesContains(eventRoles, RoleEhemalige) {
+		t.Fatalf("event chat roles %+v", eventRoles)
+	}
+}

@@ -187,13 +187,13 @@ function renderPoll(date) {
     const mine = o.myInitial && o.myInitial !== o.myChoice
       ? `<p class="changed">${I18N.t("yourFirstVote")}: ${voteLabel(o.myInitial)}</p>`
       : "";
-    const buttons = CHOICES.map((c) => `
+    const buttons = canVote() ? CHOICES.map((c) => `
       <button type="button" data-id="${date.id}" data-option="${o.id}" data-choice="${c}" class="${c}${o.myChoice === c ? " on" : ""}" ${locked ? "disabled" : ""}>${voteLabel(c)}</button>
-    `).join("");
+    `).join("") : "";
     return `<div class="poll-option ${o.frozen ? "frozen" : ""}">
       <p class="when">${escapeHtml(formatOptionRange(o))}${o.frozen ? ` · ${I18N.t("chosenTime")}` : ""}</p>
-      <div class="vote-row">${buttons}</div>
-      ${mine}
+      ${buttons ? `<div class="vote-row">${buttons}</div>` : ""}
+      ${canVote() ? mine : ""}
       <p class="muted">${I18N.t("yes")} ${o.yes} · ${I18N.t("maybe")} ${o.maybe} · ${I18N.t("no")} ${o.no} · ${I18N.t("unknown")} ${o.unknown}</p>
     </div>`;
   }).join("");
@@ -218,10 +218,10 @@ function renderPoll(date) {
 function renderDate(date) {
   const locked = date.status === "cancelled";
   const isPoll = (date.options || []).length >= 2;
-  const buttons = CHOICES.map((c) => `
+  const buttons = canVote() ? CHOICES.map((c) => `
     <button type="button" data-id="${date.id}" data-choice="${c}" class="${c}${date.myChoice === c ? " on" : ""}" ${locked ? "disabled" : ""}>${voteLabel(c)}</button>
-  `).join("");
-  const mine = date.myInitial && date.myInitial !== date.myChoice
+  `).join("") : "";
+  const mine = canVote() && date.myInitial && date.myInitial !== date.myChoice
     ? `<p class="changed">${I18N.t("yourFirstVote")}: ${voteLabel(date.myInitial)}</p>`
     : "";
   const notes = date.notes ? `<p class="notes">${escapeHtml(date.notes)}</p>` : "";
@@ -248,7 +248,7 @@ function renderDate(date) {
       </div>
     </div>
     ${isPoll ? renderPoll(date) : ""}
-    ${pollOpen(date) ? "" : `<div class="vote-row">${buttons}</div>${mine}`}
+    ${pollOpen(date) || !buttons ? "" : `<div class="vote-row">${buttons}</div>${mine}`}
     <div class="card-actions">
       <button type="button" class="btn ghost" data-comments="${date.id}">${I18N.t("comments")}${commentCount ? ` (${commentCount})` : ""}</button>
       ${date.schedule ? `<button type="button" class="btn ghost" data-schedule="${date.id}">${I18N.t("schedule")}</button>` : ""}
@@ -295,8 +295,19 @@ function hasAnswered(d) {
   return d.myChoice === "yes" || d.myChoice === "maybe" || d.myChoice === "no";
 }
 
+function canVote() {
+  return me?.role !== "ehemalige";
+}
+
+function canUseChatRoom(room) {
+  if (!me || !CHAT_ROOMS.includes(room)) return false;
+  if (me.role === "chorleiter") return true;
+  if (me.role === "ehemalige") return room === "choir";
+  return me.role === room;
+}
+
 function needsVote(d) {
-  return !!(d && d.status !== "cancelled" && !hasAnswered(d));
+  return !!(canVote() && d && d.status !== "cancelled" && !hasAnswered(d));
 }
 
 function upcomingDates() {
@@ -404,9 +415,11 @@ function renderOverview() {
   list.hidden = rows.length === 0;
   list.innerHTML = rows.map((d) => {
     const when = pollOpen(d) ? `${formatWhen(d.startsAt)} · ${I18N.t("poll")}` : formatWhen(d.startsAt);
-    const vote = pollOpen(d)
-      ? `<span class="badge voting">${escapeHtml(overviewPollVote(d))}</span>`
-      : `<span class="badge ${d.myChoice}">${voteLabel(d.myChoice)}</span>`;
+    const vote = !canVote()
+      ? ""
+      : pollOpen(d)
+        ? `<span class="badge voting">${escapeHtml(overviewPollVote(d))}</span>`
+        : `<span class="badge ${d.myChoice}">${voteLabel(d.myChoice)}</span>`;
     const pending = needsVote(d);
     return `<button type="button" class="overview-item${pending ? " needs-vote" : ""}" data-jump="${d.id}"${pending ? ` title="${escapeHtml(I18N.t("voteNeeded"))}"` : ""}">
       <div>
@@ -983,7 +996,7 @@ datesEl.addEventListener("click", async (e) => {
     return;
   }
   const btn = e.target.closest("button[data-choice]");
-  if (!btn || btn.disabled) return;
+  if (!btn || btn.disabled || !canVote()) return;
   try {
     if (btn.dataset.option) {
       await api(`/api/dates/${btn.dataset.id}/poll`, {
@@ -1230,7 +1243,7 @@ function renderChatTabs() {
   const box = document.getElementById("chat-tabs");
   let any = false;
   box.querySelectorAll("[data-chat]").forEach((btn) => {
-    const show = !!(me && (me.role === "chorleiter" || (CHAT_ROOMS.includes(me.role) && btn.dataset.chat === me.role)));
+    const show = canUseChatRoom(btn.dataset.chat);
     btn.hidden = !show;
     btn.classList.toggle("on", show && chatRoom === btn.dataset.chat);
     const n = show ? unreadCount(btn.dataset.chat) : 0;
@@ -1548,7 +1561,7 @@ function toggleChatVoice(id) {
 
 async function openChat(room, title) {
   const event = room.startsWith("event:");
-  if (!me || (!event && me.role !== "chorleiter" && me.role !== room)) return;
+  if (!me || (!event && !canUseChatRoom(room))) return;
   chatRoom = room;
   renderChatTabs();
   document.getElementById("chat-title").textContent = chatTitle(room, title);

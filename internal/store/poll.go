@@ -272,7 +272,7 @@ func (s *Store) SetPollVote(userID, dateID, optionID, choice string) error {
 	if err != nil {
 		return err
 	}
-	if !slicesContains(d.Roles, u.Role) {
+	if !RoleCanVote(u.Role) || !slicesContains(d.Roles, u.Role) {
 		return fmt.Errorf("%w: this date is not for your role", ErrForbidden)
 	}
 	_, err = s.db.Exec(`

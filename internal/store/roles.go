@@ -46,7 +46,14 @@ func RoleSeesDate(role string, dateRoles []string) bool {
 	if slicesContains(dateRoles, role) {
 		return true
 	}
-	return role == RoleChorleiter && slicesContains(dateRoles, RoleChoir)
+	if !slicesContains(dateRoles, RoleChoir) {
+		return false
+	}
+	return role == RoleChorleiter || role == RoleEhemalige
+}
+
+func RoleCanVote(role string) bool {
+	return role != RoleEhemalige
 }
 
 func DateAudienceRoles(roles []string) []string {

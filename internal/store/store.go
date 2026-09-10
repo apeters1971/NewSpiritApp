@@ -938,7 +938,7 @@ func (s *Store) SetVote(userID, dateID, choice string) error {
 	if err != nil {
 		return err
 	}
-	if !slicesContains(d.Roles, u.Role) {
+	if !RoleCanVote(u.Role) || !slicesContains(d.Roles, u.Role) {
 		return fmt.Errorf("%w: this date is not for your role", ErrForbidden)
 	}
 	_, err = s.db.Exec(`
@@ -1054,7 +1054,7 @@ func (s *Store) ListDateViews(viewer *User) ([]DateView, error) {
 	}
 	ids := make([]string, 0, len(dates))
 	for _, d := range dates {
-		if viewer != nil && !slicesContains(d.Roles, viewer.Role) {
+		if viewer != nil && !RoleSeesDate(viewer.Role, d.Roles) {
 			continue
 		}
 		ids = append(ids, d.ID)
@@ -1073,7 +1073,7 @@ func (s *Store) ListDateViews(viewer *User) ([]DateView, error) {
 	}
 	out := make([]DateView, 0, len(ids))
 	for _, d := range dates {
-		if viewer != nil && !slicesContains(d.Roles, viewer.Role) {
+		if viewer != nil && !RoleSeesDate(viewer.Role, d.Roles) {
 			continue
 		}
 		v, err := s.attachView(d, viewer, commentsByDate[d.ID], titlesByDate[d.ID])

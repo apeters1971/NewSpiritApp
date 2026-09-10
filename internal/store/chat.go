@@ -61,12 +61,18 @@ func CanUseChat(role, room string) bool {
 	if role == RoleChorleiter {
 		return true
 	}
+	if role == RoleEhemalige {
+		return room == RoleChoir
+	}
 	return role == room
 }
 
 func ChatRoomsForRole(role string) []string {
 	if role == RoleChorleiter {
 		return []string{RoleChoir, RoleBand, RoleOrchestra}
+	}
+	if role == RoleEhemalige {
+		return []string{RoleChoir}
 	}
 	if ValidChatRoom(role) {
 		return []string{role}
@@ -150,6 +156,9 @@ func (s *Store) resolveChatRoom(room string, role string, write bool) error {
 
 func (s *Store) ChatRoomRoles(room string) []string {
 	if ValidChatRoom(room) {
+		if room == RoleChoir {
+			return []string{room, RoleChorleiter, RoleEhemalige}
+		}
 		return []string{room, RoleChorleiter}
 	}
 	dateID, ok := ParseEventRoom(room)
@@ -160,7 +169,11 @@ func (s *Store) ChatRoomRoles(room string) []string {
 	if err != nil {
 		return nil
 	}
-	return DateAudienceRoles(d.Roles)
+	out := DateAudienceRoles(d.Roles)
+	if slicesContains(d.Roles, RoleChoir) && !slicesContains(out, RoleEhemalige) {
+		out = append(out, RoleEhemalige)
+	}
+	return out
 }
 
 func (s *Store) AddChatMessage(userID, room, text string) (ChatMessage, error) {

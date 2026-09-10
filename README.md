@@ -50,7 +50,7 @@ go test ./...
 - Calendar subscribe link for accepted dates of their role
 - German / English
 
-**Ehemalige** see only dates that include that role. They have no role chat and no mixer channels.
+**Ehemalige** see choir dates and the choir chat so they can follow along. They cannot vote, and they have no mixer channels.
 
 ## What the controller gets
 
@@ -75,7 +75,7 @@ Tabs: **Personen**, **Kontakte**, **Termine**, **Notenarchiv**, **Kanäle**, **S
 | Technik | Sound, Light, Stage |
 | Ehemalige | Ehemalige |
 
-A date is visible to the roles you check. Choir director also sees choir dates.
+A date is visible to the roles you check. Choir director and alumni also see choir dates. Alumni cannot vote.
 
 ## Dates
 
