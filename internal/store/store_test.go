@@ -693,6 +693,13 @@ func TestChannels(t *testing.T) {
 	if _, err := st.SetChannel(13, tech.ID, "", false); err == nil {
 		t.Fatal("technician should not get a channel")
 	}
+	lead, err := st.CreateUser("Lea", "lea@example.com", "secret1", RoleChorleiter, "Chorleiter")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.SetChannel(14, lead.ID, "Talkback", false); err != nil {
+		t.Fatalf("chorleiter should get a channel: %v", err)
+	}
 	if _, err := st.SetChannel(0, ada.ID, "", false); err == nil {
 		t.Fatal("channel 0")
 	}
@@ -965,5 +972,77 @@ func TestGallery(t *testing.T) {
 	}
 	if _, err := st.AddGalleryItem(d.ID, ada.ID, "notes.txt", []byte("hello")); err == nil {
 		t.Fatal("expected rejected type")
+	}
+}
+
+func tinyWAV() []byte {
+	b := bytes.Repeat([]byte{0}, 80)
+	copy(b[0:], []byte("RIFF"))
+	b[4] = 72
+	copy(b[8:], []byte("WAVEfmt "))
+	b[16] = 16
+	b[20] = 1
+	b[22] = 1
+	b[24], b[25] = 0x40, 0x1f
+	b[28], b[29] = 0x80, 0x3e
+	b[32] = 2
+	b[34] = 16
+	copy(b[36:], []byte("data"))
+	b[40] = 36
+	return b
+}
+
+func TestChatVoice(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "voice.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	ada, err := st.CreateUser("Ada", "ada@example.com", "secret1", RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cara, err := st.CreateUser("Cara", "cara@example.com", "secret1", RoleBand, "Drums")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wav := tinyWAV()
+	msg, err := st.AddChatVoice(ada.ID, RoleChoir, "note.wav", bytes.NewReader(wav), 1500)
+	if err != nil || msg.Kind != ChatKindVoice || msg.MIME != "audio/wav" || msg.DurationMs != 1500 || msg.Text != "" {
+		t.Fatalf("add %+v %v", msg, err)
+	}
+	if _, _, err := st.ChatVoiceFile(ada.Role, RoleChoir, msg.ID); err != nil {
+		t.Fatalf("file %v", err)
+	}
+	if _, err := st.AddChatVoice(cara.ID, RoleChoir, "note.wav", bytes.NewReader(wav), 800); err == nil {
+		t.Fatal("band should not post voice in choir")
+	}
+	if _, _, err := st.ChatVoiceFile(cara.Role, RoleChoir, msg.ID); err == nil {
+		t.Fatal("band should not read choir voice")
+	}
+	admin, err := st.AddAdminChatVoice(RoleChoir, "note.wav", bytes.NewReader(wav), 900)
+	if err != nil || !admin.IsAdmin || admin.Kind != ChatKindVoice {
+		t.Fatalf("admin %+v %v", admin, err)
+	}
+	if _, err := st.AddChatVoice(ada.ID, RoleChoir, "note.txt", bytes.NewReader([]byte("this is not audio data at all................")), 800); err == nil {
+		t.Fatal("expected rejected type")
+	}
+	if _, err := st.AddChatVoice(ada.ID, RoleChoir, "note.wav", bytes.NewReader(wav), ChatVoiceMaxMs+5000); err == nil {
+		t.Fatal("expected too long")
+	}
+	list, err := st.ListChatMessages(ada.Role, RoleChoir, ada.ID)
+	if err != nil || len(list) != 2 || list[0].Kind != ChatKindVoice || list[1].Kind != ChatKindVoice {
+		t.Fatalf("list %+v %v", list, err)
+	}
+	named, err := st.SetChatVoiceText(msg.ID, "  Hallo Chor  ")
+	if err != nil || named.Text != "Hallo Chor" || named.Kind != ChatKindVoice {
+		t.Fatalf("transcript %+v %v", named, err)
+	}
+	if err := st.DeleteChatMessage(ada.ID, RoleChoir, msg.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := st.ChatVoiceFile(ada.Role, RoleChoir, msg.ID); err == nil {
+		t.Fatal("deleted voice should be gone")
 	}
 }

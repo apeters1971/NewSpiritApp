@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,21 +23,31 @@ const (
 )
 
 type Server struct {
-	Store            *store.Store
-	Hub              *hub.Hub
-	ControllerSecret string
-	ClientFS         fs.FS
-	ControllerFS     fs.FS
-	upgrader         websocket.Upgrader
+	Store               *store.Store
+	Hub                 *hub.Hub
+	ControllerSecret    string
+	CloudflareToken     string
+	CloudflareAccountID string
+	ClientFS            fs.FS
+	ControllerFS        fs.FS
+	upgrader            websocket.Upgrader
 }
 
-func New(st *store.Store, h *hub.Hub, secret string, clientFS, controllerFS fs.FS) *Server {
+type Options struct {
+	ControllerSecret    string
+	CloudflareToken     string
+	CloudflareAccountID string
+}
+
+func New(st *store.Store, h *hub.Hub, opt Options, clientFS, controllerFS fs.FS) *Server {
 	return &Server{
-		Store:            st,
-		Hub:              h,
-		ControllerSecret: secret,
-		ClientFS:         clientFS,
-		ControllerFS:     controllerFS,
+		Store:               st,
+		Hub:                 h,
+		ControllerSecret:    opt.ControllerSecret,
+		CloudflareToken:     strings.TrimSpace(opt.CloudflareToken),
+		CloudflareAccountID: strings.TrimSpace(opt.CloudflareAccountID),
+		ClientFS:            clientFS,
+		ControllerFS:        controllerFS,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},
@@ -65,6 +76,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/dates/{id}/gallery/{fileId}", s.handleGalleryFile)
 	mux.HandleFunc("GET /api/chats/{room}", s.handleChatList)
 	mux.HandleFunc("POST /api/chats/{room}", s.handleChatPost)
+	mux.HandleFunc("POST /api/chats/{room}/voice", s.handleChatVoice)
+	mux.HandleFunc("GET /api/chats/{room}/messages/{id}/voice", s.handleChatVoiceFile)
 	mux.HandleFunc("POST /api/chats/{room}/read", s.handleChatRead)
 	mux.HandleFunc("POST /api/chats/{room}/messages/{id}/react", s.handleChatReact)
 	mux.HandleFunc("DELETE /api/chats/{room}/messages/{id}", s.handleChatDelete)
@@ -102,6 +115,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/controller/dates/{id}/gallery/{fileId}", s.handleControllerGalleryDelete)
 	mux.HandleFunc("GET /api/controller/chats/{room}", s.handleControllerChatList)
 	mux.HandleFunc("POST /api/controller/chats/{room}", s.handleControllerChatPost)
+	mux.HandleFunc("POST /api/controller/chats/{room}/voice", s.handleControllerChatVoice)
+	mux.HandleFunc("GET /api/controller/chats/{room}/messages/{id}/voice", s.handleControllerChatVoiceFile)
 	mux.HandleFunc("POST /api/controller/chats/{room}/read", s.handleControllerChatRead)
 	mux.HandleFunc("POST /api/controller/chats/{room}/messages/{id}/react", s.handleControllerChatReact)
 	mux.HandleFunc("DELETE /api/controller/chats/{room}/messages/{id}", s.handleControllerChatDelete)
@@ -624,6 +639,43 @@ func (s *Server) handleChatPost(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]any{"message": msg})
 }
 
+func (s *Server) handleChatVoice(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	name, f, durationMs, err := s.readChatVoiceUpload(w, r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	defer f.Close()
+	msg, err := s.Store.AddChatVoice(user.ID, r.PathValue("room"), name, f, durationMs)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.publishChat(msg.Room, hub.Envelope{Type: "chat", Data: msg})
+	s.queueVoiceTranscript(msg)
+	_ = s.Store.MarkChatRead(user.ID, msg.Room, user.Role)
+	writeJSON(w, http.StatusCreated, map[string]any{"message": msg})
+}
+
+func (s *Server) handleChatVoiceFile(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	msg, path, err := s.Store.ChatVoiceFile(user.Role, r.PathValue("room"), r.PathValue("id"))
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeChatVoiceFile(w, r, msg, path)
+}
+
 func (s *Server) handleChatReact(w http.ResponseWriter, r *http.Request) {
 	user, err := s.userFromRequest(r)
 	if err != nil {
@@ -716,6 +768,39 @@ func (s *Server) handleControllerChatPost(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusCreated, map[string]any{"message": msg})
 }
 
+func (s *Server) handleControllerChatVoice(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	name, f, durationMs, err := s.readChatVoiceUpload(w, r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	defer f.Close()
+	msg, err := s.Store.AddAdminChatVoice(r.PathValue("room"), name, f, durationMs)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.publishChat(msg.Room, hub.Envelope{Type: "chat", Data: msg})
+	s.queueVoiceTranscript(msg)
+	_ = s.Store.MarkChatRead(store.ChatReadController, msg.Room, "")
+	writeJSON(w, http.StatusCreated, map[string]any{"message": msg})
+}
+
+func (s *Server) handleControllerChatVoiceFile(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	msg, path, err := s.Store.ChatVoiceFileForRoom(r.PathValue("room"), r.PathValue("id"))
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeChatVoiceFile(w, r, msg, path)
+}
+
 func (s *Server) handleControllerChatReact(w http.ResponseWriter, r *http.Request) {
 	if !s.requireController(w, r) {
 		return
@@ -756,6 +841,35 @@ func (s *Server) handleControllerChatDelete(w http.ResponseWriter, r *http.Reque
 		"messageId": id,
 	}})
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) readChatVoiceUpload(w http.ResponseWriter, r *http.Request) (string, io.ReadCloser, int, error) {
+	max := int64(store.ChatVoiceMax) + 512<<10
+	r.Body = http.MaxBytesReader(w, r.Body, max)
+	if err := r.ParseMultipartForm(store.ChatVoiceMax); err != nil {
+		return "", nil, 0, fmt.Errorf("file is too large")
+	}
+	f, hdr, err := r.FormFile("file")
+	if err != nil {
+		return "", nil, 0, fmt.Errorf("file is required")
+	}
+	name := ""
+	if hdr != nil {
+		name = hdr.Filename
+	}
+	durationMs, _ := strconv.Atoi(strings.TrimSpace(r.FormValue("durationMs")))
+	return name, f, durationMs, nil
+}
+
+func writeChatVoiceFile(w http.ResponseWriter, r *http.Request, msg store.ChatMessage, path string) {
+	mime := msg.MIME
+	if mime == "" {
+		mime = "audio/webm"
+	}
+	w.Header().Set("Content-Type", mime)
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+	w.Header().Set("Content-Disposition", `inline; filename="voice"`)
+	http.ServeFile(w, r, path)
 }
 
 func (s *Server) handleControllerLogin(w http.ResponseWriter, r *http.Request) {
@@ -1130,8 +1244,8 @@ func (s *Server) handleControllerAttendance(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	var body struct {
-		UserID      string `json:"userId"`
-		Attendance  string `json:"attendance"`
+		UserID     string `json:"userId"`
+		Attendance string `json:"attendance"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json")

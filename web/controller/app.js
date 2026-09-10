@@ -5,6 +5,8 @@ const gateError = document.getElementById("gate-error");
 const peopleError = document.getElementById("people-error");
 const dateError = document.getElementById("date-error");
 
+const CHOIR_VOICES = ["Sopran", "Alt", "Tenor/Bass"];
+
 let catalog = { roles: [], categories: [] };
 let state = { users: [], dates: [], online: 0, ranking: { entries: [], bySubrole: [] }, archive: [], channels: [], proposals: [] };
 let selectedUser = "";
@@ -24,6 +26,8 @@ let galleryDateId = "";
 let galleryItems = [];
 
 const CHAT_ROOMS = ["choir", "band", "orchestra"];
+const CHAT_API = "/api/controller/chats";
+const VOICE_MAX_MS = 120000;
 const CHAT_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
 const COMPOSE_EMOJIS = [
   "😀", "😂", "😊", "😍", "🥰", "😘", "😎", "🤩", "🥳", "😇",
@@ -302,11 +306,47 @@ function showTab(name) {
   document.getElementById("tab-settings").hidden = name !== "settings";
 }
 
+function choirVoiceYes(date) {
+  const counts = Object.fromEntries(CHOIR_VOICES.map((v) => [v, 0]));
+  if (date.pollOpen && (date.options || []).length) {
+    for (const voice of CHOIR_VOICES) {
+      counts[voice] = Math.max(0, ...(date.options || []).map((o) =>
+        (o.roster || []).filter((e) => e.role === "choir" && e.subrole === voice && e.choice === "yes" && !e.attendance).length));
+    }
+    return counts;
+  }
+  for (const e of date.roster || []) {
+    if (e.role === "choir" && e.choice === "yes" && !e.attendance && counts[e.subrole] !== undefined) {
+      counts[e.subrole]++;
+    }
+  }
+  return counts;
+}
+
+function participationMood(date) {
+  if (!(date.roles || []).includes("choir")) return null;
+  const counts = choirVoiceYes(date);
+  const min = Math.min(...CHOIR_VOICES.map((v) => counts[v]));
+  if (min < 2) return { emoji: "😰", key: "moodLow" };
+  if (min === 2) return { emoji: "😟", key: "moodWorry" };
+  if (min === 3) return { emoji: "🙂", key: "moodOk" };
+  return { emoji: "😄", key: "moodGreat" };
+}
+
+function moodHTML(date) {
+  const mood = participationMood(date);
+  if (!mood) return "";
+  const counts = choirVoiceYes(date);
+  const detail = CHOIR_VOICES.map((v) => `${I18N.subrole(v)} ${counts[v]}`).join(" · ");
+  return `<span class="mood" title="${escapeHtml(detail)}" aria-label="${escapeHtml(I18N.t(mood.key))}">${mood.emoji}</span>`;
+}
+
 function renderDates() {
   document.getElementById("stat-dates").textContent = state.dates.length;
   document.getElementById("stat-online").textContent = state.online;
   document.getElementById("date-list").innerHTML = state.dates.map((d) => `
     <article class="date-item ${d.id === selectedDate ? "active" : ""}" data-id="${d.id}">
+      ${moodHTML(d)}
       <span class="badge ${d.status}">${I18N.status(d.status)}</span>
       ${d.pollOpen ? `<span class="badge voting">${I18N.t("pollOpen")}</span>` : d.frozenOptionId ? `<span class="badge accepted">${I18N.t("pollFrozen")}</span>` : ""}
       <h3>${escapeHtml(d.title)}</h3>
@@ -517,7 +557,7 @@ function fillSettingsForm() {
 }
 
 function channelPeople() {
-  return (state.users || []).filter((u) => ["choir", "band", "orchestra"].includes(u.role));
+  return (state.users || []).filter((u) => ["choir", "chorleiter", "band", "orchestra"].includes(u.role));
 }
 
 function paintUserChannels() {
@@ -1516,6 +1556,29 @@ function chatReactionsHTML(m) {
   </div>`;
 }
 
+function formatVoiceDur(ms) {
+  const sec = Math.max(0, Math.round((Number(ms) || 0) / 1000));
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+}
+
+function chatVoiceURL(room, id) {
+  return `${CHAT_API}/${encodeURIComponent(room)}/messages/${encodeURIComponent(id)}/voice`;
+}
+
+function chatBodyHTML(m) {
+  if (m.kind === "voice") {
+    const src = chatVoiceURL(m.room || chatRoom, m.id);
+    const text = m.text ? `<p class="chat-voice-text">${escapeHtml(m.text)}</p>` : "";
+    return `<div class="chat-voice">
+      <button type="button" class="chat-voice-play" data-voice="${m.id}" aria-label="${escapeHtml(I18N.t("chatVoicePlay"))}"></button>
+      <span class="chat-voice-track" aria-hidden="true"><i data-voice-bar="${m.id}"></i></span>
+      <span class="chat-voice-dur" data-voice-dur="${m.id}">${formatVoiceDur(m.durationMs)}</span>
+      <audio preload="none" src="${escapeHtml(src)}" data-voice-audio="${m.id}"></audio>
+    </div>${text}`;
+  }
+  return `<p class="chat-text">${escapeHtml(m.text)}</p>`;
+}
+
 function chatMessageHTML(m, stacked) {
   const mine = !!m.isAdmin;
   const color = m.isAdmin ? "#f0a35e" : memberColor(m.userId);
@@ -1530,7 +1593,7 @@ function chatMessageHTML(m, stacked) {
     <div class="chat-col">
       <div class="chat-bubble" data-msg="${m.id}">
         <p class="chat-name" style="color:${color}">${escapeHtml(m.nickname)}</p>
-        <p class="chat-text">${escapeHtml(m.text)}</p>
+        ${chatBodyHTML(m)}
         <span class="chat-time">${escapeHtml(formatChatWhen(m.createdAt))}</span>
       </div>
       ${chatReactionsHTML(m)}
@@ -1552,6 +1615,7 @@ function renderChat(keepTop) {
       return heading + chatMessageHTML(m, stacked);
     }).join("")
     : `<p class="muted">${I18N.t("noMessages")}</p>`;
+  list.querySelectorAll("audio[data-voice-audio]").forEach(bindVoiceAudio);
   list.scrollTop = keepTop != null && !atBottom ? keepTop : list.scrollHeight;
 }
 
@@ -1567,6 +1631,18 @@ function appendChat(msg) {
   if (!msg?.id || chatMessages.some((m) => m.id === msg.id)) return;
   chatMessages.push(msg);
   renderChat();
+}
+
+function upsertChat(msg) {
+  if (!msg?.id) return;
+  const i = chatMessages.findIndex((m) => m.id === msg.id);
+  if (i < 0) {
+    appendChat(msg);
+    return;
+  }
+  const list = document.getElementById("chat-list");
+  chatMessages[i] = { ...chatMessages[i], ...msg };
+  renderChat(list?.scrollTop);
 }
 
 function removeChat(id) {
@@ -1591,12 +1667,177 @@ function chatTitle(room, title) {
   return I18N.t("eventChat");
 }
 
+let voiceRec = null;
+
+function voiceMime() {
+  const types = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"];
+  if (!window.MediaRecorder) return "";
+  for (const t of types) {
+    if (MediaRecorder.isTypeSupported(t)) return t;
+  }
+  return "";
+}
+
+function setVoiceRecording(on) {
+  const form = document.getElementById("chat-form");
+  const rec = document.getElementById("chat-rec");
+  if (form) form.classList.toggle("recording", on);
+  if (rec) rec.hidden = !on;
+}
+
+function stopVoiceTracks() {
+  voiceRec?.stream?.getTracks().forEach((t) => t.stop());
+}
+
+function discardVoiceRecord() {
+  if (voiceRec?.timer) clearInterval(voiceRec.timer);
+  if (voiceRec?.recorder && voiceRec.recorder.state !== "inactive") {
+    voiceRec.discard = true;
+    try { voiceRec.recorder.stop(); } catch {}
+  }
+  stopVoiceTracks();
+  voiceRec = null;
+  setVoiceRecording(false);
+  const time = document.getElementById("chat-rec-time");
+  if (time) time.textContent = "0:00";
+}
+
+async function startVoiceRecord() {
+  const errEl = document.getElementById("chat-error");
+  showError(errEl, "");
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+    showError(errEl, I18N.t("errVoiceUnsupported"));
+    return;
+  }
+  setChatEmojiOpen(false);
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch {
+    showError(errEl, I18N.t("errVoiceDenied"));
+    return;
+  }
+  const mime = voiceMime();
+  const recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+  const chunks = [];
+  const started = Date.now();
+  recorder.ondataavailable = (e) => { if (e.data?.size) chunks.push(e.data); };
+  recorder.onstop = () => {
+    stopVoiceTracks();
+    const discard = !voiceRec || voiceRec.discard;
+    const type = recorder.mimeType || mime || "audio/webm";
+    const ms = Date.now() - started;
+    voiceRec = null;
+    setVoiceRecording(false);
+    if (discard) return;
+    sendVoice(new Blob(chunks, { type }), ms);
+  };
+  voiceRec = {
+    recorder,
+    stream,
+    started,
+    discard: false,
+    timer: setInterval(() => {
+      const ms = Date.now() - started;
+      const time = document.getElementById("chat-rec-time");
+      if (time) time.textContent = formatVoiceDur(ms);
+      if (ms >= VOICE_MAX_MS) finishVoiceRecord(false);
+    }, 200),
+  };
+  setVoiceRecording(true);
+  recorder.start(250);
+}
+
+function finishVoiceRecord(discard) {
+  if (!voiceRec) return;
+  if (voiceRec.timer) clearInterval(voiceRec.timer);
+  voiceRec.discard = discard;
+  if (voiceRec.recorder && voiceRec.recorder.state !== "inactive") {
+    voiceRec.recorder.stop();
+    return;
+  }
+  stopVoiceTracks();
+  voiceRec = null;
+  setVoiceRecording(false);
+}
+
+async function sendVoice(blob, ms) {
+  const errEl = document.getElementById("chat-error");
+  if (!chatRoom || !blob || blob.size < 64 || ms < 400) {
+    showError(errEl, I18N.t("errVoiceEmpty"));
+    return;
+  }
+  const ext = blob.type.includes("mp4") ? "m4a" : blob.type.includes("ogg") ? "ogg" : blob.type.includes("wav") ? "wav" : "webm";
+  const form = new FormData();
+  form.append("file", blob, `voice.${ext}`);
+  form.append("durationMs", String(Math.min(VOICE_MAX_MS, Math.round(ms))));
+  try {
+    const res = await fetch(`${CHAT_API}/${encodeURIComponent(chatRoom)}/voice`, {
+      method: "POST",
+      credentials: "same-origin",
+      body: form,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(I18N.error(data.error || res.statusText));
+    appendChat(data.message);
+  } catch (err) {
+    showError(errEl, err.message);
+  }
+}
+
+function bindVoiceAudio(audio) {
+  const id = audio.dataset.voiceAudio;
+  audio.addEventListener("timeupdate", () => {
+    const bar = document.querySelector(`[data-voice-bar="${id}"]`);
+    const durEl = document.querySelector(`[data-voice-dur="${id}"]`);
+    if (bar && audio.duration) bar.style.width = `${(audio.currentTime / audio.duration) * 100}%`;
+    if (durEl) durEl.textContent = formatVoiceDur((audio.duration ? audio.duration - audio.currentTime : audio.currentTime) * 1000);
+  });
+  audio.addEventListener("ended", () => {
+    const btn = document.querySelector(`[data-voice="${id}"]`);
+    const bar = document.querySelector(`[data-voice-bar="${id}"]`);
+    const durEl = document.querySelector(`[data-voice-dur="${id}"]`);
+    const msg = chatMessages.find((m) => m.id === id);
+    if (btn) {
+      btn.classList.remove("on");
+      btn.setAttribute("aria-label", I18N.t("chatVoicePlay"));
+    }
+    if (bar) bar.style.width = "0%";
+    if (durEl) durEl.textContent = formatVoiceDur(msg?.durationMs || (audio.duration || 0) * 1000);
+  });
+}
+
+function toggleChatVoice(id) {
+  const audio = document.querySelector(`audio[data-voice-audio="${id}"]`);
+  const btn = document.querySelector(`[data-voice="${id}"]`);
+  if (!audio || !btn) return;
+  document.querySelectorAll("audio[data-voice-audio]").forEach((el) => {
+    if (el === audio) return;
+    el.pause();
+    const other = document.querySelector(`[data-voice="${el.dataset.voiceAudio}"]`);
+    if (other) {
+      other.classList.remove("on");
+      other.setAttribute("aria-label", I18N.t("chatVoicePlay"));
+    }
+  });
+  if (!audio.paused) {
+    audio.pause();
+    btn.classList.remove("on");
+    btn.setAttribute("aria-label", I18N.t("chatVoicePlay"));
+    return;
+  }
+  audio.play().catch(() => {});
+  btn.classList.add("on");
+  btn.setAttribute("aria-label", I18N.t("chatVoicePause"));
+}
+
 async function openChat(room, title) {
   const event = room.startsWith("event:");
   if (!event && !CHAT_ROOMS.includes(room)) return;
   chatRoom = room;
   renderChatTabs();
   document.getElementById("chat-title").textContent = chatTitle(room, title);
+  discardVoiceRecord();
   document.getElementById("chat-text").value = "";
   showError(document.getElementById("chat-error"), "");
   const data = await api(`/api/controller/chats/${encodeURIComponent(room)}`);
@@ -1639,6 +1880,10 @@ function connectWS() {
     if (msg.type === "chat") {
       noteChatMessage(msg.data);
       if (chatRoom && msg.data?.room === chatRoom) appendChat(msg.data);
+      return;
+    }
+    if (msg.type === "chatUpdate") {
+      if (chatRoom && msg.data?.room === chatRoom) upsertChat(msg.data);
       return;
     }
     if (msg.type === "react") {
@@ -1688,10 +1933,12 @@ document.getElementById("chat-shrink").addEventListener("click", () => setChatFu
 document.getElementById("chat-expand").addEventListener("click", () => setChatFull(true));
 
 document.getElementById("chat-close").addEventListener("click", () => {
+  discardVoiceRecord();
   document.getElementById("chat-dialog").close();
 });
 
 document.getElementById("chat-dialog").addEventListener("close", () => {
+  discardVoiceRecord();
   chatRoom = "";
   chatMessages = [];
   renderChatTabs();
@@ -1707,6 +1954,10 @@ document.getElementById("chat-text").addEventListener("keydown", (e) => {
   e.preventDefault();
   sendChat();
 });
+
+document.getElementById("chat-voice").addEventListener("click", () => startVoiceRecord());
+document.getElementById("chat-rec-cancel").addEventListener("click", () => finishVoiceRecord(true));
+document.getElementById("chat-rec-send").addEventListener("click", () => finishVoiceRecord(false));
 
 function setChatEmojiOpen(open) {
   const toggle = document.getElementById("chat-emoji-toggle");
@@ -1751,7 +2002,7 @@ function insertChatEmoji(emoji) {
 })();
 
 document.getElementById("chat-list").addEventListener("dblclick", async (e) => {
-  if (e.target.closest(".chat-reacts")) return;
+  if (e.target.closest(".chat-reacts, .chat-voice")) return;
   const bubble = e.target.closest("[data-msg]");
   if (!bubble || !chatRoom) return;
   if (!confirm(I18N.t("confirmDeleteMessage"))) return;
@@ -1764,6 +2015,11 @@ document.getElementById("chat-list").addEventListener("dblclick", async (e) => {
 });
 
 document.getElementById("chat-list").addEventListener("click", async (e) => {
+  const voice = e.target.closest("[data-voice]");
+  if (voice) {
+    toggleChatVoice(voice.dataset.voice);
+    return;
+  }
   const pick = e.target.closest("[data-pick]");
   if (pick) {
     const box = document.querySelector(`[data-picker="${pick.dataset.pick}"]`);

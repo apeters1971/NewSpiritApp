@@ -231,7 +231,10 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   room TEXT NOT NULL,
   user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
   text TEXT NOT NULL,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'text',
+  mime TEXT NOT NULL DEFAULT '',
+  duration_ms INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_chat_room ON chat_messages(room, created_at);
 CREATE TABLE IF NOT EXISTS chat_reactions (
@@ -295,7 +298,10 @@ CREATE TABLE IF NOT EXISTS settings (
 	if err := s.migrateAbsences(); err != nil {
 		return err
 	}
-	return s.migrateChatReads()
+	if err := s.migrateChatReads(); err != nil {
+		return err
+	}
+	return s.migrateChatVoice()
 }
 
 func (s *Store) allowAdminChatMessages() error {

@@ -45,7 +45,22 @@ func main() {
 		log.Fatal(err)
 	}
 
-	srv := api.New(st, hub.New(), secret, clientFS, controllerFS)
+	cfToken := strings.TrimSpace(os.Getenv("CLOUDFLARE_API_TOKEN"))
+	cfAccount := ""
+	if cfToken == "" {
+		log.Printf("warning: voice transcription disabled: CLOUDFLARE_API_TOKEN is not set")
+	} else if id, err := api.ResolveCloudflareAccountID(cfToken, os.Getenv("CLOUDFLARE_ACCOUNT_ID")); err != nil {
+		log.Printf("warning: voice transcription disabled: %v", err)
+	} else {
+		cfAccount = id
+		log.Printf("voice transcription: Cloudflare Whisper")
+	}
+
+	srv := api.New(st, hub.New(), api.Options{
+		ControllerSecret:    secret,
+		CloudflareToken:     cfToken,
+		CloudflareAccountID: cfAccount,
+	}, clientFS, controllerFS)
 	cert := strings.TrimSpace(*certFile)
 	key := strings.TrimSpace(*keyFile)
 	tls := cert != ""

@@ -31,6 +31,9 @@ type ChatMessage struct {
 	HasPhoto       bool           `json:"hasPhoto"`
 	PhotoUpdatedAt *time.Time     `json:"photoUpdatedAt,omitempty"`
 	Text           string         `json:"text"`
+	Kind           string         `json:"kind"`
+	MIME           string         `json:"mime,omitempty"`
+	DurationMs     int            `json:"durationMs,omitempty"`
 	CreatedAt      time.Time      `json:"createdAt"`
 	Reactions      []ChatReaction `json:"reactions"`
 }
@@ -164,12 +167,13 @@ func (s *Store) AddChatMessage(userID, room, text string) (ChatMessage, error) {
 		HasPhoto:       u.HasPhoto,
 		PhotoUpdatedAt: u.PhotoUpdatedAt,
 		Text:           text,
+		Kind:           ChatKindText,
 		CreatedAt:      now(),
 		Reactions:      []ChatReaction{},
 	}
 	_, err = s.db.Exec(
-		`INSERT INTO chat_messages(id, room, user_id, text, created_at) VALUES(?,?,?,?,?)`,
-		msg.ID, msg.Room, msg.UserID, msg.Text, fmtTime(msg.CreatedAt),
+		`INSERT INTO chat_messages(id, room, user_id, text, created_at, kind) VALUES(?,?,?,?,?,?)`,
+		msg.ID, msg.Room, msg.UserID, msg.Text, fmtTime(msg.CreatedAt), msg.Kind,
 	)
 	if err != nil {
 		return ChatMessage{}, err
@@ -191,17 +195,37 @@ func (s *Store) AddAdminChatMessage(room, text string) (ChatMessage, error) {
 		Nickname:  s.AdminAlias(),
 		IsAdmin:   true,
 		Text:      text,
+		Kind:      ChatKindText,
 		CreatedAt: now(),
 		Reactions: []ChatReaction{},
 	}
 	_, err = s.db.Exec(
-		`INSERT INTO chat_messages(id, room, user_id, text, created_at) VALUES(?,?,NULL,?,?)`,
-		msg.ID, msg.Room, msg.Text, fmtTime(msg.CreatedAt),
+		`INSERT INTO chat_messages(id, room, user_id, text, created_at, kind) VALUES(?,?,NULL,?,?,?)`,
+		msg.ID, msg.Room, msg.Text, fmtTime(msg.CreatedAt), msg.Kind,
 	)
 	if err != nil {
 		return ChatMessage{}, err
 	}
 	return msg, nil
+}
+
+func (s *Store) SetChatVoiceText(id, text string) (ChatMessage, error) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ChatMessage{}, fmt.Errorf("message is required")
+	}
+	if runes := []rune(text); len(runes) > 2000 {
+		text = string(runes[:2000])
+	}
+	res, err := s.db.Exec(`UPDATE chat_messages SET text=? WHERE id=? AND kind=?`, text, id, ChatKindVoice)
+	if err != nil {
+		return ChatMessage{}, err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ChatMessage{}, ErrNotFound
+	}
+	return s.getChatMessage(id, chatReactionActor, true)
 }
 
 func (s *Store) ListChatMessages(role, room, viewerID string) ([]ChatMessage, error) {
@@ -220,7 +244,7 @@ func (s *Store) ListChatMessagesForRoom(room string) ([]ChatMessage, error) {
 
 func (s *Store) listChatMessages(room, viewerID string, admin bool) ([]ChatMessage, error) {
 	rows, err := s.db.Query(`
-SELECT c.id, c.room, c.user_id, u.nickname, c.text, c.created_at, p.updated_at
+SELECT c.id, c.room, c.user_id, u.nickname, c.text, c.created_at, p.updated_at, c.kind, c.mime, c.duration_ms
 FROM chat_messages c
 LEFT JOIN users u ON u.id = c.user_id
 LEFT JOIN user_photos p ON p.user_id = c.user_id
@@ -285,7 +309,11 @@ func (s *Store) DeleteChatMessage(userID, room, messageID string, admin bool) er
 		}
 	}
 	_, err = s.db.Exec(`DELETE FROM chat_messages WHERE id=?`, messageID)
-	return err
+	if err != nil {
+		return err
+	}
+	s.removeChatVoiceFile(messageID)
+	return nil
 }
 
 func (s *Store) ToggleChatReaction(userID, room, messageID, emoji string, admin bool) (ChatMessage, error) {
@@ -343,7 +371,7 @@ func (s *Store) ToggleChatReaction(userID, room, messageID, emoji string, admin 
 
 func (s *Store) getChatMessage(id, viewerID string, admin bool) (ChatMessage, error) {
 	row := s.db.QueryRow(`
-SELECT c.id, c.room, c.user_id, u.nickname, c.text, c.created_at, p.updated_at
+SELECT c.id, c.room, c.user_id, u.nickname, c.text, c.created_at, p.updated_at, c.kind, c.mime, c.duration_ms
 FROM chat_messages c
 LEFT JOIN users u ON u.id = c.user_id
 LEFT JOIN user_photos p ON p.user_id = c.user_id
@@ -368,11 +396,21 @@ func scanChatMessage(rs rowScanner) (ChatMessage, error) {
 	var userID, nickname sql.NullString
 	var created string
 	var photoAt sql.NullString
-	if err := rs.Scan(&m.ID, &m.Room, &userID, &nickname, &m.Text, &created, &photoAt); err != nil {
+	var kind, mime sql.NullString
+	var duration sql.NullInt64
+	if err := rs.Scan(&m.ID, &m.Room, &userID, &nickname, &m.Text, &created, &photoAt, &kind, &mime, &duration); err != nil {
 		return ChatMessage{}, err
 	}
 	m.CreatedAt = parseTime(created)
 	m.Reactions = []ChatReaction{}
+	m.Kind = strings.TrimSpace(kind.String)
+	if m.Kind == "" {
+		m.Kind = ChatKindText
+	}
+	m.MIME = strings.TrimSpace(mime.String)
+	if duration.Valid && duration.Int64 > 0 {
+		m.DurationMs = int(duration.Int64)
+	}
 	if userID.Valid && strings.TrimSpace(userID.String) != "" {
 		m.UserID = userID.String
 		m.Nickname = nickname.String

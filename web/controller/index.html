@@ -260,7 +260,7 @@
 
     <div id="tab-channels" class="tab-panel" hidden>
       <h2 data-i18n="tabChannels">Kanäle</h2>
-      <p class="lede" data-i18n="channelsHint">Kanäle 1–96 für Chor, Band und Orchester. Jeder Kanal kann einer Person und einem Kommentar zugeordnet werden.</p>
+      <p class="lede" data-i18n="channelsHint">Kanäle 1–96 für Chor, Chorleiter, Band und Orchester. Jeder Kanal kann einer Person und einem Kommentar zugeordnet werden.</p>
       <div class="archive-search">
         <label for="channel-search" data-i18n="archiveSearch">Suchen</label>
         <input id="channel-search" type="search" autocomplete="off" />
@@ -364,6 +364,13 @@
       </div>
       <label class="visually-hidden" for="chat-text" data-i18n="chatWrite">Nachricht schreiben</label>
       <textarea id="chat-text" required maxlength="2000" rows="1"></textarea>
+      <button type="button" id="chat-voice" class="chat-voice-btn" data-i18n-aria="chatVoice" aria-label="Sprachnachricht"></button>
+      <div id="chat-rec" class="chat-rec" hidden>
+        <button type="button" id="chat-rec-cancel" class="chat-rec-cancel" data-i18n-aria="chatVoiceCancel" aria-label="Abbrechen">×</button>
+        <span class="chat-rec-dot" aria-hidden="true"></span>
+        <span id="chat-rec-time" class="chat-rec-time">0:00</span>
+        <button type="button" id="chat-rec-send" class="chat-rec-send" data-i18n-aria="chatVoiceSend" aria-label="Senden"></button>
+      </div>
       <p id="chat-error" class="error" hidden></p>
     </form>
   </dialog>
