@@ -232,7 +232,7 @@ function renderDate(date) {
   const extraBadge = pollOpen(date)
     ? `<span class="badge voting">${I18N.t("poll")}</span>`
     : date.frozenOptionId ? `<span class="badge accepted">${I18N.t("chosenTime")}</span>` : "";
-  return `<article class="card">
+  return `<article class="card${needsVote(date) ? " needs-vote" : ""}">
     <div class="card-head">
       <div>
         <p class="brand">${escapeHtml(I18N.category(date.category))} · ${date.roles.map((r) => I18N.role(r)).join(" · ")}</p>
@@ -285,6 +285,18 @@ function userParticipates(d) {
     return (d.options || []).some((o) => o.myChoice === "yes" || o.myChoice === "maybe");
   }
   return d.myChoice === "yes" || d.myChoice === "maybe";
+}
+
+function hasAnswered(d) {
+  if (pollOpen(d)) {
+    const options = d.options || [];
+    return options.length > 0 && options.every((o) => o.myChoice === "yes" || o.myChoice === "maybe" || o.myChoice === "no");
+  }
+  return d.myChoice === "yes" || d.myChoice === "maybe" || d.myChoice === "no";
+}
+
+function needsVote(d) {
+  return !!(d && d.status !== "cancelled" && !hasAnswered(d));
 }
 
 function upcomingDates() {
@@ -395,7 +407,8 @@ function renderOverview() {
     const vote = pollOpen(d)
       ? `<span class="badge voting">${escapeHtml(overviewPollVote(d))}</span>`
       : `<span class="badge ${d.myChoice}">${voteLabel(d.myChoice)}</span>`;
-    return `<button type="button" class="overview-item" data-jump="${d.id}">
+    const pending = needsVote(d);
+    return `<button type="button" class="overview-item${pending ? " needs-vote" : ""}" data-jump="${d.id}"${pending ? ` title="${escapeHtml(I18N.t("voteNeeded"))}"` : ""}">
       <div>
         <strong>${escapeHtml(d.title)}</strong>
         <p>${escapeHtml(when)} · ${escapeHtml(I18N.category(d.category))}</p>
