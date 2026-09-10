@@ -4,6 +4,7 @@
       date: "2026-09-10",
       items: {
         de: [
+          "Jeder Chat hat unten einen Schließen-Knopf — Live, Chor, Band, Orchester und Termin, auch in der Verwaltung.",
           "Streamer können Kamera, eine Videodatei oder ein Fenster/Tab (z. B. YouTube) senden.",
           "Neben dem Live-Video liegt ein Live-Chat — dieselben Funktionen wie im normalen Chat, Video 75 %, Chat 25 %.",
           "Streamer können oben mit Aufnehmen einen Live-Stream vom Computer oder Handy starten. Alle können mit Abspielen zuschauen. Die Streamer-Rolle steht im Profil in der Verwaltung.",
@@ -26,6 +27,7 @@
           "Sprachnachrichten im Chat mit automatischer Abschrift. Chorleiter können Kanäle haben.",
         ],
         en: [
+          "Every chat has a Close button at the bottom — live, choir, band, orchestra, and event, including in the controller.",
           "Streamers can send the camera, a video file, or a window/tab (for example YouTube).",
           "A live chat sits beside the live video — the same features as the normal chat, video 75%, chat 25%.",
           "Streamers can start a live stream from a computer or phone with the Record button on top. Everyone can watch with Play. The streamer role is a checkbox on the person in the controller.",

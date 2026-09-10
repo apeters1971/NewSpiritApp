@@ -2053,6 +2053,9 @@ document.getElementById("chat-close").addEventListener("click", () => {
   discardVoiceRecord();
   document.getElementById("chat-dialog").close();
 });
+document.getElementById("chat-close-bottom").addEventListener("click", () => {
+  document.getElementById("chat-dialog").close();
+});
 
 document.getElementById("chat-dialog").addEventListener("close", () => {
   discardVoiceRecord();

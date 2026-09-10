@@ -337,6 +337,22 @@ button.avatar {
 .win-dot:disabled { opacity: 0.38; cursor: default; }
 .chat-dot:focus-visible,
 .win-dot:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.chat-dialog .chat-list {
+  min-height: 0;
+}
+.chat-dialog .chat-composer,
+.chat-close-bottom {
+  flex: 0 0 auto;
+}
+.chat-close-bottom {
+  width: 100%;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: #152028;
+  color: var(--ink);
+}
 .chat-list {
   display: flex;
   flex-direction: column;

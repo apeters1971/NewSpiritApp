@@ -487,6 +487,27 @@ button.avatar {
 .stream-chat-col .chat-composer {
   padding: 0.4rem 0.4rem 0.5rem;
 }
+.chat-dialog .chat-list {
+  min-height: 0;
+}
+.chat-dialog .chat-composer,
+.chat-close-bottom {
+  flex: 0 0 auto;
+}
+.chat-close-bottom {
+  width: 100%;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: #152028;
+  color: var(--ink);
+}
+.stream-dialog.chat-hidden .stream-chat-col { display: none; }
+.stream-dialog.chat-hidden .stream-video-col {
+  flex: 1;
+  width: 100%;
+}
 .notice-toast {
   position: fixed;
   top: max(5.5rem, calc(env(safe-area-inset-top, 0px) + 4.6rem));

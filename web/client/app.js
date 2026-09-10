@@ -1274,10 +1274,20 @@ document.getElementById("btn-header-play").addEventListener("click", () => {
 document.getElementById("stream-close").addEventListener("click", () => {
   closeStreamDialog();
 });
+document.getElementById("stream-chat-close").addEventListener("click", () => {
+  setStreamChatVisible(false);
+});
+document.getElementById("stream-chat-show").addEventListener("click", () => {
+  setStreamChatVisible(true);
+});
+document.getElementById("chat-close-bottom").addEventListener("click", () => {
+  document.getElementById("chat-dialog").close();
+});
 document.getElementById("stream-dialog").addEventListener("close", () => {
   const video = document.getElementById("stream-video");
   if (!pubStream && video) video.srcObject = null;
   if (!pubStream) stopWatch(false);
+  setStreamChatVisible(true);
   unloadLiveChat();
 });
 document.getElementById("btn-header-chat").addEventListener("click", async () => {
@@ -2239,8 +2249,21 @@ function openStreamDialog(publishing) {
     video.muted = false;
   }
   const dialog = document.getElementById("stream-dialog");
+  const wasOpen = dialog.open;
   if (!dialog.open) dialog.showModal();
+  if (!wasOpen) setStreamChatVisible(true);
   loadLiveChat().catch((err) => showError(chatErrorEl(), err.message));
+}
+
+function setStreamChatVisible(open) {
+  const dialog = document.getElementById("stream-dialog");
+  const show = document.getElementById("stream-chat-show");
+  if (!dialog) return;
+  dialog.classList.toggle("chat-hidden", !open);
+  if (show) show.hidden = open;
+  if (open && dialog.open && chatRoom === LIVE_ROOM) {
+    renderChat(chatListEl()?.scrollTop);
+  }
 }
 
 async function loadLiveChat() {
