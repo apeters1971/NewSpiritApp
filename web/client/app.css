@@ -371,6 +371,16 @@ button.avatar {
   border-color: transparent;
   color: var(--ink);
 }
+.stream-source {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+}
+.stream-source-menu {
+  left: auto;
+  right: 0;
+  min-width: 13.5rem;
+}
 .header-record-icon,
 .header-play-icon {
   display: block;

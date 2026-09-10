@@ -27,6 +27,8 @@ let mixer = { channels: [], people: [] };
 let memberWS = null;
 let liveStream = null;
 let pubStream = null;
+let pubSource = "";
+let pubFileURL = "";
 let pubPeers = {};
 let subPeer = null;
 
@@ -1178,7 +1180,10 @@ document.getElementById("btn-logout-menu").addEventListener("click", signOut);
 function setMenuOpen(open) {
   const nav = document.getElementById("top-actions");
   const btn = document.getElementById("btn-menu");
-  if (open) setAvatarMenuOpen(false);
+  if (open) {
+    setAvatarMenuOpen(false);
+    setStreamSourceOpen(false);
+  }
   nav.classList.toggle("open", open);
   document.body.classList.toggle("menu-open", open);
   btn.setAttribute("aria-expanded", open ? "true" : "false");
@@ -1188,7 +1193,22 @@ function setAvatarMenuOpen(open) {
   const menu = document.getElementById("avatar-menu");
   const btn = document.getElementById("who-photo");
   if (!menu || !btn) return;
-  if (open) setMenuOpen(false);
+  if (open) {
+    setMenuOpen(false);
+    setStreamSourceOpen(false);
+  }
+  menu.hidden = !open;
+  btn.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+function setStreamSourceOpen(open) {
+  const menu = document.getElementById("stream-source-menu");
+  const btn = document.getElementById("btn-header-record");
+  if (!menu || !btn) return;
+  if (open) {
+    setMenuOpen(false);
+    setAvatarMenuOpen(false);
+  }
   menu.hidden = !open;
   btn.setAttribute("aria-expanded", open ? "true" : "false");
 }
@@ -1226,8 +1246,27 @@ document.getElementById("notice-toast-open").addEventListener("click", () => {
 });
 document.getElementById("notice-toast-close").addEventListener("click", hideInAppNotice);
 document.getElementById("btn-header-record").addEventListener("click", () => {
-  if (pubStream) stopPublish();
-  else startPublish();
+  if (pubStream) {
+    setStreamSourceOpen(false);
+    stopPublish();
+    return;
+  }
+  const menu = document.getElementById("stream-source-menu");
+  setStreamSourceOpen(!!menu?.hidden);
+});
+document.getElementById("stream-source-menu").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-stream-source]");
+  if (!btn) return;
+  setStreamSourceOpen(false);
+  const source = btn.dataset.streamSource;
+  if (source === "camera") startPublishCamera();
+  else if (source === "display") startPublishDisplay();
+  else if (source === "file") document.getElementById("stream-file").click();
+});
+document.getElementById("stream-file").addEventListener("change", async (e) => {
+  const file = e.target.files?.[0];
+  e.target.value = "";
+  if (file) await startPublishFile(file);
 });
 document.getElementById("btn-header-play").addEventListener("click", () => {
   startWatch();
@@ -1254,6 +1293,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     setMenuOpen(false);
     setAvatarMenuOpen(false);
+    setStreamSourceOpen(false);
   }
 });
 document.addEventListener("pointerdown", (e) => {
@@ -1262,6 +1302,9 @@ document.addEventListener("pointerdown", (e) => {
   }
   if (!document.getElementById("avatar-menu")?.hidden && !e.target.closest(".face-cluster")) {
     setAvatarMenuOpen(false);
+  }
+  if (!document.getElementById("stream-source-menu")?.hidden && !e.target.closest("#stream-source")) {
+    setStreamSourceOpen(false);
   }
 });
 
@@ -2168,8 +2211,9 @@ function applyLiveStream(stream, announce) {
 function paintStreamButtons() {
   const rec = document.getElementById("btn-header-record");
   const play = document.getElementById("btn-header-play");
+  const wrap = document.getElementById("stream-source");
   if (!rec || !play) return;
-  rec.hidden = !me?.streamer;
+  if (wrap) wrap.hidden = !me?.streamer;
   rec.classList.toggle("on", !!pubStream);
   rec.setAttribute("aria-label", I18N.t(pubStream ? "streamStop" : "streamStart"));
   rec.setAttribute("aria-pressed", pubStream ? "true" : "false");
@@ -2184,7 +2228,10 @@ function openStreamDialog(publishing) {
   const who = liveStream?.nickname || me?.nickname || I18N.t("streamBrand");
   document.getElementById("stream-who").textContent = who;
   document.getElementById("stream-status").textContent = I18N.t(publishing ? "streamPublishing" : "streamWatching");
-  if (publishing && pubStream) {
+  if (publishing && pubSource === "file") {
+    video.muted = false;
+    video.play().catch(() => {});
+  } else if (publishing && pubStream) {
     video.srcObject = pubStream;
     video.muted = true;
     video.play().catch(() => {});
@@ -2243,53 +2290,135 @@ function closeStreamDialog() {
   }
 }
 
-function resetLocalStream(ended) {
+function captureVideoStream(video) {
+  const fn = video.captureStream || video.mozCaptureStream;
+  return fn ? fn.call(video) : null;
+}
+
+function bindPublishEnded(stream) {
+  stream.getTracks().forEach((t) => {
+    t.addEventListener("ended", () => {
+      if (pubStream === stream) stopPublish();
+    }, { once: true });
+  });
+}
+
+function clearPublishMedia() {
   Object.values(pubPeers).forEach((pc) => pc.close());
   pubPeers = {};
-  if (pubStream) {
-    pubStream.getTracks().forEach((t) => t.stop());
-    pubStream = null;
+  const stream = pubStream;
+  pubStream = null;
+  if (stream) stream.getTracks().forEach((t) => t.stop());
+  const video = document.getElementById("stream-video");
+  if (video) {
+    video.pause();
+    video.removeAttribute("src");
+    video.srcObject = null;
+    video.loop = false;
+    try { video.load(); } catch {}
   }
+  if (pubFileURL) {
+    URL.revokeObjectURL(pubFileURL);
+    pubFileURL = "";
+  }
+  pubSource = "";
+}
+
+function beginPublish(stream, source) {
+  pubStream = stream;
+  pubSource = source;
+  bindPublishEnded(stream);
+  wsSend({ type: "streamStart" });
+  paintStreamButtons();
+  openStreamDialog(true);
+}
+
+function resetLocalStream(ended) {
+  clearPublishMedia();
   stopWatch(false);
   if (ended) liveStream = null;
-  const video = document.getElementById("stream-video");
-  if (video) video.srcObject = null;
   const dialog = document.getElementById("stream-dialog");
   if (dialog?.open) dialog.close();
   paintStreamButtons();
 }
 
-async function startPublish() {
+async function startPublishCamera() {
   if (!me?.streamer) return;
   if (!navigator.mediaDevices?.getUserMedia) {
     alert(I18N.t("streamNeedCamera"));
     return;
   }
   try {
-    pubStream = await navigator.mediaDevices.getUserMedia({
+    const stream = await navigator.mediaDevices.getUserMedia({
       audio: true,
       video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
     });
+    beginPublish(stream, "camera");
   } catch {
-    pubStream = null;
     alert(I18N.t("streamNeedCamera"));
+  }
+}
+
+async function startPublishDisplay() {
+  if (!me?.streamer) return;
+  if (!navigator.mediaDevices?.getDisplayMedia) {
+    alert(I18N.t("streamNeedWindow"));
     return;
   }
-  wsSend({ type: "streamStart" });
-  paintStreamButtons();
-  openStreamDialog(true);
+  try {
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: { ideal: 30 } },
+        audio: true,
+      });
+    } catch (err) {
+      if (err?.name === "NotAllowedError") return;
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: { ideal: 30 } },
+        audio: false,
+      });
+    }
+    beginPublish(stream, "display");
+  } catch (err) {
+    if (err?.name === "NotAllowedError") return;
+    alert(I18N.t("streamNeedWindow"));
+  }
+}
+
+async function startPublishFile(file) {
+  if (!me?.streamer || !file) return;
+  const video = document.getElementById("stream-video");
+  if (!video || !(video.captureStream || video.mozCaptureStream)) {
+    alert(I18N.t("streamNeedFile"));
+    return;
+  }
+  clearPublishMedia();
+  pubFileURL = URL.createObjectURL(file);
+  video.srcObject = null;
+  video.src = pubFileURL;
+  video.loop = true;
+  video.muted = false;
+  video.playsInline = true;
+  try {
+    await video.play();
+  } catch {
+    clearPublishMedia();
+    alert(I18N.t("streamNeedFile"));
+    return;
+  }
+  const stream = captureVideoStream(video);
+  if (!stream || !stream.getVideoTracks().length) {
+    clearPublishMedia();
+    alert(I18N.t("streamNeedFile"));
+    return;
+  }
+  beginPublish(stream, "file");
 }
 
 function stopPublish() {
-  Object.values(pubPeers).forEach((pc) => pc.close());
-  pubPeers = {};
-  if (pubStream) {
-    pubStream.getTracks().forEach((t) => t.stop());
-    pubStream = null;
-  }
   wsSend({ type: "streamStop" });
-  const video = document.getElementById("stream-video");
-  if (video) video.srcObject = null;
+  clearPublishMedia();
   const dialog = document.getElementById("stream-dialog");
   if (dialog?.open) dialog.close();
   paintStreamButtons();
@@ -2392,12 +2521,7 @@ function handleStreamMessage(msg) {
       return true;
     case "streamEnded":
       applyLiveStream(null, false);
-      if (pubStream) {
-        Object.values(pubPeers).forEach((pc) => pc.close());
-        pubPeers = {};
-        pubStream.getTracks().forEach((t) => t.stop());
-        pubStream = null;
-      }
+      clearPublishMedia();
       stopWatch(true);
       paintStreamButtons();
       return true;

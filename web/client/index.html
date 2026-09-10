@@ -87,9 +87,17 @@
           <button type="button" id="btn-header-notices" class="btn ghost header-notices on" aria-pressed="true" data-i18n-aria="noticesOn" aria-label="Benachrichtigungen an">
             <span class="header-notices-icon" aria-hidden="true"></span>
           </button>
-          <button type="button" id="btn-header-record" class="btn ghost header-stream header-record" hidden data-i18n-aria="streamStart" aria-label="Live-Stream starten">
-            <span class="header-record-icon" aria-hidden="true"></span>
-          </button>
+          <div id="stream-source" class="stream-source" hidden>
+            <button type="button" id="btn-header-record" class="btn ghost header-stream header-record" aria-haspopup="menu" aria-expanded="false" aria-controls="stream-source-menu" data-i18n-aria="streamStart" aria-label="Live-Stream starten">
+              <span class="header-record-icon" aria-hidden="true"></span>
+            </button>
+            <div id="stream-source-menu" class="avatar-menu stream-source-menu" hidden role="menu">
+              <button type="button" class="btn ghost" role="menuitem" data-stream-source="camera" data-i18n="streamCamera">Kamera</button>
+              <button type="button" class="btn ghost" role="menuitem" data-stream-source="file" data-i18n="streamFile">Videodatei</button>
+              <button type="button" class="btn ghost" role="menuitem" data-stream-source="display" data-i18n="streamWindow">Fenster oder Tab</button>
+            </div>
+            <input id="stream-file" type="file" accept="video/*" hidden />
+          </div>
           <button type="button" id="btn-header-play" class="btn ghost header-stream header-play" disabled data-i18n-aria="streamPlay" aria-label="Live-Stream ansehen">
             <span class="header-play-icon" aria-hidden="true"></span>
           </button>
