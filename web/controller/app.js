@@ -655,9 +655,12 @@ function renderProposals() {
   }
   body.innerHTML = items.map((p) => `
     <tr data-proposal="${p.id}">
-      <td>${escapeHtml(p.title)}</td>
+      <td>
+        <strong>${escapeHtml(p.title)}</strong>
+        <p class="proposal-by">${escapeHtml(I18N.t("proposedBy"))} <b>${escapeHtml(p.nickname || "—")}</b></p>
+      </td>
+      <td>${escapeHtml(p.nickname || "—")}</td>
       <td class="proposal-url">${proposalLink(p.url)}</td>
-      <td>${escapeHtml(p.nickname)}</td>
       <td><span class="badge ${proposalBadge(p.status)}">${escapeHtml(I18N.status(p.status))}</span></td>
       <td><input data-proposal-comment="${p.id}" value="${escapeHtml(p.comment || "")}" maxlength="2000" /></td>
       <td class="proposal-actions">
@@ -1565,6 +1568,10 @@ function chatVoiceURL(room, id) {
   return `${CHAT_API}/${encodeURIComponent(room)}/messages/${encodeURIComponent(id)}/voice`;
 }
 
+function chatMediaURL(room, id) {
+  return `${CHAT_API}/${encodeURIComponent(room)}/messages/${encodeURIComponent(id)}/media`;
+}
+
 function chatBodyHTML(m) {
   if (m.kind === "voice") {
     const src = chatVoiceURL(m.room || chatRoom, m.id);
@@ -1577,7 +1584,43 @@ function chatBodyHTML(m) {
       <audio preload="none" src="${escapeHtml(src)}" data-voice-audio="${m.id}"></audio>
     </div>${text}`;
   }
+  if (m.kind === "image" || m.kind === "video") {
+    const src = chatMediaURL(m.room || chatRoom, m.id);
+    const media = m.kind === "video"
+      ? `<video controls playsinline preload="metadata" src="${escapeHtml(src)}"></video>`
+      : `<a href="${escapeHtml(src)}" target="_blank" rel="noopener"><img src="${escapeHtml(src)}" alt="" /></a>`;
+    return `<div class="chat-media">${media}<button type="button" class="chat-voice-del" data-voice-delete="${m.id}" aria-label="${escapeHtml(I18N.t("chatMediaDelete"))}"></button></div>`;
+  }
+  if (editingChatId === m.id) {
+    return `<form class="chat-edit-form" data-chat-save="${m.id}">
+      <textarea maxlength="2000" rows="2" required>${escapeHtml(m.text || "")}</textarea>
+      <div class="chat-edit-btns">
+        <button type="submit">${escapeHtml(I18N.t("save"))}</button>
+        <button type="button" class="btn ghost" data-chat-edit-cancel>${escapeHtml(I18N.t("cancel"))}</button>
+      </div>
+    </form>`;
+  }
   return `<p class="chat-text">${escapeHtml(m.text)}</p>`;
+}
+
+function isChatText(m) {
+  return !m?.kind || m.kind === "text";
+}
+
+function canEditChat(m) {
+  return !!(m && isChatText(m));
+}
+
+function chatActionsHTML(m) {
+  if (editingChatId === m.id) return "";
+  const edit = canEditChat(m)
+    ? `<button type="button" class="chat-edit-btn" data-chat-edit="${m.id}" aria-label="${escapeHtml(I18N.t("chatEdit"))}"></button>`
+    : "";
+  const del = isChatText(m)
+    ? `<button type="button" class="chat-voice-del" data-voice-delete="${m.id}" aria-label="${escapeHtml(I18N.t("chatDelete"))}"></button>`
+    : "";
+  if (!edit && !del) return "";
+  return `<div class="chat-tools">${edit}${del}</div>`;
 }
 
 function chatMessageHTML(m, stacked) {
@@ -1597,6 +1640,7 @@ function chatMessageHTML(m, stacked) {
         ${chatBodyHTML(m)}
         <span class="chat-time">${escapeHtml(formatChatWhen(m.createdAt))}</span>
       </div>
+      ${chatActionsHTML(m)}
       ${chatReactionsHTML(m)}
     </div>
   </article>`;
@@ -1646,6 +1690,22 @@ function upsertChat(msg) {
   renderChat(list?.scrollTop);
 }
 
+let editingChatId = "";
+
+async function saveChatEdit(id, text) {
+  if (!chatRoom || !id) return;
+  try {
+    const data = await api(`/api/controller/chats/${encodeURIComponent(chatRoom)}/messages/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ text }),
+    });
+    editingChatId = "";
+    upsertChat(data.message);
+  } catch (err) {
+    showError(document.getElementById("chat-error"), err.message);
+  }
+}
+
 async function deleteChatMessage(id) {
   if (!chatRoom || !id) return;
   if (!confirm(I18N.t("confirmDeleteMessage"))) return;
@@ -1667,6 +1727,7 @@ function removeChat(id) {
 
 function closeChat() {
   const dialog = document.getElementById("chat-dialog");
+  editingChatId = "";
   if (dialog.open) dialog.close();
   chatRoom = "";
   chatMessages = [];
@@ -1951,6 +2012,7 @@ document.getElementById("chat-close").addEventListener("click", () => {
 
 document.getElementById("chat-dialog").addEventListener("close", () => {
   discardVoiceRecord();
+  editingChatId = "";
   chatRoom = "";
   chatMessages = [];
   renderChatTabs();
@@ -1968,6 +2030,35 @@ document.getElementById("chat-text").addEventListener("keydown", (e) => {
 });
 
 document.getElementById("chat-voice").addEventListener("click", () => startVoiceRecord());
+document.getElementById("chat-media").addEventListener("click", () => {
+  document.getElementById("chat-media-file").click();
+});
+document.getElementById("chat-media-file").addEventListener("change", async (e) => {
+  const file = e.target.files?.[0];
+  e.target.value = "";
+  if (!file) return;
+  await sendChatMedia(file);
+});
+
+async function sendChatMedia(file) {
+  const errEl = document.getElementById("chat-error");
+  if (!chatRoom || !file) return;
+  const form = new FormData();
+  form.append("file", file, file.name || "media");
+  try {
+    showError(errEl, "");
+    const res = await fetch(`${CHAT_API}/${encodeURIComponent(chatRoom)}/media`, {
+      method: "POST",
+      credentials: "same-origin",
+      body: form,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(I18N.error(data.error || res.statusText));
+    appendChat(data.message);
+  } catch (err) {
+    showError(errEl, err.message);
+  }
+}
 document.getElementById("chat-rec-cancel").addEventListener("click", () => finishVoiceRecord(true));
 document.getElementById("chat-rec-send").addEventListener("click", () => finishVoiceRecord(false));
 
@@ -2013,14 +2104,27 @@ function insertChatEmoji(emoji) {
   document.getElementById("chat-dialog").addEventListener("close", () => setChatEmojiOpen(false));
 })();
 
-document.getElementById("chat-list").addEventListener("dblclick", async (e) => {
-  if (e.target.closest(".chat-reacts, .chat-voice")) return;
-  const bubble = e.target.closest("[data-msg]");
-  if (!bubble || !chatRoom) return;
-  await deleteChatMessage(bubble.dataset.msg);
+document.getElementById("chat-list").addEventListener("submit", async (e) => {
+  const form = e.target.closest("[data-chat-save]");
+  if (!form) return;
+  e.preventDefault();
+  const text = form.querySelector("textarea")?.value || "";
+  await saveChatEdit(form.dataset.chatSave, text);
 });
 
 document.getElementById("chat-list").addEventListener("click", async (e) => {
+  const edit = e.target.closest("[data-chat-edit]");
+  if (edit) {
+    editingChatId = edit.dataset.chatEdit;
+    renderChat(document.getElementById("chat-list").scrollTop);
+    document.querySelector(`[data-chat-save="${editingChatId}"] textarea`)?.focus();
+    return;
+  }
+  if (e.target.closest("[data-chat-edit-cancel]")) {
+    editingChatId = "";
+    renderChat(document.getElementById("chat-list").scrollTop);
+    return;
+  }
   const trash = e.target.closest("[data-voice-delete]");
   if (trash) {
     await deleteChatMessage(trash.dataset.voiceDelete);

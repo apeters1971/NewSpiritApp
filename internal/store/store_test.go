@@ -6,6 +6,7 @@ import (
 	"image/jpeg"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -495,6 +496,21 @@ func TestChatRoom(t *testing.T) {
 		t.Fatal("expected long alias error")
 	}
 
+	edited, err := st.UpdateChatMessage(ada.ID, RoleChoir, msg.ID, "  Hello choir  ", false)
+	if err != nil || edited.Text != "Hello choir" {
+		t.Fatalf("edit %+v %v", edited, err)
+	}
+	if _, err := st.UpdateChatMessage(cara.ID, RoleChoir, msg.ID, "hack", false); err == nil {
+		t.Fatal("band should not edit choir message")
+	}
+	if _, err := st.UpdateChatMessage(ada.ID, RoleChoir, admin.ID, "nope", false); err == nil {
+		t.Fatal("member should not edit admin message")
+	}
+	adminEdit, err := st.UpdateChatMessage("", RoleChoir, admin.ID, "From admin now", true)
+	if err != nil || adminEdit.Text != "From admin now" {
+		t.Fatalf("admin edit %+v %v", adminEdit, err)
+	}
+
 	if err := st.DeleteChatMessage(cara.ID, RoleChoir, msg.ID, false); err == nil {
 		t.Fatal("band should not delete choir message")
 	}
@@ -705,6 +721,18 @@ func TestChannels(t *testing.T) {
 	}
 	if _, err := st.SetChannel(13, tech.ID, "", false); err == nil {
 		t.Fatal("technician should not get a channel")
+	}
+	if CanAssignChannels(tech.Role) != true || CanAssignChannels(ada.Role) {
+		t.Fatal("only technicians assign channels")
+	}
+	people, err := st.ChannelPeople()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range people {
+		if p.ID == tech.ID {
+			t.Fatal("technician should not be assignable")
+		}
 	}
 	lead, err := st.CreateUser("Lea", "lea@example.com", "secret1", RoleChorleiter, "Chorleiter")
 	if err != nil {
@@ -1082,6 +1110,67 @@ func TestChatVoice(t *testing.T) {
 	}
 }
 
+func tinyJPEG() []byte {
+	return []byte{
+		0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01,
+		0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0xff, 0xd9,
+	}
+}
+
+func tinyMP4() []byte {
+	b := bytes.Repeat([]byte{0}, 64)
+	b[3] = 0x18
+	copy(b[4:], []byte("ftypisom"))
+	return b
+}
+
+func TestChatMedia(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "media.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	ada, err := st.CreateUser("Ada", "ada@example.com", "secret1", RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cara, err := st.CreateUser("Cara", "cara@example.com", "secret1", RoleBand, "Drums")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pic, err := st.AddChatMedia(ada.ID, RoleChoir, "shot.jpg", bytes.NewReader(tinyJPEG()))
+	if err != nil || pic.Kind != ChatKindImage || pic.MIME != "image/jpeg" {
+		t.Fatalf("image %+v %v", pic, err)
+	}
+	if _, _, err := st.ChatMediaFile(ada.Role, RoleChoir, pic.ID); err != nil {
+		t.Fatalf("image file %v", err)
+	}
+	clip, err := st.AddChatMedia(ada.ID, RoleChoir, "clip.mp4", bytes.NewReader(tinyMP4()))
+	if err != nil || clip.Kind != ChatKindVideo || clip.MIME != "video/mp4" {
+		t.Fatalf("video %+v %v", clip, err)
+	}
+	if _, err := st.AddChatMedia(cara.ID, RoleChoir, "shot.jpg", bytes.NewReader(tinyJPEG())); err == nil {
+		t.Fatal("band should not post media in choir")
+	}
+	if _, _, err := st.ChatMediaFile(cara.Role, RoleChoir, pic.ID); err == nil {
+		t.Fatal("band should not read choir media")
+	}
+	admin, err := st.AddAdminChatMedia(RoleChoir, "shot.jpg", bytes.NewReader(tinyJPEG()))
+	if err != nil || !admin.IsAdmin || admin.Kind != ChatKindImage {
+		t.Fatalf("admin %+v %v", admin, err)
+	}
+	if _, err := st.AddChatMedia(ada.ID, RoleChoir, "note.txt", bytes.NewReader([]byte("this is not a picture...."))); err == nil {
+		t.Fatal("expected rejected type")
+	}
+	if err := st.DeleteChatMessage(ada.ID, RoleChoir, pic.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := st.ChatMediaFile(ada.Role, RoleChoir, pic.ID); err == nil {
+		t.Fatal("deleted image should be gone")
+	}
+}
+
 func TestEhemaligeChoirInfo(t *testing.T) {
 	st, err := Open(filepath.Join(t.TempDir(), "alumni.db"))
 	if err != nil {
@@ -1174,5 +1263,67 @@ func TestEhemaligeChoirInfo(t *testing.T) {
 	eventRoles := st.ChatRoomRoles(EventChatRoom(choirDate.ID))
 	if !slicesContains(eventRoles, RoleEhemalige) {
 		t.Fatalf("event chat roles %+v", eventRoles)
+	}
+}
+
+func TestParallelMemberTraffic(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "parallel.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	names := []string{"Ada", "Ben", "Cara", "Dana", "Eli", "Fay"}
+	users := make([]User, 0, len(names))
+	for _, name := range names {
+		u, err := st.CreateUser(name, strings.ToLower(name)+"@example.com", "secret1", RoleChoir, "Sopran")
+		if err != nil {
+			t.Fatal(err)
+		}
+		users = append(users, u)
+	}
+	start := time.Date(2026, 9, 20, 18, 0, 0, 0, time.UTC)
+	d, err := st.CreateDate("Show", CategoryConcert, start, nil, "Hall", "", "", []string{RoleChoir}, Bring{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	choices := []string{VoteYes, VoteMaybe, VoteNo}
+	errs := make(chan error, 256)
+	var wg sync.WaitGroup
+	for i := 0; i < 12; i++ {
+		u := users[i%len(users)]
+		wg.Add(1)
+		go func(u User) {
+			defer wg.Done()
+			for n := 0; n < 25; n++ {
+				if _, err := st.ListDateViews(&u); err != nil {
+					errs <- err
+					return
+				}
+				if err := st.SetVote(u.ID, d.ID, choices[n%len(choices)]); err != nil {
+					errs <- err
+					return
+				}
+				if _, err := st.AddChatMessage(u.ID, RoleChoir, "hello from parallel"); err != nil {
+					errs <- err
+					return
+				}
+				if _, err := st.ChoirRanking(2026); err != nil {
+					errs <- err
+					return
+				}
+			}
+		}(u)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatal(err)
+	}
+	if _, err := st.DateView(d.ID, &users[0]); err != nil {
+		t.Fatal(err)
+	}
+	if unread, err := st.MemberChatUnread(users[0]); err != nil || unread[RoleChoir] < 1 {
+		t.Fatalf("unread %+v %v", unread, err)
 	}
 }

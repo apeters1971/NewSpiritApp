@@ -14,7 +14,9 @@
         <button type="button" class="lang-btn" data-lang="de">DE</button>
         <button type="button" class="lang-btn" data-lang="en">EN</button>
       </div>
-      <img class="logo logo-login" src="/static/nsgc-symbol.png" alt="New Spirit Gospel Choir" />
+      <button type="button" class="logo-btn" data-changelog data-i18n-aria="changelogOpen" aria-label="Changelog öffnen">
+        <img class="logo logo-login" src="/static/nsgc-symbol.png" alt="New Spirit Gospel Choir" />
+      </button>
       <p class="brand" data-i18n="brand">New Spirit</p>
       <h1 data-i18n="controller">Verwaltung</h1>
       <p class="lede" data-i18n="controllerLede">Gib das Admin-Geheimnis ein, um Personen und Termine zu verwalten.</p>
@@ -28,7 +30,9 @@
   <section id="dash" class="dash" hidden>
     <header class="top">
       <div class="top-brand">
-        <img class="logo logo-bar" src="/static/nsgc-symbol.png" alt="New Spirit Gospel Choir" />
+        <button type="button" class="logo-btn" data-changelog data-i18n-aria="changelogOpen" aria-label="Changelog öffnen">
+          <img class="logo logo-bar" src="/static/nsgc-symbol.png" alt="New Spirit Gospel Choir" />
+        </button>
         <div>
           <p class="brand" data-i18n="brandController">New Spirit · Verwaltung</p>
           <h1 data-i18n="availability">Verfügbarkeit</h1>
@@ -294,8 +298,8 @@
           <thead>
             <tr>
               <th data-i18n="songName">Songname</th>
-              <th data-i18n="songURL">URL</th>
               <th data-i18n="person">Person</th>
+              <th data-i18n="songURL">URL</th>
               <th data-i18n="status">Status</th>
               <th data-i18n="adminComment">Kommentar der Verwaltung</th>
               <th></th>
@@ -364,6 +368,8 @@
       </div>
       <label class="visually-hidden" for="chat-text" data-i18n="chatWrite">Nachricht schreiben</label>
       <textarea id="chat-text" required maxlength="2000" rows="1"></textarea>
+      <button type="button" id="chat-media" class="chat-media-btn" data-i18n-aria="chatMedia" aria-label="Foto oder Video"></button>
+      <input id="chat-media-file" type="file" accept="image/*,video/*" hidden />
       <button type="button" id="chat-voice" class="chat-voice-btn" data-i18n-aria="chatVoice" aria-label="Sprachnachricht"></button>
       <div id="chat-rec" class="chat-rec" hidden>
         <button type="button" id="chat-rec-cancel" class="chat-rec-cancel" data-i18n-aria="chatVoiceCancel" aria-label="Abbrechen">×</button>
@@ -455,7 +461,19 @@
       <button type="submit" data-i18n="save">Speichern</button>
     </form>
   </dialog>
+  <dialog id="changelog-dialog" class="dialog changelog-dialog">
+    <div class="changelog-window">
+      <div class="changelog-titlebar">
+        <div class="chat-traffic" role="group">
+          <button type="button" id="changelog-close" class="chat-dot close" data-i18n-aria="close" aria-label="Schließen"></button>
+        </div>
+        <span class="changelog-title" data-i18n="changelog">Changelog</span>
+      </div>
+      <pre id="changelog-body" class="changelog-term"></pre>
+    </div>
+  </dialog>
   <script src="/static/i18n.js"></script>
+  <script src="/static/changelog.js"></script>
   <script src="/static/photo.js"></script>
   <script src="/controller/static/app.js"></script>
 </body>

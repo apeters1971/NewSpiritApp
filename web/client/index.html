@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#10161c" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="New Spirit" />
@@ -20,7 +20,9 @@
         <button type="button" class="lang-btn" data-lang="de">DE</button>
         <button type="button" class="lang-btn" data-lang="en">EN</button>
       </div>
-      <img class="logo logo-login" src="/static/nsgc-symbol.png" alt="New Spirit Gospel Choir" />
+      <button type="button" class="logo-btn" data-changelog data-i18n-aria="changelogOpen" aria-label="Changelog öffnen">
+        <img class="logo logo-login" src="/static/nsgc-symbol.png" alt="New Spirit Gospel Choir" />
+      </button>
       <p class="brand" data-i18n="brand">New Spirit</p>
       <h1 data-i18n="signIn">Anmelden</h1>
       <p class="lede" data-i18n="loginLede">Melde dich mit E-Mail und Passwort aus der Verwaltung an. Du siehst die Termine deiner Rolle und alle Stimmen.</p>
@@ -40,7 +42,9 @@
         <button type="button" class="lang-btn" data-lang="de">DE</button>
         <button type="button" class="lang-btn" data-lang="en">EN</button>
       </div>
-      <img class="logo logo-login" src="/static/nsgc-symbol.png" alt="New Spirit Gospel Choir" />
+      <button type="button" class="logo-btn" data-changelog data-i18n-aria="changelogOpen" aria-label="Changelog öffnen">
+        <img class="logo logo-login" src="/static/nsgc-symbol.png" alt="New Spirit Gospel Choir" />
+      </button>
       <p class="brand" data-i18n="brand">New Spirit</p>
       <h1 data-i18n="changePassword">Passwort ändern</h1>
       <p class="lede" data-i18n="changePasswordLede">Bitte wähle ein neues Passwort. Das von der Verwaltung gesetzte Passwort kannst du nicht wiederverwenden.</p>
@@ -56,13 +60,18 @@
   <section id="app-view" class="app" hidden>
     <header class="top">
       <div class="top-brand">
-        <img class="logo logo-bar" src="/static/nsgc-symbol.png" alt="New Spirit Gospel Choir" />
+        <button type="button" class="logo-btn" data-changelog data-i18n-aria="changelogOpen" aria-label="Changelog öffnen">
+          <img class="logo logo-bar" src="/static/nsgc-symbol.png" alt="New Spirit Gospel Choir" />
+        </button>
         <div class="face-cluster">
-          <button type="button" id="who-photo" class="avatar avatar-bar" data-photo-open data-i18n-aria="photoHint">
+          <button type="button" id="who-photo" class="avatar avatar-bar" aria-haspopup="menu" aria-expanded="false" aria-controls="avatar-menu" data-i18n-aria="avatarMenu" aria-label="Profil">
             <span class="avatar-placeholder">+</span>
             <img alt="" hidden />
           </button>
-          <button type="button" id="who-info" class="btn ghost info-btn">Info hinzufügen</button>
+          <div id="avatar-menu" class="avatar-menu" hidden role="menu">
+            <button type="button" class="btn ghost" role="menuitem" data-photo-open data-i18n="photoHint">Foto hinzufügen oder aufnehmen</button>
+            <button type="button" id="who-info" class="btn ghost info-btn" role="menuitem">Info hinzufügen</button>
+          </div>
         </div>
         <div>
           <p class="brand" data-i18n="brand">New Spirit</p>
@@ -75,10 +84,25 @@
             <button type="button" class="lang-btn" data-lang="de">DE</button>
             <button type="button" class="lang-btn" data-lang="en">EN</button>
           </div>
+          <button type="button" id="btn-header-notices" class="btn ghost header-notices on" aria-pressed="true" data-i18n-aria="noticesOn" aria-label="Benachrichtigungen an">
+            <span class="header-notices-icon" aria-hidden="true"></span>
+          </button>
+          <button type="button" id="btn-header-chat" class="btn ghost header-chat" hidden data-i18n-aria="chatBrand" aria-label="Chat">
+            <span class="header-chat-icon" aria-hidden="true"></span>
+            <span id="header-chat-unread" class="menu-unread" hidden></span>
+          </button>
+          <button type="button" id="btn-menu" class="btn ghost menu-toggle" aria-expanded="false" aria-controls="top-actions" data-i18n-aria="menu" aria-label="Menü">
+            <span class="menu-toggle-bars" aria-hidden="true"></span>
+            <span id="menu-unread" class="menu-unread" hidden></span>
+          </button>
           <button type="button" id="btn-logout" class="btn ghost" data-i18n="signOut">Abmelden</button>
         </div>
       </div>
-      <div class="top-actions">
+      <nav id="top-actions" class="top-actions">
+        <div class="menu-head">
+          <h2 data-i18n="menu">Menü</h2>
+          <button type="button" id="menu-close" class="btn ghost" data-i18n="close">Schließen</button>
+        </div>
         <div id="chat-tabs" class="chat-tabs" hidden>
           <button type="button" class="btn ghost chat-tab" data-chat="choir" hidden>Chor</button>
           <button type="button" class="btn ghost chat-tab" data-chat="band" hidden>Band</button>
@@ -90,7 +114,8 @@
         <button type="button" id="btn-proposals" class="btn song" data-i18n="songProposals">Songvorschläge</button>
         <button type="button" class="btn install install-open" data-i18n="addToHome">Add App</button>
         <button type="button" id="btn-calendar" class="btn calendar" data-i18n="subscribeCalendar">Kalender</button>
-      </div>
+        <button type="button" id="btn-logout-menu" class="btn ghost menu-logout" data-i18n="signOut">Abmelden</button>
+      </nav>
     </header>
     <section id="my-channels" class="my-channels" hidden></section>
     <section id="spirit" class="spirit" hidden></section>
@@ -322,6 +347,17 @@
     <div id="titles-list" class="titles-list"></div>
     <div id="title-detail" class="title-detail" hidden></div>
   </dialog>
+  <dialog id="changelog-dialog" class="dialog changelog-dialog">
+    <div class="changelog-window">
+      <div class="changelog-titlebar">
+        <div class="chat-traffic" role="group">
+          <button type="button" id="changelog-close" class="chat-dot close" data-i18n-aria="close" aria-label="Schließen"></button>
+        </div>
+        <span class="changelog-title" data-i18n="changelog">Changelog</span>
+      </div>
+      <pre id="changelog-body" class="changelog-term"></pre>
+    </div>
+  </dialog>
   <dialog id="chat-dialog" class="dialog chat-dialog">
     <div class="dialog-head">
       <div class="chat-traffic" role="group">
@@ -342,6 +378,8 @@
       </div>
       <label class="visually-hidden" for="chat-text" data-i18n="chatWrite">Nachricht schreiben</label>
       <textarea id="chat-text" required maxlength="2000" rows="1"></textarea>
+      <button type="button" id="chat-media" class="chat-media-btn" data-i18n-aria="chatMedia" aria-label="Foto oder Video"></button>
+      <input id="chat-media-file" type="file" accept="image/*,video/*" hidden />
       <button type="button" id="chat-voice" class="chat-voice-btn" data-i18n-aria="chatVoice" aria-label="Sprachnachricht"></button>
       <div id="chat-rec" class="chat-rec" hidden>
         <button type="button" id="chat-rec-cancel" class="chat-rec-cancel" data-i18n-aria="chatVoiceCancel" aria-label="Abbrechen">×</button>
@@ -352,7 +390,15 @@
       <p id="chat-error" class="error" hidden></p>
     </form>
   </dialog>
+  <div id="notice-toast" class="notice-toast" hidden>
+    <button type="button" id="notice-toast-open" class="notice-toast-open">
+      <strong id="notice-toast-title"></strong>
+      <span id="notice-toast-body"></span>
+    </button>
+    <button type="button" id="notice-toast-close" class="notice-toast-close" data-i18n-aria="close" aria-label="Schließen">×</button>
+  </div>
   <script src="/static/i18n.js"></script>
+  <script src="/static/changelog.js"></script>
   <script src="/static/photo.js"></script>
   <script src="/static/app.js"></script>
 </body>

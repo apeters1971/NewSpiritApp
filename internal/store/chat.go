@@ -345,6 +345,50 @@ func (s *Store) DeleteChatMessage(userID, room, messageID string, admin bool) er
 	return nil
 }
 
+func (s *Store) UpdateChatMessage(userID, room, messageID, text string, admin bool) (ChatMessage, error) {
+	text, err := prepareChatText(text)
+	if err != nil {
+		return ChatMessage{}, err
+	}
+	role := ""
+	actor := chatReactionActor
+	if !admin {
+		u, err := s.UserByID(userID)
+		if err != nil {
+			return ChatMessage{}, err
+		}
+		role = u.Role
+		actor = u.ID
+	}
+	if err := s.resolveChatRoom(room, role, true); err != nil {
+		return ChatMessage{}, err
+	}
+	var foundRoom, kind string
+	var owner sql.NullString
+	err = s.db.QueryRow(`SELECT room, user_id, COALESCE(kind, 'text') FROM chat_messages WHERE id=?`, messageID).Scan(&foundRoom, &owner, &kind)
+	if err == sql.ErrNoRows {
+		return ChatMessage{}, ErrNotFound
+	}
+	if err != nil {
+		return ChatMessage{}, err
+	}
+	if foundRoom != room {
+		return ChatMessage{}, ErrNotFound
+	}
+	if kind != "" && kind != ChatKindText {
+		return ChatMessage{}, fmt.Errorf("this message cannot be edited")
+	}
+	if !admin {
+		if !owner.Valid || owner.String != userID {
+			return ChatMessage{}, fmt.Errorf("%w: you can only edit your own messages", ErrForbidden)
+		}
+	}
+	if _, err := s.db.Exec(`UPDATE chat_messages SET text=? WHERE id=?`, text, messageID); err != nil {
+		return ChatMessage{}, err
+	}
+	return s.getChatMessage(messageID, actor, admin)
+}
+
 func (s *Store) ToggleChatReaction(userID, room, messageID, emoji string, admin bool) (ChatMessage, error) {
 	if !ValidChatEmoji(emoji) {
 		return ChatMessage{}, fmt.Errorf("unknown reaction")

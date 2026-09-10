@@ -22,6 +22,7 @@ let galleryItems = [];
 let chatRoom = "";
 let chatMessages = [];
 let chatUnread = {};
+let mixer = { channels: [], people: [] };
 
 const CHAT_ROOMS = ["choir", "band", "orchestra"];
 const CHAT_API = "/api/chats";
@@ -306,6 +307,10 @@ function canUseChatRoom(room) {
   return me.role === room;
 }
 
+function primaryChatRoom() {
+  return CHAT_ROOMS.find((room) => canUseChatRoom(room)) || "";
+}
+
 function needsVote(d) {
   return !!(canVote() && d && d.status !== "cancelled" && !hasAnswered(d));
 }
@@ -322,9 +327,18 @@ function mapsSearchURL(location) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(String(location || "").trim())}`;
 }
 
+function canAssignChannels() {
+  return me?.role === "technician";
+}
+
 function paintMyChannels() {
-  const header = document.getElementById("who-channels");
   const box = document.getElementById("my-channels");
+  if (box) box.classList.toggle("mixer-desk", canAssignChannels());
+  if (canAssignChannels()) {
+    paintMixerDesk();
+    return;
+  }
+  const header = document.getElementById("who-channels");
   const channels = me?.channels || [];
   const dirty = {};
   if (box) {
@@ -358,6 +372,104 @@ function paintMyChannels() {
           </form>`;
       }).join("") + `<p id="channel-error" class="error" hidden></p>`
       : "";
+  }
+}
+
+function mixerPeople() {
+  return mixer.people || [];
+}
+
+function savedMixerComment(n) {
+  return (mixer.channels || []).find((ch) => ch.number === n)?.comment || "";
+}
+
+function paintMixerDesk() {
+  const header = document.getElementById("who-channels");
+  const box = document.getElementById("my-channels");
+  if (!box) return;
+  const channels = mixer.channels || [];
+  const assigned = channels.filter((ch) => ch.userId).length;
+  const q = (document.getElementById("mixer-search")?.value || "").trim().toLowerCase();
+  const dirty = {};
+  box.querySelectorAll("[data-mixer-comment].dirty").forEach((input) => {
+    const n = Number(input.dataset.mixerComment);
+    if (input.value !== savedMixerComment(n)) dirty[String(n)] = input.value;
+  });
+  if (header) {
+    header.hidden = false;
+    header.textContent = `${I18N.t("channels")} · ${assigned}/${channels.length || 96}`;
+  }
+  const people = mixerPeople();
+  const rows = channels.filter((ch) => {
+    if (!q) return true;
+    const hay = `${ch.number} ${ch.nickname || ""} ${ch.comment || ""} ${I18N.role(ch.role || "")}${ch.v48 ? " 48v" : ""}`.toLowerCase();
+    return hay.includes(q);
+  }).map((ch) => {
+    const draft = Object.hasOwn(dirty, String(ch.number));
+    const value = draft ? dirty[String(ch.number)] : (ch.comment || "");
+    const opts = [`<option value="">${I18N.t("channelNone")}</option>`]
+      .concat(people.map((u) => `<option value="${u.id}" ${u.id === ch.userId ? "selected" : ""}>${escapeHtml(u.nickname)} · ${escapeHtml(I18N.role(u.role))}</option>`))
+      .join("");
+    return `<tr>
+      <td>${ch.number}</td>
+      <td><select data-mixer-user="${ch.number}">${opts}</select></td>
+      <td><input data-mixer-comment="${ch.number}" maxlength="200" value="${escapeHtml(value)}" placeholder="${escapeHtml(I18N.t("channelComment"))}" class="${draft ? "dirty" : ""}" /></td>
+      <td><button type="button" class="btn ghost v48-btn${ch.v48 ? " on" : ""}" data-mixer-v48="${ch.number}" aria-pressed="${ch.v48 ? "true" : "false"}">${I18N.t("channel48v")}</button></td>
+    </tr>`;
+  }).join("");
+  box.hidden = false;
+  box.innerHTML = `
+    <p class="brand">${I18N.t("channels")}</p>
+    <p class="muted mixer-lede">${I18N.t("channelsAssignHint")}</p>
+    <label class="mixer-search-label" for="mixer-search">${I18N.t("search")}</label>
+    <input id="mixer-search" type="search" autocomplete="off" value="${escapeHtml(q)}" />
+    <div class="mixer-wrap">
+      <table class="roster mixer-table">
+        <thead><tr>
+          <th>${I18N.t("channel")}</th>
+          <th>${I18N.t("person")}</th>
+          <th>${I18N.t("channelComment")}</th>
+          <th>${I18N.t("channel48v")}</th>
+        </tr></thead>
+        <tbody>${rows || `<tr><td colspan="4" class="muted">${I18N.t("archivePickEmpty")}</td></tr>`}</tbody>
+      </table>
+    </div>
+    <p id="channel-error" class="error" hidden></p>`;
+}
+
+async function loadMixer() {
+  if (!canAssignChannels()) {
+    mixer = { channels: [], people: [] };
+    return;
+  }
+  const data = await api("/api/channels");
+  mixer.channels = data.channels || [];
+  mixer.people = data.people || [];
+  paintMyChannels();
+}
+
+async function saveMixerChannel(number, v48) {
+  const userEl = document.querySelector(`[data-mixer-user="${number}"]`);
+  const commentEl = document.querySelector(`[data-mixer-comment="${number}"]`);
+  const v48El = document.querySelector(`[data-mixer-v48="${number}"]`);
+  if (!userEl || !commentEl) return;
+  const nextV48 = typeof v48 === "boolean" ? v48 : v48El?.getAttribute("aria-pressed") === "true";
+  showError(document.getElementById("channel-error"), "");
+  const data = await api(`/api/channels/${number}`, {
+    method: "PATCH",
+    body: JSON.stringify({ userId: userEl.value, comment: commentEl.value, v48: !!nextV48 }),
+  });
+  const idx = (mixer.channels || []).findIndex((c) => c.number === number);
+  if (idx >= 0) mixer.channels[idx] = data.channel;
+  if (v48El) {
+    v48El.classList.toggle("on", !!data.channel.v48);
+    v48El.setAttribute("aria-pressed", data.channel.v48 ? "true" : "false");
+  }
+  commentEl.classList.remove("dirty");
+  const header = document.getElementById("who-channels");
+  if (header) {
+    const assigned = (mixer.channels || []).filter((ch) => ch.userId).length;
+    header.textContent = `${I18N.t("channels")} · ${assigned}/${(mixer.channels || []).length || 96}`;
   }
 }
 
@@ -440,33 +552,51 @@ function spiritLeaders(rank) {
   return rank?.leader ? [rank.leader] : [];
 }
 
+function canSeeSpirit() {
+  return me?.role === "choir" || me?.role === "chorleiter" || me?.role === "ehemalige";
+}
+
+function spiritPresencePct(yes, events) {
+  if (typeof yes === "number" && events > 0) {
+    return Math.round((yes / events) * 100);
+  }
+  return null;
+}
+
+function spiritMinePct(rank) {
+  if (typeof rank?.myYes === "number") {
+    return spiritPresencePct(rank.myYes, rank.events);
+  }
+  if (typeof rank?.participation === "number" && rank.events > 0) {
+    return Math.round(rank.participation * 100);
+  }
+  return null;
+}
+
+function spiritStatHTML(pct, extraClass = "") {
+  if (pct === null) return "";
+  return `<div class="spirit-stat${extraClass ? ` ${extraClass}` : ""}">
+        <span class="spirit-mine-label">${I18N.t("presence")}</span>
+        <strong class="spirit-score">${pct}%</strong>
+      </div>`;
+}
+
 function renderSpirit() {
   const box = document.getElementById("spirit");
   const leaders = spiritLeaders(ranking);
-  if (!leaders.length) {
+  if (!canSeeSpirit() || !leaders.length) {
     box.hidden = true;
     box.innerHTML = "";
     return;
   }
-  const stats = [];
-  if (typeof ranking.myScore === "number") {
-    stats.push(`<div class="spirit-stat">
-        <span class="spirit-mine-label">${I18N.t("myPoints")}</span>
-        <strong class="spirit-score">${ranking.myScore}</strong>
-      </div>`);
-  }
-  if (typeof ranking.myYes === "number" && ranking.events > 0) {
-    const pct = Math.round((ranking.myYes / ranking.events) * 100);
-    stats.push(`<div class="spirit-stat">
-        <span class="spirit-mine-label">${I18N.t("presence")}</span>
-        <strong class="spirit-score">${pct}%</strong>
-      </div>`);
-  }
-  const mine = stats.length ? `<div class="spirit-mine">${stats.join("")}</div>` : "";
-  const people = leaders.map((leader) => `
+  const events = ranking.events || leaders[0].events || 0;
+  const leaderPcts = leaders.map((leader) => spiritPresencePct(leader.yes, leader.events || events));
+  const sharedPct = leaderPcts.length && leaderPcts.every((pct) => pct === leaderPcts[0]) ? leaderPcts[0] : null;
+  const people = leaders.map((leader, i) => `
       <div class="spirit-person">
         <strong>${escapeHtml(leader.nickname)}</strong>
         <span>${escapeHtml(I18N.subrole(leader.subrole))}</span>
+        ${sharedPct === null ? spiritStatHTML(leaderPcts[i]) : ""}
       </div>`).join("");
   box.hidden = false;
   box.innerHTML = `
@@ -474,9 +604,9 @@ function renderSpirit() {
     <div class="spirit-row">
       <div class="spirit-leader">
         ${people}
-        <span class="spirit-score">${leaders[0].score} ${I18N.t("spiritPoints")}</span>
+        ${spiritStatHTML(sharedPct, "spirit-lead-stat")}
       </div>
-      ${mine}
+      <div class="spirit-mine">${spiritStatHTML(spiritMinePct(ranking))}</div>
     </div>`;
 }
 
@@ -723,9 +853,149 @@ async function openGallery(id) {
   }
 }
 
+let knownDateIds = null;
+const NOTICES_KEY = "spirit-notices";
+
+function noticesWanted() {
+  return localStorage.getItem(NOTICES_KEY) !== "off";
+}
+
+function setNoticesWanted(on) {
+  localStorage.setItem(NOTICES_KEY, on ? "on" : "off");
+}
+
+function paintNoticesButton() {
+  const btn = document.getElementById("btn-header-notices");
+  if (!btn) return;
+  const on = noticesWanted();
+  btn.classList.toggle("on", on);
+  btn.classList.toggle("off", !on);
+  btn.setAttribute("aria-pressed", on ? "true" : "false");
+  const label = I18N.t(on ? "noticesOn" : "noticesOff");
+  btn.setAttribute("aria-label", label);
+}
+
+async function enableDesktopNotices() {
+  paintNoticesButton();
+  if (!noticesWanted() || !("Notification" in window)) return;
+  if (Notification.permission === "default") {
+    await Notification.requestPermission().catch(() => "denied");
+    paintNoticesButton();
+  }
+}
+
+let noticeToastTimer = 0;
+let noticeToastData = null;
+
+function hideInAppNotice() {
+  const box = document.getElementById("notice-toast");
+  if (box) box.hidden = true;
+  clearTimeout(noticeToastTimer);
+}
+
+function showInAppNotice(title, body, data) {
+  const box = document.getElementById("notice-toast");
+  if (!box) return;
+  noticeToastData = data || {};
+  document.getElementById("notice-toast-title").textContent = title;
+  document.getElementById("notice-toast-body").textContent = body || "";
+  box.hidden = false;
+  clearTimeout(noticeToastTimer);
+  noticeToastTimer = setTimeout(hideInAppNotice, 8000);
+}
+
+function swRegistration() {
+  if (!("serviceWorker" in navigator)) return Promise.resolve(null);
+  return Promise.race([
+    navigator.serviceWorker.ready,
+    new Promise((resolve) => setTimeout(() => resolve(null), 800)),
+  ]).catch(() => null);
+}
+
+async function showDesktopNotice(title, body, data = {}) {
+  if (!noticesWanted()) return;
+  showInAppNotice(title, body, data);
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const opts = {
+    body: body || "",
+    icon: "/static/nsgc-symbol.png",
+    tag: data.tag || "spirit",
+    renotify: true,
+    data,
+  };
+  try {
+    const n = new Notification(title, opts);
+    n.onclick = () => {
+      window.focus();
+      handleNotifyClick(data);
+      n.close();
+    };
+    return;
+  } catch {}
+  try {
+    const reg = await swRegistration();
+    if (reg) await reg.showNotification(title, opts);
+  } catch {}
+}
+
+function chatNoticeBody(m) {
+  if (m.kind === "voice") return I18N.t("chatVoice");
+  if (m.kind === "image" || m.kind === "video") return I18N.t("chatMedia");
+  return String(m.text || "").trim() || I18N.t("chatBrand");
+}
+
+function notifyChatMessage(m) {
+  if (!m?.room) return;
+  if (me && !m.isAdmin && m.userId === me.id) return;
+  const openHere = document.getElementById("chat-dialog")?.open && chatRoom === m.room;
+  if (openHere && document.visibilityState === "visible") return;
+  const date = m.room.startsWith("event:")
+    ? dates.find((d) => d.id === m.room.slice("event:".length))
+    : null;
+  const roomLabel = chatTitle(m.room, date?.title);
+  const who = m.nickname || I18N.t("chatBrand");
+  showDesktopNotice(`${who} · ${roomLabel}`, chatNoticeBody(m), {
+    kind: "chat",
+    room: m.room,
+    tag: `chat:${m.room}`,
+  });
+}
+
+function notifyNewDate(d) {
+  if (!d) return;
+  showDesktopNotice(I18N.t("newDate"), [d.title, formatWhen(d.startsAt)].filter(Boolean).join(" · "), {
+    kind: "date",
+    dateId: d.id,
+    tag: `date:${d.id}`,
+  });
+}
+
+async function handleNotifyClick(data) {
+  if (!me || me.mustChangePassword) return;
+  try {
+    if (data?.kind === "chat" && data.room) {
+      const title = data.room.startsWith("event:")
+        ? dates.find((d) => d.id === data.room.slice("event:".length))?.title
+        : "";
+      await openChat(data.room, title);
+      return;
+    }
+    if (data?.kind === "date" && data.dateId) jumpToDate(data.dateId);
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
 async function loadDates() {
   const data = await api("/api/dates");
-  dates = data.dates || [];
+  const next = data.dates || [];
+  if (knownDateIds) {
+    next.forEach((d) => {
+      if (!knownDateIds.has(d.id)) notifyNewDate(d);
+    });
+  }
+  knownDateIds = new Set(next.map((d) => d.id));
+  dates = next;
   ranking = data.ranking || { year: 0, leaders: [] };
   applyUnread(data.unread);
   renderChatTabs();
@@ -747,7 +1017,9 @@ async function enterApp() {
   paintMyChannels();
   renderChatTabs();
   await loadDates();
+  await loadMixer().catch(() => {});
   connectWS();
+  enableDesktopNotices();
 }
 
 let installPrompt = null;
@@ -774,6 +1046,10 @@ function registerInstall() {
   paintInstallButtons();
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {});
+    navigator.serviceWorker.addEventListener("message", (e) => {
+      if (e.data?.type !== "notify-click") return;
+      handleNotifyClick(e.data);
+    });
   }
   window.addEventListener("beforeinstallprompt", (e) => {
     e.preventDefault();
@@ -860,10 +1136,89 @@ loginForm.addEventListener("submit", async (e) => {
   }
 });
 
-document.getElementById("btn-logout").addEventListener("click", async () => {
+async function signOut() {
+  setMenuOpen(false);
   await api("/api/logout", { method: "POST" });
   me = null;
+  knownDateIds = null;
   await boot();
+}
+
+document.getElementById("btn-logout").addEventListener("click", signOut);
+document.getElementById("btn-logout-menu").addEventListener("click", signOut);
+
+function setMenuOpen(open) {
+  const nav = document.getElementById("top-actions");
+  const btn = document.getElementById("btn-menu");
+  if (open) setAvatarMenuOpen(false);
+  nav.classList.toggle("open", open);
+  document.body.classList.toggle("menu-open", open);
+  btn.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+function setAvatarMenuOpen(open) {
+  const menu = document.getElementById("avatar-menu");
+  const btn = document.getElementById("who-photo");
+  if (!menu || !btn) return;
+  if (open) setMenuOpen(false);
+  menu.hidden = !open;
+  btn.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+document.getElementById("btn-menu").addEventListener("click", () => {
+  setMenuOpen(!document.getElementById("top-actions").classList.contains("open"));
+});
+document.getElementById("menu-close").addEventListener("click", () => setMenuOpen(false));
+document.getElementById("top-actions").addEventListener("click", (e) => {
+  if (e.target.closest("button, a")) setMenuOpen(false);
+});
+document.getElementById("who-photo").addEventListener("click", (e) => {
+  e.preventDefault();
+  const menu = document.getElementById("avatar-menu");
+  setAvatarMenuOpen(!!menu?.hidden);
+});
+document.getElementById("avatar-menu").addEventListener("click", (e) => {
+  if (e.target.closest("button")) setAvatarMenuOpen(false);
+});
+document.getElementById("btn-header-notices").addEventListener("click", async () => {
+  setNoticesWanted(!noticesWanted());
+  if (noticesWanted()) {
+    await enableDesktopNotices();
+    if ("Notification" in window && Notification.permission === "denied") {
+      alert(I18N.t("noticesDenied"));
+    }
+  } else {
+    hideInAppNotice();
+    paintNoticesButton();
+  }
+});
+document.getElementById("notice-toast-open").addEventListener("click", () => {
+  hideInAppNotice();
+  handleNotifyClick(noticeToastData || {});
+});
+document.getElementById("notice-toast-close").addEventListener("click", hideInAppNotice);
+document.getElementById("btn-header-chat").addEventListener("click", async () => {
+  const room = primaryChatRoom();
+  if (!room) return;
+  try {
+    await openChat(room);
+  } catch (err) {
+    alert(err.message);
+  }
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    setMenuOpen(false);
+    setAvatarMenuOpen(false);
+  }
+});
+document.addEventListener("pointerdown", (e) => {
+  if (document.body.classList.contains("menu-open") && !e.target.closest("#top-actions, #btn-menu")) {
+    setMenuOpen(false);
+  }
+  if (!document.getElementById("avatar-menu")?.hidden && !e.target.closest(".face-cluster")) {
+    setAvatarMenuOpen(false);
+  }
 });
 
 async function saveMyChannel(n, comment, v48) {
@@ -889,8 +1244,29 @@ function paintChannelDirty(input) {
 }
 
 document.getElementById("my-channels").addEventListener("input", (e) => {
+  if (e.target.id === "mixer-search") {
+    paintMixerDesk();
+    document.getElementById("mixer-search")?.focus();
+    return;
+  }
   const input = e.target.closest("input[name=comment]");
   if (input) paintChannelDirty(input);
+  const mixerComment = e.target.closest("[data-mixer-comment]");
+  if (mixerComment) {
+    mixerComment.classList.toggle("dirty", mixerComment.value !== savedMixerComment(Number(mixerComment.dataset.mixerComment)));
+  }
+});
+
+document.getElementById("my-channels").addEventListener("change", async (e) => {
+  const userEl = e.target.closest("[data-mixer-user]");
+  const commentEl = e.target.closest("[data-mixer-comment]");
+  const n = Number(userEl?.dataset.mixerUser || commentEl?.dataset.mixerComment || 0);
+  if (!n) return;
+  try {
+    await saveMixerChannel(n);
+  } catch (err) {
+    showError(document.getElementById("channel-error"), err.message);
+  }
 });
 
 document.getElementById("my-channels").addEventListener("submit", async (e) => {
@@ -908,6 +1284,15 @@ document.getElementById("my-channels").addEventListener("submit", async (e) => {
 });
 
 document.getElementById("my-channels").addEventListener("click", async (e) => {
+  const mixerBtn = e.target.closest("[data-mixer-v48]");
+  if (mixerBtn) {
+    try {
+      await saveMixerChannel(Number(mixerBtn.dataset.mixerV48), mixerBtn.getAttribute("aria-pressed") !== "true");
+    } catch (err) {
+      showError(document.getElementById("channel-error"), err.message);
+    }
+    return;
+  }
   const btn = e.target.closest("[data-channel-v48]");
   if (!btn) return;
   const form = btn.closest("form[data-channel]");
@@ -1227,16 +1612,18 @@ function chatBadge(n) {
 }
 
 function noteChatMessage(m) {
-  if (!m?.room || !CHAT_ROOMS.includes(m.room)) return;
-  if (chatRoom === m.room) {
-    chatUnread[m.room] = 0;
-    api(`/api/chats/${encodeURIComponent(m.room)}/read`, { method: "POST" }).catch(() => {});
-    renderChatTabs();
-    return;
+  if (!m?.room) return;
+  if (CHAT_ROOMS.includes(m.room)) {
+    if (chatRoom === m.room) {
+      chatUnread[m.room] = 0;
+      api(`/api/chats/${encodeURIComponent(m.room)}/read`, { method: "POST" }).catch(() => {});
+      renderChatTabs();
+    } else if (!(me && !m.isAdmin && m.userId === me.id)) {
+      chatUnread[m.room] = unreadCount(m.room) + 1;
+      renderChatTabs();
+    }
   }
-  if (me && !m.isAdmin && m.userId === me.id) return;
-  chatUnread[m.room] = unreadCount(m.room) + 1;
-  renderChatTabs();
+  notifyChatMessage(m);
 }
 
 function renderChatTabs() {
@@ -1253,6 +1640,34 @@ function renderChatTabs() {
     if (show) any = true;
   });
   box.hidden = !any;
+  paintMenuUnread();
+  paintHeaderChat();
+}
+
+function chatUnreadTotal() {
+  return CHAT_ROOMS.reduce((sum, room) => sum + (canUseChatRoom(room) ? unreadCount(room) : 0), 0);
+}
+
+function paintUnreadBadge(id, n) {
+  const badge = document.getElementById(id);
+  if (!badge) return;
+  badge.hidden = n === 0;
+  badge.textContent = n > 99 ? "99+" : String(n);
+}
+
+function paintMenuUnread() {
+  paintUnreadBadge("menu-unread", chatUnreadTotal());
+}
+
+function paintHeaderChat() {
+  const btn = document.getElementById("btn-header-chat");
+  if (!btn) return;
+  const room = primaryChatRoom();
+  btn.hidden = !room;
+  const n = chatUnreadTotal();
+  paintUnreadBadge("header-chat-unread", n);
+  const label = room ? I18N.t(`chat.${room}`) : I18N.t("chatBrand");
+  btn.setAttribute("aria-label", n ? `${label}, ${n}` : label);
 }
 
 function chatAuthorKey(m) {
@@ -1282,6 +1697,15 @@ function chatVoiceURL(room, id) {
   return `${CHAT_API}/${encodeURIComponent(room)}/messages/${encodeURIComponent(id)}/voice`;
 }
 
+function chatMediaURL(room, id) {
+  return `${CHAT_API}/${encodeURIComponent(room)}/messages/${encodeURIComponent(id)}/media`;
+}
+
+function chatMediaDelete(m) {
+  if (!canDeleteChat(m)) return "";
+  return `<button type="button" class="chat-voice-del" data-voice-delete="${m.id}" aria-label="${escapeHtml(I18N.t("chatMediaDelete"))}"></button>`;
+}
+
 function chatBodyHTML(m) {
   if (m.kind === "voice") {
     const src = chatVoiceURL(m.room || chatRoom, m.id);
@@ -1297,7 +1721,43 @@ function chatBodyHTML(m) {
       <audio preload="none" src="${escapeHtml(src)}" data-voice-audio="${m.id}"></audio>
     </div>${text}`;
   }
+  if (m.kind === "image" || m.kind === "video") {
+    const src = chatMediaURL(m.room || chatRoom, m.id);
+    const media = m.kind === "video"
+      ? `<video controls playsinline preload="metadata" src="${escapeHtml(src)}"></video>`
+      : `<a href="${escapeHtml(src)}" target="_blank" rel="noopener"><img src="${escapeHtml(src)}" alt="" /></a>`;
+    return `<div class="chat-media">${media}${chatMediaDelete(m)}</div>`;
+  }
+  if (editingChatId === m.id) {
+    return `<form class="chat-edit-form" data-chat-save="${m.id}">
+      <textarea maxlength="2000" rows="2" required>${escapeHtml(m.text || "")}</textarea>
+      <div class="chat-edit-btns">
+        <button type="submit">${escapeHtml(I18N.t("save"))}</button>
+        <button type="button" class="btn ghost" data-chat-edit-cancel>${escapeHtml(I18N.t("cancel"))}</button>
+      </div>
+    </form>`;
+  }
   return `<p class="chat-text">${escapeHtml(m.text)}</p>`;
+}
+
+function isChatText(m) {
+  return !m?.kind || m.kind === "text";
+}
+
+function canEditChat(m) {
+  return !!(canDeleteChat(m) && isChatText(m));
+}
+
+function chatActionsHTML(m) {
+  if (editingChatId === m.id) return "";
+  const edit = canEditChat(m)
+    ? `<button type="button" class="chat-edit-btn" data-chat-edit="${m.id}" aria-label="${escapeHtml(I18N.t("chatEdit"))}"></button>`
+    : "";
+  const del = canDeleteChat(m) && isChatText(m)
+    ? `<button type="button" class="chat-voice-del" data-voice-delete="${m.id}" aria-label="${escapeHtml(I18N.t("chatDelete"))}"></button>`
+    : "";
+  if (!edit && !del) return "";
+  return `<div class="chat-tools">${edit}${del}</div>`;
 }
 
 function chatMessageHTML(m, stacked) {
@@ -1317,6 +1777,7 @@ function chatMessageHTML(m, stacked) {
         ${chatBodyHTML(m)}
         <span class="chat-time">${escapeHtml(formatChatWhen(m.createdAt))}</span>
       </div>
+      ${chatActionsHTML(m)}
       ${chatReactionsHTML(m)}
     </div>
   </article>`;
@@ -1374,8 +1835,24 @@ function removeChat(id) {
   renderChat(list.scrollTop);
 }
 
+let editingChatId = "";
+
 function canDeleteChat(m) {
   return !!(me && m && !m.isAdmin && m.userId === me.id);
+}
+
+async function saveChatEdit(id, text) {
+  if (!chatRoom || !id) return;
+  try {
+    const data = await api(`/api/chats/${encodeURIComponent(chatRoom)}/messages/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ text }),
+    });
+    editingChatId = "";
+    upsertChat(data.message);
+  } catch (err) {
+    showError(document.getElementById("chat-error"), err.message);
+  }
 }
 
 async function deleteChatMessage(id) {
@@ -1576,6 +2053,7 @@ async function openChat(room, title) {
   const input = document.getElementById("chat-text");
   input.placeholder = I18N.t("chatWrite");
   document.getElementById("chat-dialog").showModal();
+  if (window.matchMedia("(max-width: 720px)").matches) setChatFull(true);
   paintChatSize();
   input.focus();
 }
@@ -1613,6 +2091,7 @@ function connectWS() {
           return;
         }
         paintMyChannels();
+        loadMixer().catch(() => {});
       }).catch(() => {});
       if (!me?.mustChangePassword) {
         loadDates().catch(() => {});
@@ -1636,6 +2115,7 @@ I18N.onChange(() => {
     paintInfoButton(document.getElementById("who-info"), me);
     paintMyChannels();
     renderChatTabs();
+    paintNoticesButton();
     paintChatSize();
     if (document.getElementById("chat-dialog").open && chatRoom) {
       const date = chatRoom.startsWith("event:")
@@ -1694,6 +2174,7 @@ document.getElementById("chat-expand").addEventListener("click", () => setChatFu
 
 document.getElementById("chat-close").addEventListener("click", () => {
   discardVoiceRecord();
+  editingChatId = "";
   document.getElementById("chat-dialog").close();
   chatRoom = "";
   chatMessages = [];
@@ -1702,6 +2183,7 @@ document.getElementById("chat-close").addEventListener("click", () => {
 
 document.getElementById("chat-dialog").addEventListener("close", () => {
   discardVoiceRecord();
+  editingChatId = "";
   chatRoom = "";
   chatMessages = [];
   renderChatTabs();
@@ -1740,6 +2222,35 @@ document.getElementById("chat-text").addEventListener("keydown", (e) => {
 });
 
 document.getElementById("chat-voice").addEventListener("click", () => startVoiceRecord());
+document.getElementById("chat-media").addEventListener("click", () => {
+  document.getElementById("chat-media-file").click();
+});
+document.getElementById("chat-media-file").addEventListener("change", async (e) => {
+  const file = e.target.files?.[0];
+  e.target.value = "";
+  if (!file) return;
+  await sendChatMedia(file);
+});
+
+async function sendChatMedia(file) {
+  const errEl = document.getElementById("chat-error");
+  if (!chatRoom || !file) return;
+  const form = new FormData();
+  form.append("file", file, file.name || "media");
+  try {
+    showError(errEl, "");
+    const res = await fetch(`${CHAT_API}/${encodeURIComponent(chatRoom)}/media`, {
+      method: "POST",
+      credentials: "same-origin",
+      body: form,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(I18N.error(data.error || res.statusText));
+    appendChat(data.message);
+  } catch (err) {
+    showError(errEl, err.message);
+  }
+}
 document.getElementById("chat-rec-cancel").addEventListener("click", () => finishVoiceRecord(true));
 document.getElementById("chat-rec-send").addEventListener("click", () => finishVoiceRecord(false));
 
@@ -1866,16 +2377,27 @@ document.getElementById("title-detail").addEventListener("click", (e) => {
   showTitlesList();
 });
 
-document.getElementById("chat-list").addEventListener("dblclick", async (e) => {
-  if (e.target.closest(".chat-reacts, .chat-voice")) return;
-  const bubble = e.target.closest("[data-msg]");
-  if (!bubble || !chatRoom) return;
-  const m = chatMessages.find((x) => x.id === bubble.dataset.msg);
-  if (!canDeleteChat(m)) return;
-  await deleteChatMessage(m.id);
+document.getElementById("chat-list").addEventListener("submit", async (e) => {
+  const form = e.target.closest("[data-chat-save]");
+  if (!form) return;
+  e.preventDefault();
+  const text = form.querySelector("textarea")?.value || "";
+  await saveChatEdit(form.dataset.chatSave, text);
 });
 
 document.getElementById("chat-list").addEventListener("click", async (e) => {
+  const edit = e.target.closest("[data-chat-edit]");
+  if (edit) {
+    editingChatId = edit.dataset.chatEdit;
+    renderChat(document.getElementById("chat-list").scrollTop);
+    document.querySelector(`[data-chat-save="${editingChatId}"] textarea`)?.focus();
+    return;
+  }
+  if (e.target.closest("[data-chat-edit-cancel]")) {
+    editingChatId = "";
+    renderChat(document.getElementById("chat-list").scrollTop);
+    return;
+  }
   const trash = e.target.closest("[data-voice-delete]");
   if (trash) {
     const m = chatMessages.find((x) => x.id === trash.dataset.voiceDelete);
@@ -1983,10 +2505,13 @@ function renderProposalList() {
   list.innerHTML = proposals.map((p) => `
     <article class="proposal-card">
       <div class="proposal-head">
-        <strong>${escapeHtml(p.title)}</strong>
+        <div>
+          <strong>${escapeHtml(p.title)}</strong>
+          <p class="proposal-by">${escapeHtml(I18N.t("proposedBy"))} <b>${escapeHtml(p.nickname || "—")}</b></p>
+        </div>
         <span class="badge ${proposalBadge(p.status)}">${escapeHtml(I18N.status(p.status))}</span>
       </div>
-      <p class="meta">${escapeHtml(I18N.t("proposedBy"))} ${escapeHtml(p.nickname)} · ${escapeHtml(formatWhen(p.createdAt))}</p>
+      <p class="meta">${escapeHtml(formatWhen(p.createdAt))}</p>
       ${p.url ? `<p class="proposal-url">${proposalLink(p.url)}</p>` : ""}
       ${p.comment ? `<p class="proposal-comment"><span class="label">${escapeHtml(I18N.t("adminComment"))}</span>${escapeHtml(p.comment)}</p>` : ""}
     </article>

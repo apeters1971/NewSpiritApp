@@ -27,6 +27,17 @@ func CanHaveChannel(role string) bool {
 	return role == RoleChoir || role == RoleChorleiter || role == RoleBand || role == RoleOrchestra || role == RoleEhemalige
 }
 
+func CanAssignChannels(role string) bool {
+	return role == RoleTechnician
+}
+
+type ChannelPerson struct {
+	ID       string `json:"id"`
+	Nickname string `json:"nickname"`
+	Role     string `json:"role"`
+	Subrole  string `json:"subrole"`
+}
+
 func (s *Store) migrateChannels() error {
 	if _, err := s.db.Exec(`
 CREATE TABLE IF NOT EXISTS channels (
@@ -212,4 +223,19 @@ func (s *Store) attachChannelPtr(u *User) error {
 	}
 	u.Channels = users[0].Channels
 	return nil
+}
+
+func (s *Store) ChannelPeople() ([]ChannelPerson, error) {
+	users, err := s.ListUsers()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ChannelPerson, 0, len(users))
+	for _, u := range users {
+		if !CanHaveChannel(u.Role) {
+			continue
+		}
+		out = append(out, ChannelPerson{ID: u.ID, Nickname: u.Nickname, Role: u.Role, Subrole: u.Subrole})
+	}
+	return out, nil
 }

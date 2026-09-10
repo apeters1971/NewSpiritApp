@@ -45,8 +45,9 @@ go test ./...
 - Comments, title lists from the music archive, and an event chat while the date is open
 - Role chats (choir, band, orchestra) with reactions
 - Own channels (1–96) and 48V, when they sing or play
+- Technicians assign mixer channels 1–96 in the member view
 - Song proposals, address book (email + phone), personal info, and a profile photo
-- Spirit of the Year points (choir)
+- Spirit of the Year (choir, choir director, and alumni; names and attendance, no scores)
 - Calendar subscribe link for accepted dates of their role
 - German / English
 

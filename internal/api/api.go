@@ -64,6 +64,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PATCH /api/me/password", s.handleMePassword)
 	mux.HandleFunc("PATCH /api/me/info", s.handleMeInfo)
 	mux.HandleFunc("PATCH /api/me/channels/{n}", s.handleMeChannel)
+	mux.HandleFunc("GET /api/channels", s.handleMemberChannels)
+	mux.HandleFunc("PATCH /api/channels/{n}", s.handleMemberAssignChannel)
 	mux.HandleFunc("POST /api/me/photo", s.handleMePhoto)
 	mux.HandleFunc("DELETE /api/me/photo", s.handleDeleteMePhoto)
 	mux.HandleFunc("GET /api/photos/{id}", s.handleGetPhoto)
@@ -78,8 +80,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/chats/{room}", s.handleChatPost)
 	mux.HandleFunc("POST /api/chats/{room}/voice", s.handleChatVoice)
 	mux.HandleFunc("GET /api/chats/{room}/messages/{id}/voice", s.handleChatVoiceFile)
+	mux.HandleFunc("POST /api/chats/{room}/media", s.handleChatMedia)
+	mux.HandleFunc("GET /api/chats/{room}/messages/{id}/media", s.handleChatMediaFile)
 	mux.HandleFunc("POST /api/chats/{room}/read", s.handleChatRead)
 	mux.HandleFunc("POST /api/chats/{room}/messages/{id}/react", s.handleChatReact)
+	mux.HandleFunc("PATCH /api/chats/{room}/messages/{id}", s.handleChatEdit)
 	mux.HandleFunc("DELETE /api/chats/{room}/messages/{id}", s.handleChatDelete)
 	mux.HandleFunc("GET /api/archive", s.handleArchiveList)
 	mux.HandleFunc("POST /api/archive", s.handleArchiveCreate)
@@ -117,8 +122,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/controller/chats/{room}", s.handleControllerChatPost)
 	mux.HandleFunc("POST /api/controller/chats/{room}/voice", s.handleControllerChatVoice)
 	mux.HandleFunc("GET /api/controller/chats/{room}/messages/{id}/voice", s.handleControllerChatVoiceFile)
+	mux.HandleFunc("POST /api/controller/chats/{room}/media", s.handleControllerChatMedia)
+	mux.HandleFunc("GET /api/controller/chats/{room}/messages/{id}/media", s.handleControllerChatMediaFile)
 	mux.HandleFunc("POST /api/controller/chats/{room}/read", s.handleControllerChatRead)
 	mux.HandleFunc("POST /api/controller/chats/{room}/messages/{id}/react", s.handleControllerChatReact)
+	mux.HandleFunc("PATCH /api/controller/chats/{room}/messages/{id}", s.handleControllerChatEdit)
 	mux.HandleFunc("DELETE /api/controller/chats/{room}/messages/{id}", s.handleControllerChatDelete)
 	mux.HandleFunc("GET /api/controller/archive", s.handleControllerArchiveList)
 	mux.HandleFunc("POST /api/controller/archive", s.handleControllerArchiveCreate)
@@ -349,6 +357,63 @@ func (s *Server) handleMeChannel(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"user": user})
 }
 
+func (s *Server) requireChannelAssigner(w http.ResponseWriter, r *http.Request) (store.User, bool) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return store.User{}, false
+	}
+	if !store.CanAssignChannels(user.Role) {
+		writeError(w, http.StatusForbidden, "this is not for your role")
+		return user, false
+	}
+	return user, true
+}
+
+func (s *Server) handleMemberChannels(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireChannelAssigner(w, r); !ok {
+		return
+	}
+	channels, err := s.Store.ListChannels()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	people, err := s.Store.ChannelPeople()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"channels": channels, "people": people})
+}
+
+func (s *Server) handleMemberAssignChannel(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireChannelAssigner(w, r); !ok {
+		return
+	}
+	var n int
+	if _, err := fmt.Sscanf(r.PathValue("n"), "%d", &n); err != nil {
+		writeError(w, http.StatusBadRequest, "unknown channel")
+		return
+	}
+	var body struct {
+		UserID  string `json:"userId"`
+		Comment string `json:"comment"`
+		V48     bool   `json:"v48"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	ch, err := s.Store.SetChannel(n, body.UserID, body.Comment, body.V48)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"channel": ch})
+}
+
 func (s *Server) canViewPhoto(r *http.Request) bool {
 	if _, err := s.userFromRequest(r); err == nil {
 		return true
@@ -481,13 +546,13 @@ func (s *Server) handleDates(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	payload := map[string]any{
-		"year":    rank.Year,
-		"leaders": rank.Leaders,
-		"events":  rank.Events,
+		"year":          rank.Year,
+		"leaders":       rank.Leaders,
+		"events":        rank.Events,
+		"participation": rank.Participation,
 	}
 	for _, e := range rank.Entries {
 		if e.UserID == user.ID {
-			payload["myScore"] = e.Score
 			payload["myYes"] = e.Yes
 			break
 		}
@@ -676,6 +741,42 @@ func (s *Server) handleChatVoiceFile(w http.ResponseWriter, r *http.Request) {
 	writeChatVoiceFile(w, r, msg, path)
 }
 
+func (s *Server) handleChatMedia(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	name, f, err := s.readChatMediaUpload(w, r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	defer f.Close()
+	msg, err := s.Store.AddChatMedia(user.ID, r.PathValue("room"), name, f)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.publishChat(msg.Room, hub.Envelope{Type: "chat", Data: msg})
+	_ = s.Store.MarkChatRead(user.ID, msg.Room, user.Role)
+	writeJSON(w, http.StatusCreated, map[string]any{"message": msg})
+}
+
+func (s *Server) handleChatMediaFile(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	msg, path, err := s.Store.ChatMediaFile(user.Role, r.PathValue("room"), r.PathValue("id"))
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeChatMediaFile(w, r, msg, path)
+}
+
 func (s *Server) handleChatReact(w http.ResponseWriter, r *http.Request) {
 	user, err := s.userFromRequest(r)
 	if err != nil {
@@ -700,6 +801,29 @@ func (s *Server) handleChatReact(w http.ResponseWriter, r *http.Request) {
 		"messageId": msg.ID,
 		"reactions": msg.Reactions,
 	}})
+	writeJSON(w, http.StatusOK, map[string]any{"message": msg})
+}
+
+func (s *Server) handleChatEdit(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var body struct {
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	room := r.PathValue("room")
+	msg, err := s.Store.UpdateChatMessage(user.ID, room, r.PathValue("id"), body.Text, false)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.publishChat(room, hub.Envelope{Type: "chatUpdate", Data: msg})
 	writeJSON(w, http.StatusOK, map[string]any{"message": msg})
 }
 
@@ -801,6 +925,38 @@ func (s *Server) handleControllerChatVoiceFile(w http.ResponseWriter, r *http.Re
 	writeChatVoiceFile(w, r, msg, path)
 }
 
+func (s *Server) handleControllerChatMedia(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	name, f, err := s.readChatMediaUpload(w, r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	defer f.Close()
+	msg, err := s.Store.AddAdminChatMedia(r.PathValue("room"), name, f)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.publishChat(msg.Room, hub.Envelope{Type: "chat", Data: msg})
+	_ = s.Store.MarkChatRead(store.ChatReadController, msg.Room, "")
+	writeJSON(w, http.StatusCreated, map[string]any{"message": msg})
+}
+
+func (s *Server) handleControllerChatMediaFile(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	msg, path, err := s.Store.ChatMediaFileForRoom(r.PathValue("room"), r.PathValue("id"))
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeChatMediaFile(w, r, msg, path)
+}
+
 func (s *Server) handleControllerChatReact(w http.ResponseWriter, r *http.Request) {
 	if !s.requireController(w, r) {
 		return
@@ -823,6 +979,27 @@ func (s *Server) handleControllerChatReact(w http.ResponseWriter, r *http.Reques
 		"messageId": msg.ID,
 		"reactions": msg.Reactions,
 	}})
+	writeJSON(w, http.StatusOK, map[string]any{"message": msg})
+}
+
+func (s *Server) handleControllerChatEdit(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	var body struct {
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	room := r.PathValue("room")
+	msg, err := s.Store.UpdateChatMessage("", room, r.PathValue("id"), body.Text, true)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.publishChat(room, hub.Envelope{Type: "chatUpdate", Data: msg})
 	writeJSON(w, http.StatusOK, map[string]any{"message": msg})
 }
 
@@ -869,6 +1046,42 @@ func writeChatVoiceFile(w http.ResponseWriter, r *http.Request, msg store.ChatMe
 	w.Header().Set("Content-Type", mime)
 	w.Header().Set("Cache-Control", "private, max-age=3600")
 	w.Header().Set("Content-Disposition", `inline; filename="voice"`)
+	http.ServeFile(w, r, path)
+}
+
+func (s *Server) readChatMediaUpload(w http.ResponseWriter, r *http.Request) (string, io.ReadCloser, error) {
+	max := int64(store.ChatVideoMax) + 512<<10
+	r.Body = http.MaxBytesReader(w, r.Body, max)
+	if err := r.ParseMultipartForm(store.ChatVideoMax); err != nil {
+		return "", nil, fmt.Errorf("file is too large")
+	}
+	f, hdr, err := r.FormFile("file")
+	if err != nil {
+		return "", nil, fmt.Errorf("file is required")
+	}
+	name := ""
+	if hdr != nil {
+		name = hdr.Filename
+	}
+	return name, f, nil
+}
+
+func writeChatMediaFile(w http.ResponseWriter, r *http.Request, msg store.ChatMessage, path string) {
+	mime := msg.MIME
+	if mime == "" {
+		if msg.Kind == store.ChatKindVideo {
+			mime = "video/mp4"
+		} else {
+			mime = "image/jpeg"
+		}
+	}
+	name := "image"
+	if msg.Kind == store.ChatKindVideo {
+		name = "video"
+	}
+	w.Header().Set("Content-Type", mime)
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+	w.Header().Set("Content-Disposition", `inline; filename="`+name+`"`)
 	http.ServeFile(w, r, path)
 }
 
