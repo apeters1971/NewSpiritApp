@@ -55,7 +55,23 @@ func ValidChatRoom(room string) bool {
 }
 
 func CanUseChat(role, room string) bool {
-	return ValidChatRoom(room) && role == room
+	if !ValidChatRoom(room) {
+		return false
+	}
+	if role == RoleChorleiter {
+		return true
+	}
+	return role == room
+}
+
+func ChatRoomsForRole(role string) []string {
+	if role == RoleChorleiter {
+		return []string{RoleChoir, RoleBand, RoleOrchestra}
+	}
+	if ValidChatRoom(role) {
+		return []string{role}
+	}
+	return nil
 }
 
 func ValidChatEmoji(emoji string) bool {
@@ -120,7 +136,7 @@ func (s *Store) resolveChatRoom(room string, role string, write bool) error {
 	if err != nil {
 		return fmt.Errorf("unknown chat")
 	}
-	if role != "" && !slicesContains(d.Roles, role) {
+	if role != "" && !RoleSeesDate(role, d.Roles) {
 		return fmt.Errorf("%w: this chat is not for your role", ErrForbidden)
 	}
 	if write && !EventChatIsOpen(d, now()) {
@@ -134,7 +150,7 @@ func (s *Store) resolveChatRoom(room string, role string, write bool) error {
 
 func (s *Store) ChatRoomRoles(room string) []string {
 	if ValidChatRoom(room) {
-		return []string{room}
+		return []string{room, RoleChorleiter}
 	}
 	dateID, ok := ParseEventRoom(room)
 	if !ok {
@@ -144,7 +160,7 @@ func (s *Store) ChatRoomRoles(room string) []string {
 	if err != nil {
 		return nil
 	}
-	return d.Roles
+	return DateAudienceRoles(d.Roles)
 }
 
 func (s *Store) AddChatMessage(userID, room, text string) (ChatMessage, error) {
@@ -513,11 +529,7 @@ ON CONFLICT(actor, room) DO UPDATE SET last_seen=excluded.last_seen`,
 }
 
 func (s *Store) MemberChatUnread(u User) (map[string]int, error) {
-	rooms := []string{}
-	if ValidChatRoom(u.Role) {
-		rooms = append(rooms, u.Role)
-	}
-	return s.chatUnreadCounts(u.ID, rooms, u.ID, false)
+	return s.chatUnreadCounts(u.ID, ChatRoomsForRole(u.Role), u.ID, false)
 }
 
 func (s *Store) ControllerChatUnread() (map[string]int, error) {

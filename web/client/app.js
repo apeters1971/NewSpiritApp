@@ -1217,9 +1217,9 @@ function renderChatTabs() {
   const box = document.getElementById("chat-tabs");
   let any = false;
   box.querySelectorAll("[data-chat]").forEach((btn) => {
-    const show = !!(me && CHAT_ROOMS.includes(me.role) && btn.dataset.chat === me.role);
+    const show = !!(me && (me.role === "chorleiter" || (CHAT_ROOMS.includes(me.role) && btn.dataset.chat === me.role)));
     btn.hidden = !show;
-    btn.classList.toggle("on", show && chatRoom === me.role);
+    btn.classList.toggle("on", show && chatRoom === btn.dataset.chat);
     const n = show ? unreadCount(btn.dataset.chat) : 0;
     const label = I18N.role(btn.dataset.chat);
     btn.innerHTML = `${escapeHtml(label)}${chatBadge(n)}`;
@@ -1520,7 +1520,7 @@ function toggleChatVoice(id) {
 
 async function openChat(room, title) {
   const event = room.startsWith("event:");
-  if (!me || (!event && me.role !== room)) return;
+  if (!me || (!event && me.role !== "chorleiter" && me.role !== room)) return;
   chatRoom = room;
   renderChatTabs();
   document.getElementById("chat-title").textContent = chatTitle(room, title);

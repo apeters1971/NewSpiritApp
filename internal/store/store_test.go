@@ -391,12 +391,25 @@ func TestChatRoom(t *testing.T) {
 	if _, err := st.AddAdminChatMessage(RoleTechnician, "nope"); err == nil {
 		t.Fatal("technician has no chat")
 	}
+	lead, err := st.CreateUser("Lea", "lea@example.com", "secret1", RoleChorleiter, "Chorleiter")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.AddChatMessage(lead.ID, RoleChoir, "from director"); err != nil {
+		t.Fatalf("chorleiter choir post: %v", err)
+	}
+	if _, err := st.AddChatMessage(lead.ID, RoleBand, "from director"); err != nil {
+		t.Fatalf("chorleiter band post: %v", err)
+	}
+	if _, err := st.ListChatMessages(lead.Role, RoleOrchestra, lead.ID); err != nil {
+		t.Fatalf("chorleiter orchestra read: %v", err)
+	}
 	list, err := st.ListChatMessages(ada.Role, RoleChoir, ada.ID)
-	if err != nil || len(list) != 2 || list[1].Text != "From admin" || !list[1].IsAdmin {
+	if err != nil || len(list) != 3 || list[1].Text != "From admin" || !list[1].IsAdmin || list[2].Text != "from director" {
 		t.Fatalf("list %+v %v", list, err)
 	}
 	ctrl, err := st.ListChatMessagesForRoom(RoleChoir)
-	if err != nil || len(ctrl) != 2 {
+	if err != nil || len(ctrl) != 3 {
 		t.Fatalf("controller list %+v %v", ctrl, err)
 	}
 
@@ -894,6 +907,21 @@ func TestChatUnread(t *testing.T) {
 	benUnread, err = st.MemberChatUnread(ben)
 	if err != nil || benUnread[RoleChoir] != 1 {
 		t.Fatalf("ben after new %+v %v", benUnread, err)
+	}
+	lead, err := st.CreateUser("Lea", "lea@example.com", "secret1", RoleChorleiter, "Chorleiter")
+	if err != nil {
+		t.Fatal(err)
+	}
+	band, err := st.CreateUser("Cara", "cara@example.com", "secret1", RoleBand, "Drums")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.AddChatMessage(band.ID, RoleBand, "band hello"); err != nil {
+		t.Fatal(err)
+	}
+	leadUnread, err := st.MemberChatUnread(lead)
+	if err != nil || leadUnread[RoleChoir] != 3 || leadUnread[RoleBand] != 1 {
+		t.Fatalf("chorleiter unread %+v %v", leadUnread, err)
 	}
 }
 
