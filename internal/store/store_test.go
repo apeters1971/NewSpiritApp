@@ -713,6 +713,13 @@ func TestChannels(t *testing.T) {
 	if _, err := st.SetChannel(14, lead.ID, "Talkback", false); err != nil {
 		t.Fatalf("chorleiter should get a channel: %v", err)
 	}
+	alumni, err := st.CreateUser("Ute", "ute@example.com", "secret1", RoleEhemalige, "Ehemalige")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.SetChannel(15, alumni.ID, "Guest", false); err != nil {
+		t.Fatalf("alumni should get a channel: %v", err)
+	}
 	if _, err := st.SetChannel(0, ada.ID, "", false); err == nil {
 		t.Fatal("channel 0")
 	}

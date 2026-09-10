@@ -24,7 +24,7 @@ type Channel struct {
 }
 
 func CanHaveChannel(role string) bool {
-	return role == RoleChoir || role == RoleChorleiter || role == RoleBand || role == RoleOrchestra
+	return role == RoleChoir || role == RoleChorleiter || role == RoleBand || role == RoleOrchestra || role == RoleEhemalige
 }
 
 func (s *Store) migrateChannels() error {
@@ -97,7 +97,7 @@ func (s *Store) SetChannel(number int, userID, comment string, v48 bool) (Channe
 			return Channel{}, err
 		}
 		if !CanHaveChannel(u.Role) {
-			return Channel{}, fmt.Errorf("channel is only for choir, choir director, band, or orchestra")
+			return Channel{}, fmt.Errorf("channel is only for choir, choir director, band, orchestra, or alumni")
 		}
 		uid = u.ID
 	}

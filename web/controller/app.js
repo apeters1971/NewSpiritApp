@@ -557,7 +557,7 @@ function fillSettingsForm() {
 }
 
 function channelPeople() {
-  return (state.users || []).filter((u) => ["choir", "chorleiter", "band", "orchestra"].includes(u.role));
+  return (state.users || []).filter((u) => ["choir", "chorleiter", "band", "orchestra", "ehemalige"].includes(u.role));
 }
 
 function paintUserChannels() {

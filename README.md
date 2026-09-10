@@ -50,7 +50,7 @@ go test ./...
 - Calendar subscribe link for accepted dates of their role
 - German / English
 
-**Ehemalige** see choir dates and the choir chat so they can follow along. They cannot vote, and they have no mixer channels.
+**Ehemalige** see choir dates and the choir chat so they can follow along. They cannot vote. They can have mixer channels.
 
 ## What the controller gets
 
