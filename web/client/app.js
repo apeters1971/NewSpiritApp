@@ -581,14 +581,14 @@ function titleMaterialHTML(item, back) {
 
 function filePreviewHTML(id, file, label) {
   const url = archiveFileURL(id, file);
+  const mime = file.mime || "";
   let body = "";
-  if ((file.mime || "").startsWith("image/")) {
+  if (mime.startsWith("image/")) {
     body = `<img class="title-preview-img" src="${url}" alt="" />`;
-  } else if ((file.mime || "").startsWith("text/")) {
+  } else if (mime.startsWith("text/")) {
     body = `<pre class="title-preview-text" data-text-src="${url}"></pre>`;
-  } else {
-    body = `<iframe class="title-preview" src="${url}" title="${escapeHtml(label)}"></iframe>`;
   }
+  // Do not iframe PDFs or other binaries: many browsers download them on load.
   return `<div>
     <p class="label">${escapeHtml(label)}</p>
     ${body}

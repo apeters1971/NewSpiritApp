@@ -825,6 +825,7 @@ button.avatar {
 .schedule-body { max-height: 50vh; overflow: auto; }
 .card.flash { box-shadow: 0 0 0 2px var(--warn); }
 .overview { margin-bottom: 1.4rem; }
+.overview .brand { margin-bottom: 0.35rem; }
 .overview-box {
   max-height: calc(8 * 3.55rem);
   overflow-y: auto;
