@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"net/url"
 	"path"
 	"strings"
 	"time"
@@ -14,16 +15,18 @@ const (
 	ArchiveKindAudio  = "audio"
 	ArchiveKindTracks = "tracks"
 	ArchiveKindLyrics = "lyrics"
-	ArchiveKindSheet     = "sheet"
+	ArchiveKindSheet      = "sheet"
+	ArchiveKindLink       = "link"
 	ArchiveStatusPending  = "pending"
 	ArchiveStatusAccepted = "accepted"
 	ArchiveMaxAudio       = 25 << 20
 	ArchiveMaxDoc         = 12 << 20
 	archiveTitleMax       = 200
 	archiveComposerMax    = 120
+	archiveURLMax         = 2000
 )
 
-var ArchiveKinds = []string{ArchiveKindAudio, ArchiveKindTracks, ArchiveKindLyrics, ArchiveKindSheet}
+var ArchiveKinds = []string{ArchiveKindAudio, ArchiveKindTracks, ArchiveKindLyrics, ArchiveKindSheet, ArchiveKindLink}
 
 type ArchiveFileMeta struct {
 	ID        string    `json:"id"`
@@ -31,6 +34,7 @@ type ArchiveFileMeta struct {
 	Role      string    `json:"role,omitempty"`
 	MIME      string    `json:"mime"`
 	Name      string    `json:"name"`
+	URL       string    `json:"url,omitempty"`
 	Status    string    `json:"status"`
 	CreatedBy string    `json:"createdBy,omitempty"`
 	UpdatedAt time.Time `json:"updatedAt"`
@@ -98,6 +102,7 @@ CREATE INDEX IF NOT EXISTS idx_date_titles_date ON date_titles(date_id, sort_ord
 	_, _ = s.db.Exec(`ALTER TABLE archive_items ADD COLUMN created_by TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE archive_files ADD COLUMN status TEXT NOT NULL DEFAULT 'accepted'`)
 	_, _ = s.db.Exec(`ALTER TABLE archive_files ADD COLUMN created_by TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE archive_files ADD COLUMN url TEXT NOT NULL DEFAULT ''`)
 	return nil
 }
 
@@ -190,6 +195,43 @@ func prepareArchiveFileName(name string) (string, error) {
 		return "", fmt.Errorf("file name is required")
 	}
 	return name, nil
+}
+
+func prepareArchiveLabel(name, fallback string) (string, error) {
+	name = NormalizeName(name)
+	if name == "" {
+		name = NormalizeName(fallback)
+	}
+	if name == "" {
+		name = "link"
+	}
+	if utf8.RuneCountInString(name) > 120 {
+		return "", fmt.Errorf("file name is too long")
+	}
+	return name, nil
+}
+
+func prepareArchiveURL(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", fmt.Errorf("url is required")
+	}
+	if utf8.RuneCountInString(raw) > archiveURLMax {
+		return "", fmt.Errorf("url is too long")
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return "", fmt.Errorf("url is invalid")
+	}
+	return raw, nil
+}
+
+func linkLabelFromURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimPrefix(u.Hostname(), "www.")
 }
 
 func (s *Store) CreateArchiveItem(title, composer string) (ArchiveItem, error) {
@@ -328,9 +370,45 @@ func (s *Store) AddMemberArchiveFile(itemID, kind, role, filename, userID string
 	return s.addArchiveFile(itemID, kind, role, filename, data, userID, ArchiveStatusPending)
 }
 
+func (s *Store) AddArchiveLink(itemID, name, rawURL string) (ArchiveItem, error) {
+	return s.addArchiveLink(itemID, name, rawURL, "", ArchiveStatusAccepted)
+}
+
+func (s *Store) AddMemberArchiveLink(itemID, name, rawURL, userID string) (ArchiveItem, error) {
+	return s.addArchiveLink(itemID, name, rawURL, userID, ArchiveStatusPending)
+}
+
+func (s *Store) addArchiveLink(itemID, name, rawURL, createdBy, status string) (ArchiveItem, error) {
+	if _, err := s.archiveItemRow(itemID); err != nil {
+		return ArchiveItem{}, err
+	}
+	rawURL, err := prepareArchiveURL(rawURL)
+	if err != nil {
+		return ArchiveItem{}, err
+	}
+	name, err = prepareArchiveLabel(name, linkLabelFromURL(rawURL))
+	if err != nil {
+		return ArchiveItem{}, err
+	}
+	if status != ArchiveStatusPending {
+		status = ArchiveStatusAccepted
+	}
+	_, err = s.db.Exec(
+		`INSERT INTO archive_files(id, item_id, kind, role, mime, name, data, status, created_by, updated_at, url) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+		newID(), itemID, ArchiveKindLink, "", "text/uri-list", name, []byte(rawURL), status, createdBy, fmtTime(now()), rawURL,
+	)
+	if err != nil {
+		return ArchiveItem{}, err
+	}
+	return s.ArchiveItem(itemID)
+}
+
 func (s *Store) addArchiveFile(itemID, kind, role, filename string, data []byte, createdBy, status string) (ArchiveItem, error) {
 	if _, err := s.archiveItemRow(itemID); err != nil {
 		return ArchiveItem{}, err
+	}
+	if kind == ArchiveKindLink {
+		return ArchiveItem{}, fmt.Errorf("url is required")
 	}
 	if !ValidArchiveKind(kind) {
 		return ArchiveItem{}, fmt.Errorf("unknown archive file")
@@ -357,8 +435,8 @@ func (s *Store) addArchiveFile(itemID, kind, role, filename string, data []byte,
 		status = ArchiveStatusAccepted
 	}
 	_, err = s.db.Exec(
-		`INSERT INTO archive_files(id, item_id, kind, role, mime, name, data, status, created_by, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)`,
-		newID(), itemID, kind, role, mime, name, data, status, createdBy, fmtTime(now()),
+		`INSERT INTO archive_files(id, item_id, kind, role, mime, name, data, status, created_by, updated_at, url) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+		newID(), itemID, kind, role, mime, name, data, status, createdBy, fmtTime(now()), "",
 	)
 	if err != nil {
 		return ArchiveItem{}, err
@@ -387,6 +465,31 @@ func (s *Store) UpdateArchiveFile(itemID, fileID, name, role string) (ArchiveIte
 	return s.ArchiveItem(itemID)
 }
 
+func (s *Store) UpdateArchiveLink(itemID, fileID, name, rawURL string) (ArchiveItem, error) {
+	f, err := s.GetArchiveFile(itemID, fileID)
+	if err != nil {
+		return ArchiveItem{}, err
+	}
+	if f.Kind != ArchiveKindLink {
+		return ArchiveItem{}, fmt.Errorf("unknown archive file")
+	}
+	rawURL, err = prepareArchiveURL(rawURL)
+	if err != nil {
+		return ArchiveItem{}, err
+	}
+	name, err = prepareArchiveLabel(name, linkLabelFromURL(rawURL))
+	if err != nil {
+		return ArchiveItem{}, err
+	}
+	if _, err := s.db.Exec(
+		`UPDATE archive_files SET name=?, url=?, data=?, updated_at=? WHERE id=? AND item_id=?`,
+		name, rawURL, []byte(rawURL), fmtTime(now()), fileID, itemID,
+	); err != nil {
+		return ArchiveItem{}, err
+	}
+	return s.ArchiveItem(itemID)
+}
+
 func (s *Store) DeleteArchiveFile(itemID, fileID string) (ArchiveItem, error) {
 	if _, err := s.archiveItemRow(itemID); err != nil {
 		return ArchiveItem{}, err
@@ -406,9 +509,9 @@ func (s *Store) GetArchiveFile(itemID, fileID string) (ArchiveFile, error) {
 	var f ArchiveFile
 	var updated string
 	err := s.db.QueryRow(
-		`SELECT id, kind, role, mime, name, data, status, created_by, updated_at FROM archive_files WHERE id=? AND item_id=?`,
+		`SELECT id, kind, role, mime, name, data, status, created_by, updated_at, url FROM archive_files WHERE id=? AND item_id=?`,
 		fileID, itemID,
-	).Scan(&f.ID, &f.Kind, &f.Role, &f.MIME, &f.Name, &f.Data, &f.Status, &f.CreatedBy, &updated)
+	).Scan(&f.ID, &f.Kind, &f.Role, &f.MIME, &f.Name, &f.Data, &f.Status, &f.CreatedBy, &updated, &f.URL)
 	if err == sql.ErrNoRows {
 		return ArchiveFile{}, ErrNotFound
 	}
@@ -417,6 +520,9 @@ func (s *Store) GetArchiveFile(itemID, fileID string) (ArchiveFile, error) {
 	}
 	if f.Status == "" {
 		f.Status = ArchiveStatusAccepted
+	}
+	if f.Kind == ArchiveKindLink && f.URL == "" {
+		f.URL = strings.TrimSpace(string(f.Data))
 	}
 	f.UpdatedAt = parseTime(updated)
 	return f, nil
@@ -604,7 +710,7 @@ func (s *Store) archiveFileMetas(ids []string) (map[string][]ArchiveFileMeta, er
 		args[i] = id
 	}
 	rows, err := s.db.Query(`
-SELECT id, item_id, kind, role, mime, name, status, created_by, updated_at
+SELECT id, item_id, kind, role, mime, name, status, created_by, updated_at, url
 FROM archive_files
 WHERE item_id IN (`+placeholders+`)
 ORDER BY kind, role COLLATE NOCASE, name COLLATE NOCASE`, args...)
@@ -615,13 +721,16 @@ ORDER BY kind, role COLLATE NOCASE, name COLLATE NOCASE`, args...)
 	for rows.Next() {
 		var itemID, updated string
 		var f ArchiveFileMeta
-		if err := rows.Scan(&f.ID, &itemID, &f.Kind, &f.Role, &f.MIME, &f.Name, &f.Status, &f.CreatedBy, &updated); err != nil {
+		if err := rows.Scan(&f.ID, &itemID, &f.Kind, &f.Role, &f.MIME, &f.Name, &f.Status, &f.CreatedBy, &updated, &f.URL); err != nil {
 			return nil, err
 		}
 		if f.Status == "" {
 			f.Status = ArchiveStatusAccepted
 		}
 		f.UpdatedAt = parseTime(updated)
+		if f.Kind != ArchiveKindLink {
+			f.URL = ""
+		}
 		out[itemID] = append(out[itemID], f)
 	}
 	return out, rows.Err()

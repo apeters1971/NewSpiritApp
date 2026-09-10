@@ -650,6 +650,110 @@ func TestArchiveAndDateTitles(t *testing.T) {
 	}
 }
 
+func TestArchiveLinks(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "archive-links.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	ada, err := st.CreateUser("Ada", "ada@example.com", "secret1", RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	song, err := st.CreateArchiveItem("Ocean", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.AddArchiveLink(song.ID, "YouTube", "javascript:alert(1)"); err == nil {
+		t.Fatal("javascript url")
+	}
+	item, err := st.AddArchiveLink(song.ID, "YouTube", "https://www.youtube.com/watch?v=abc")
+	if err != nil || len(item.Files) != 1 || item.Files[0].Kind != ArchiveKindLink || item.Files[0].URL == "" {
+		t.Fatalf("add link %+v %v", item, err)
+	}
+	item, err = st.AddArchiveLink(song.ID, "", "https://open.spotify.com/track/1")
+	if err != nil || len(item.Files) != 2 {
+		t.Fatalf("second link %+v %v", item, err)
+	}
+	var ytID string
+	for _, f := range item.Files {
+		if f.Name == "YouTube" {
+			ytID = f.ID
+		}
+	}
+	item, err = st.UpdateArchiveLink(song.ID, ytID, "Live", "https://youtu.be/xyz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.GetArchiveFile(song.ID, ytID)
+	if err != nil || got.URL != "https://youtu.be/xyz" || got.Name != "Live" {
+		t.Fatalf("update %+v %v", got, err)
+	}
+	pending, err := st.AddMemberArchiveLink(song.ID, "Demo", "https://example.com/song", ada.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pendingID string
+	for _, f := range pending.Files {
+		if f.Status == ArchiveStatusPending {
+			pendingID = f.ID
+		}
+	}
+	if pendingID == "" {
+		t.Fatal("pending link missing")
+	}
+	if _, err := st.AddArchiveFile(song.ID, ArchiveKindLink, "", "nope", []byte("x")); err == nil {
+		t.Fatal("file upload as link")
+	}
+}
+
+func TestUserStreamer(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "streamer.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	ada, err := st.CreateUser("Ada", "ada@example.com", "secret1", RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ada.Streamer {
+		t.Fatal("new user should not stream")
+	}
+	ada, err = st.SetUserStreamer(ada.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ada.Streamer {
+		t.Fatal("streamer not set")
+	}
+	got, err := st.UserByID(ada.ID)
+	if err != nil || !got.Streamer {
+		t.Fatalf("by id %+v %v", got, err)
+	}
+	users, err := st.ListUsers()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(users) != 1 || !users[0].Streamer {
+		t.Fatalf("list %+v", users)
+	}
+	logged, sid, err := st.Login("ada@example.com", "secret1")
+	if err != nil || !logged.Streamer {
+		t.Fatalf("login %+v %v", logged, err)
+	}
+	sess, err := st.UserBySession(sid)
+	if err != nil || !sess.Streamer {
+		t.Fatalf("session %+v %v", sess, err)
+	}
+	ada, err = st.SetUserStreamer(ada.ID, false)
+	if err != nil || ada.Streamer {
+		t.Fatalf("clear %+v %v", ada, err)
+	}
+}
+
 func TestArchiveApproval(t *testing.T) {
 	st, err := Open(filepath.Join(t.TempDir(), "archive-approve.db"))
 	if err != nil {

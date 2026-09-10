@@ -171,6 +171,17 @@ button.avatar { cursor: pointer; appearance: none; }
   color: var(--ink);
   font: inherit;
 }
+.drawer label.check-line {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-top: 0.9rem;
+}
+.drawer input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+  accent-color: var(--accent);
+}
 .drawer textarea { resize: vertical; }
 .gate-card button, .btn {
   appearance: none;
@@ -1145,6 +1156,19 @@ tbody tr:hover, tbody tr.active, .date-item.active { background: rgba(61, 214, 1
   font: inherit;
 }
 .archive-file-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.archive-link-add {
+  display: grid;
+  gap: 0.4rem;
+}
+.archive-link-add input {
+  width: 100%;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 0.55rem;
+  background: #0f151b;
+  color: var(--ink);
+  font: inherit;
+}
 .archive-pick-list {
   display: grid;
   gap: 0.3rem;

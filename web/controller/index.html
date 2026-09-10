@@ -79,6 +79,7 @@
                 <th data-i18n="email">E-Mail</th>
                 <th data-i18n="role">Rolle</th>
                 <th data-i18n="subrole">Teilrolle</th>
+                <th data-i18n="streamer">Streamer</th>
               </tr>
             </thead>
             <tbody id="people-body"></tbody>
@@ -107,6 +108,11 @@
           <select id="user-role" required></select>
           <label for="user-subrole" data-i18n="subrole">Teilrolle</label>
           <select id="user-subrole" required></select>
+          <label class="check-line">
+            <input type="checkbox" id="user-streamer" />
+            <span data-i18n="streamer">Streamer</span>
+          </label>
+          <p class="muted" data-i18n="streamerHint">Kann oben einen Live-Stream starten. Alle können zuschauen.</p>
           <p id="people-error" class="error" hidden></p>
           <div class="drawer-actions">
             <button type="submit" class="btn" data-i18n="save">Speichern</button>
@@ -236,6 +242,7 @@
                 <th data-i18n="archiveTracks">Tracks</th>
                 <th data-i18n="archiveLyrics">Text</th>
                 <th data-i18n="archiveSheet">Noten</th>
+                <th data-i18n="archiveShareURL">Share URL</th>
               </tr>
             </thead>
             <tbody id="archive-body"></tbody>

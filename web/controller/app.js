@@ -271,6 +271,7 @@ function renderPeople() {
       <td>${escapeHtml(u.email)}</td>
       <td>${escapeHtml(I18N.role(u.role))}</td>
       <td>${escapeHtml(I18N.subrole(u.subrole))}</td>
+      <td>${u.streamer ? escapeHtml(I18N.t("streamer")) : "—"}</td>
     </tr>
   `).join("");
 }
@@ -442,6 +443,7 @@ function resetUserForm() {
   document.getElementById("btn-user-delete").disabled = true;
   if (catalog.roles[0]) document.getElementById("user-role").value = catalog.roles[0].id;
   fillSubroles();
+  document.getElementById("user-streamer").checked = false;
   renderPeople();
   paintPersonPhoto();
   paintUserChannels();
@@ -462,6 +464,7 @@ function fillUserForm(u) {
   document.getElementById("user-role").value = u.role;
   fillSubroles();
   document.getElementById("user-subrole").value = u.subrole;
+  document.getElementById("user-streamer").checked = !!u.streamer;
   document.getElementById("btn-user-delete").disabled = false;
   renderPeople();
   paintPersonPhoto();
@@ -744,6 +747,7 @@ function renderArchive() {
       <td>${count("tracks")}</td>
       <td>${count("lyrics")}</td>
       <td>${escapeHtml(sheetRoles)}</td>
+      <td>${count("link")}</td>
     </tr>`;
   }).join("");
   renderArchiveFiles();
@@ -790,7 +794,7 @@ function renderArchiveFiles() {
     { kind: "lyrics", label: I18N.t("archiveLyrics") },
     { kind: "sheet", label: I18N.t("archiveSheet") },
   ];
-  box.innerHTML = kinds.map((slot) => {
+  const fileSections = kinds.map((slot) => {
     const files = archiveFilesOf(item, slot.kind);
     const rows = files.length
       ? files.map((file) => `
@@ -817,6 +821,36 @@ function renderArchiveFiles() {
       <button type="button" class="btn ghost" data-upload="${slot.kind}" data-accept="${archiveKindAccept(slot.kind)}">${I18N.t("archiveAddFile")}</button>
     </section>`;
   }).join("");
+  const links = archiveFilesOf(item, "link");
+  const linkRows = links.length
+    ? links.map((file) => `
+      <div class="archive-file" data-file="${file.id}" data-link="1">
+        <div class="archive-file-fields">
+          <label>
+            <span>${I18N.t("archiveURLName")}</span>
+            <input data-file-name value="${escapeHtml(file.name || "")}" maxlength="120" />
+          </label>
+          <label>
+            <span>${I18N.t("archiveURL")}</span>
+            <input data-file-url value="${escapeHtml(file.url || "")}" maxlength="2000" />
+          </label>
+        </div>
+        <div class="archive-file-actions">
+          <a class="btn ghost" href="${escapeHtml(file.url || "#")}" target="_blank" rel="noopener">${I18N.t("fileOpen")}</a>
+          <button type="button" class="btn ghost danger" data-clear-file="${file.id}">${I18N.t("delete")}</button>
+        </div>
+      </div>`).join("")
+    : `<p class="muted">${I18N.t("archiveNoLink")}</p>`;
+  box.innerHTML = `${fileSections}
+    <section class="archive-kind">
+      <p>${escapeHtml(I18N.t("archiveShareURL"))}</p>
+      ${linkRows}
+      <div class="archive-link-add">
+        <input data-new-link-name maxlength="120" placeholder="${escapeHtml(I18N.t("archiveURLName"))}" />
+        <input data-new-link-url maxlength="2000" placeholder="https://" />
+        <button type="button" class="btn ghost" data-add-link>${I18N.t("archiveAddURL")}</button>
+      </div>
+    </section>`;
 }
 
 function archivePickQuery() {
@@ -941,10 +975,19 @@ async function uploadArchiveFile(file, kind, role) {
   return data;
 }
 
-async function saveArchiveFileMeta(fileId, name, role) {
+async function saveArchiveFileMeta(fileId, name, role, url) {
+  const body = { name, role };
+  if (url !== undefined) body.url = url;
   return api(`/api/controller/archive/${encodeURIComponent(selectedArchive)}/files/${encodeURIComponent(fileId)}`, {
     method: "PATCH",
-    body: JSON.stringify({ name, role }),
+    body: JSON.stringify(body),
+  });
+}
+
+async function addArchiveLink(url, name) {
+  return api(`/api/controller/archive/${encodeURIComponent(selectedArchive)}/links`, {
+    method: "POST",
+    body: JSON.stringify({ url, name }),
   });
 }
 
@@ -1076,6 +1119,7 @@ document.getElementById("people-form").addEventListener("submit", async (e) => {
     password: document.getElementById("user-password").value,
     role: document.getElementById("user-role").value,
     subrole: document.getElementById("user-subrole").value,
+    streamer: document.getElementById("user-streamer").checked,
   };
   try {
     const data = id
@@ -2333,6 +2377,20 @@ document.getElementById("btn-archive-delete").addEventListener("click", async ()
 });
 
 document.getElementById("archive-files").addEventListener("click", (e) => {
+  const addLink = e.target.closest("[data-add-link]");
+  if (addLink && selectedArchive) {
+    const box = addLink.closest(".archive-kind");
+    const url = box?.querySelector("[data-new-link-url]")?.value || "";
+    const name = box?.querySelector("[data-new-link-name]")?.value || "";
+    showError(document.getElementById("archive-error"), "");
+    addArchiveLink(url, name)
+      .then(async (data) => {
+        await loadState();
+        fillArchiveForm(data.item);
+      })
+      .catch((err) => showError(document.getElementById("archive-error"), err.message));
+    return;
+  }
   const upload = e.target.closest("[data-upload]");
   if (upload && selectedArchive) {
     const input = document.getElementById("archive-file");
@@ -2355,20 +2413,21 @@ document.getElementById("archive-files").addEventListener("click", (e) => {
 });
 
 document.getElementById("archive-files").addEventListener("keydown", (e) => {
-  if (e.key !== "Enter" || !e.target.closest("[data-file-name], [data-file-role]")) return;
+  if (e.key !== "Enter" || !e.target.closest("[data-file-name], [data-file-role], [data-file-url]")) return;
   e.preventDefault();
   e.target.blur();
 });
 
 document.getElementById("archive-files").addEventListener("change", async (e) => {
   const row = e.target.closest("[data-file]");
-  if (!row || !selectedArchive || !e.target.closest("[data-file-name], [data-file-role]")) return;
+  if (!row || !selectedArchive || !e.target.closest("[data-file-name], [data-file-role], [data-file-url]")) return;
   showError(document.getElementById("archive-error"), "");
   try {
     const data = await saveArchiveFileMeta(
       row.dataset.file,
       row.querySelector("[data-file-name]")?.value || "",
       row.querySelector("[data-file-role]")?.value || "",
+      row.dataset.link ? (row.querySelector("[data-file-url]")?.value || "") : undefined,
     );
     await loadState();
     fillArchiveForm(data.item);

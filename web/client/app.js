@@ -23,6 +23,11 @@ let chatRoom = "";
 let chatMessages = [];
 let chatUnread = {};
 let mixer = { channels: [], people: [] };
+let memberWS = null;
+let liveStream = null;
+let pubStream = null;
+let pubPeers = {};
+let subPeer = null;
 
 const CHAT_ROOMS = ["choir", "band", "orchestra"];
 const CHAT_API = "/api/chats";
@@ -685,6 +690,14 @@ function archiveManageHTML(item) {
   return `<div class="archive-manage" data-archive-id="${item.id}">
     <p class="muted">${I18N.t("archiveAttachHint")}</p>
     ${slots}
+    <section class="archive-kind">
+      <p class="label">${escapeHtml(I18N.t("archiveShareURL"))}</p>
+      <div class="archive-upload-row">
+        <input data-archive-link-name maxlength="120" placeholder="${escapeHtml(I18N.t("archiveURLName"))}" />
+        <input data-archive-link-url maxlength="2000" placeholder="https://" />
+        <button type="button" class="btn ghost" data-archive-add-link>${I18N.t("archiveAddURL")}</button>
+      </div>
+    </section>
   </div>`;
 }
 
@@ -694,6 +707,7 @@ function titleMaterialHTML(item, back) {
   const tracks = files.filter((f) => f.kind === "tracks");
   const lyrics = files.filter((f) => f.kind === "lyrics");
   const sheets = files.filter((f) => f.kind === "sheet");
+  const links = files.filter((f) => f.kind === "link" && f.url);
   const preferred = sheets.filter((f) => f.role && f.role === me?.role);
   const rest = sheets.filter((f) => !preferred.includes(f));
   const backAttr = back === "archive" ? "data-archive-back" : "data-titles-back";
@@ -716,7 +730,11 @@ function titleMaterialHTML(item, back) {
   [...preferred, ...rest].forEach((f) => {
     html += filePreviewHTML(item.id, f, archiveFileLabel(f, I18N.t("archiveSheet")));
   });
-  if (!audios.length && !tracks.length && !lyrics.length && !sheets.length) {
+  links.forEach((f) => {
+    const label = f.name || I18N.t("archiveShareURL");
+    html += `<div><p class="label">${escapeHtml(label)}</p><a class="btn ghost" href="${escapeHtml(f.url)}" target="_blank" rel="noopener">${escapeHtml(f.url)}</a></div>`;
+  });
+  if (!audios.length && !tracks.length && !lyrics.length && !sheets.length && !links.length) {
     html += `<p class="muted">${I18N.t("archiveNoFile")}</p>`;
   }
   return html;
@@ -981,6 +999,7 @@ async function handleNotifyClick(data) {
       return;
     }
     if (data?.kind === "date" && data.dateId) jumpToDate(data.dateId);
+    if (data?.kind === "stream") await startWatch();
   } catch (err) {
     alert(err.message);
   }
@@ -1016,6 +1035,7 @@ async function enterApp() {
   paintInfoButton(document.getElementById("who-info"), me);
   paintMyChannels();
   renderChatTabs();
+  paintStreamButtons();
   await loadDates();
   await loadMixer().catch(() => {});
   connectWS();
@@ -1083,6 +1103,7 @@ async function boot() {
     const data = await api("/api/me");
     me = data.user;
     applyUnread(data.unread);
+    applyLiveStream(data.stream, false);
     if (me.mustChangePassword) {
       showGate("password");
       document.getElementById("pw-new").value = "";
@@ -1197,6 +1218,21 @@ document.getElementById("notice-toast-open").addEventListener("click", () => {
   handleNotifyClick(noticeToastData || {});
 });
 document.getElementById("notice-toast-close").addEventListener("click", hideInAppNotice);
+document.getElementById("btn-header-record").addEventListener("click", () => {
+  if (pubStream) stopPublish();
+  else startPublish();
+});
+document.getElementById("btn-header-play").addEventListener("click", () => {
+  startWatch();
+});
+document.getElementById("stream-close").addEventListener("click", () => {
+  closeStreamDialog();
+});
+document.getElementById("stream-dialog").addEventListener("close", () => {
+  const video = document.getElementById("stream-video");
+  if (!pubStream && video) video.srcObject = null;
+  if (!pubStream) stopWatch(false);
+});
 document.getElementById("btn-header-chat").addEventListener("click", async () => {
   const room = primaryChatRoom();
   if (!room) return;
@@ -2058,12 +2094,262 @@ async function openChat(room, title) {
   input.focus();
 }
 
+const STREAM_ICE = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+
+function wsSend(obj) {
+  if (memberWS?.readyState === WebSocket.OPEN) {
+    memberWS.send(JSON.stringify(obj));
+  }
+}
+
+function applyLiveStream(stream, announce) {
+  const next = stream && stream.userId ? { userId: stream.userId, nickname: stream.nickname || "" } : null;
+  const wasId = liveStream?.userId || "";
+  liveStream = next;
+  paintStreamButtons();
+  if (!next) {
+    if (wasId) stopWatch(false);
+    return;
+  }
+  if (announce && next.userId !== me?.id && next.userId !== wasId) {
+    showDesktopNotice(`${next.nickname} ${I18N.t("streamLive")}`, I18N.t("streamPlay"), {
+      kind: "stream",
+      tag: "stream",
+    });
+  }
+}
+
+function paintStreamButtons() {
+  const rec = document.getElementById("btn-header-record");
+  const play = document.getElementById("btn-header-play");
+  if (!rec || !play) return;
+  rec.hidden = !me?.streamer;
+  rec.classList.toggle("on", !!pubStream);
+  rec.setAttribute("aria-label", I18N.t(pubStream ? "streamStop" : "streamStart"));
+  rec.setAttribute("aria-pressed", pubStream ? "true" : "false");
+  const live = !!liveStream;
+  play.disabled = !live;
+  play.classList.toggle("live", live);
+  play.setAttribute("aria-label", I18N.t("streamPlay"));
+}
+
+function openStreamDialog(publishing) {
+  const video = document.getElementById("stream-video");
+  const who = liveStream?.nickname || me?.nickname || I18N.t("streamBrand");
+  document.getElementById("stream-who").textContent = who;
+  document.getElementById("stream-status").textContent = I18N.t(publishing ? "streamPublishing" : "streamWatching");
+  if (publishing && pubStream) {
+    video.srcObject = pubStream;
+    video.muted = true;
+    video.play().catch(() => {});
+  } else {
+    video.muted = false;
+  }
+  const dialog = document.getElementById("stream-dialog");
+  if (!dialog.open) dialog.showModal();
+}
+
+function closeStreamDialog() {
+  const dialog = document.getElementById("stream-dialog");
+  if (dialog.open) dialog.close();
+  const video = document.getElementById("stream-video");
+  if (!pubStream) {
+    video.srcObject = null;
+    stopWatch(false);
+  }
+}
+
+function resetLocalStream(ended) {
+  Object.values(pubPeers).forEach((pc) => pc.close());
+  pubPeers = {};
+  if (pubStream) {
+    pubStream.getTracks().forEach((t) => t.stop());
+    pubStream = null;
+  }
+  stopWatch(false);
+  if (ended) liveStream = null;
+  const video = document.getElementById("stream-video");
+  if (video) video.srcObject = null;
+  const dialog = document.getElementById("stream-dialog");
+  if (dialog?.open) dialog.close();
+  paintStreamButtons();
+}
+
+async function startPublish() {
+  if (!me?.streamer) return;
+  if (!navigator.mediaDevices?.getUserMedia) {
+    alert(I18N.t("streamNeedCamera"));
+    return;
+  }
+  try {
+    pubStream = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
+    });
+  } catch {
+    pubStream = null;
+    alert(I18N.t("streamNeedCamera"));
+    return;
+  }
+  wsSend({ type: "streamStart" });
+  paintStreamButtons();
+  openStreamDialog(true);
+}
+
+function stopPublish() {
+  Object.values(pubPeers).forEach((pc) => pc.close());
+  pubPeers = {};
+  if (pubStream) {
+    pubStream.getTracks().forEach((t) => t.stop());
+    pubStream = null;
+  }
+  wsSend({ type: "streamStop" });
+  const video = document.getElementById("stream-video");
+  if (video) video.srcObject = null;
+  const dialog = document.getElementById("stream-dialog");
+  if (dialog?.open) dialog.close();
+  paintStreamButtons();
+}
+
+function stopWatch(closeDialog) {
+  if (subPeer) {
+    subPeer.close();
+    subPeer = null;
+  }
+  const video = document.getElementById("stream-video");
+  if (video && !pubStream) video.srcObject = null;
+  if (closeDialog) {
+    const dialog = document.getElementById("stream-dialog");
+    if (dialog?.open) dialog.close();
+  }
+}
+
+async function startWatch() {
+  if (!liveStream) {
+    alert(I18N.t("streamNone"));
+    return;
+  }
+  if (liveStream.userId === me?.id && pubStream) {
+    openStreamDialog(true);
+    return;
+  }
+  openStreamDialog(false);
+  wsSend({ type: "streamWatch" });
+}
+
+async function onStreamWatch(from) {
+  if (!pubStream || !from) return;
+  if (pubPeers[from]) pubPeers[from].close();
+  const pc = new RTCPeerConnection(STREAM_ICE);
+  pubPeers[from] = pc;
+  pubStream.getTracks().forEach((t) => pc.addTrack(t, pubStream));
+  pc.onicecandidate = (e) => {
+    if (e.candidate) wsSend({ type: "streamIce", data: { to: from, candidate: e.candidate } });
+  };
+  pc.onconnectionstatechange = () => {
+    if (["failed", "closed", "disconnected"].includes(pc.connectionState)) {
+      pc.close();
+      delete pubPeers[from];
+    }
+  };
+  try {
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    wsSend({ type: "streamOffer", data: { to: from, sdp: pc.localDescription } });
+  } catch {
+    pc.close();
+    delete pubPeers[from];
+  }
+}
+
+async function onStreamOffer(from, sdp) {
+  if (!sdp || !from) return;
+  if (subPeer) subPeer.close();
+  subPeer = new RTCPeerConnection(STREAM_ICE);
+  subPeer.ontrack = (e) => {
+    const video = document.getElementById("stream-video");
+    video.srcObject = e.streams[0] || new MediaStream([e.track]);
+    video.muted = false;
+    video.play().catch(() => {});
+  };
+  subPeer.onicecandidate = (e) => {
+    if (e.candidate) wsSend({ type: "streamIce", data: { to: from, candidate: e.candidate } });
+  };
+  try {
+    await subPeer.setRemoteDescription(sdp);
+    const answer = await subPeer.createAnswer();
+    await subPeer.setLocalDescription(answer);
+    wsSend({ type: "streamAnswer", data: { to: from, sdp: subPeer.localDescription } });
+  } catch {
+    stopWatch(false);
+  }
+}
+
+async function onStreamAnswer(from, sdp) {
+  const pc = pubPeers[from];
+  if (!pc || !sdp) return;
+  try {
+    await pc.setRemoteDescription(sdp);
+  } catch {}
+}
+
+async function onStreamIce(from, candidate) {
+  const pc = pubPeers[from] || subPeer;
+  if (!pc || !candidate) return;
+  try {
+    await pc.addIceCandidate(candidate);
+  } catch {}
+}
+
+function handleStreamMessage(msg) {
+  switch (msg.type) {
+    case "streamLive":
+      applyLiveStream(msg.data, true);
+      return true;
+    case "streamEnded":
+      applyLiveStream(null, false);
+      if (pubStream) {
+        Object.values(pubPeers).forEach((pc) => pc.close());
+        pubPeers = {};
+        pubStream.getTracks().forEach((t) => t.stop());
+        pubStream = null;
+      }
+      stopWatch(true);
+      paintStreamButtons();
+      return true;
+    case "streamBusy":
+      stopPublish();
+      alert(I18N.t("streamBusy"));
+      return true;
+    case "streamDenied":
+      stopPublish();
+      alert(I18N.t("streamDenied"));
+      return true;
+    case "streamWatch":
+      onStreamWatch(msg.data?.from);
+      return true;
+    case "streamOffer":
+      onStreamOffer(msg.data?.from, msg.data?.sdp);
+      return true;
+    case "streamAnswer":
+      onStreamAnswer(msg.data?.from, msg.data?.sdp);
+      return true;
+    case "streamIce":
+      onStreamIce(msg.data?.from, msg.data?.candidate);
+      return true;
+    default:
+      return false;
+  }
+}
+
 function connectWS() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   const ws = new WebSocket(`${proto}://${location.host}/ws/client`);
+  memberWS = ws;
   ws.onmessage = (ev) => {
     let msg = {};
     try { msg = JSON.parse(ev.data); } catch { return; }
+    if (handleStreamMessage(msg)) return;
     if (msg.type === "chat") {
       noteChatMessage(msg.data);
       if (chatRoom && msg.data?.room === chatRoom) appendChat(msg.data);
@@ -2085,12 +2371,15 @@ function connectWS() {
       api("/api/me").then((data) => {
         me = data.user;
         applyUnread(data.unread);
+        applyLiveStream(data.stream, false);
         renderChatTabs();
         if (me.mustChangePassword) {
           showGate("password");
           return;
         }
+        if (!me.streamer && pubStream) stopPublish();
         paintMyChannels();
+        paintStreamButtons();
         loadMixer().catch(() => {});
       }).catch(() => {});
       if (!me?.mustChangePassword) {
@@ -2102,7 +2391,11 @@ function connectWS() {
       }
     }
   };
-  ws.onclose = () => setTimeout(connectWS, 2000);
+  ws.onclose = () => {
+    if (memberWS === ws) memberWS = null;
+    resetLocalStream(true);
+    setTimeout(connectWS, 2000);
+  };
 }
 
 I18N.onChange(() => {
@@ -2116,6 +2409,7 @@ I18N.onChange(() => {
     paintMyChannels();
     renderChatTabs();
     paintNoticesButton();
+    paintStreamButtons();
     paintChatSize();
     if (document.getElementById("chat-dialog").open && chatRoom) {
       const date = chatRoom.startsWith("event:")
@@ -2671,6 +2965,21 @@ document.getElementById("archive-list").addEventListener("click", async (e) => {
 document.getElementById("archive-detail").addEventListener("click", (e) => {
   if (e.target.closest("[data-archive-back]")) {
     showArchiveList();
+    return;
+  }
+  const addLink = e.target.closest("[data-archive-add-link]");
+  if (addLink) {
+    const box = document.querySelector("[data-archive-id]");
+    if (!box) return;
+    const url = document.querySelector("[data-archive-link-url]")?.value || "";
+    const name = document.querySelector("[data-archive-link-name]")?.value || "";
+    api(`/api/archive/${encodeURIComponent(box.dataset.archiveId)}/links`, {
+      method: "POST",
+      body: JSON.stringify({ url, name }),
+    }).then(async (data) => {
+      await loadArchive();
+      await openArchiveItem(data.item.id);
+    }).catch((err) => alert(err.message));
     return;
   }
   const upload = e.target.closest("[data-archive-upload]");

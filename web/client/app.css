@@ -326,6 +326,7 @@ button.avatar {
 
 .header-chat,
 .header-notices,
+.header-stream,
 .menu-toggle {
   position: relative;
   display: inline-grid;
@@ -369,6 +370,62 @@ button.avatar {
   background: transparent;
   border-color: transparent;
   color: var(--ink);
+}
+.header-record-icon,
+.header-play-icon {
+  display: block;
+  width: 1.15rem;
+  height: 1.15rem;
+  background: currentColor;
+}
+.header-record-icon {
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='7' fill='black'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='7' fill='black'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.header-play-icon {
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M8 5.2v13.6L19.2 12 8 5.2z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M8 5.2v13.6L19.2 12 8 5.2z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.btn.ghost.header-record {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+}
+.btn.ghost.header-record:hover:not(:disabled) {
+  color: var(--danger);
+}
+.btn.ghost.header-record.on {
+  color: var(--danger);
+}
+.btn.ghost.header-record.on .header-record-icon {
+  animation: stream-pulse 1.2s ease-in-out infinite;
+}
+.btn.ghost.header-play {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+}
+.btn.ghost.header-play:hover:not(:disabled),
+.btn.ghost.header-play.live {
+  color: var(--accent);
+}
+.btn.ghost.header-play.live .header-play-icon {
+  animation: stream-pulse 1.2s ease-in-out infinite;
+}
+@keyframes stream-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.stream-dialog[open] {
+  width: min(720px, calc(100vw - 2rem));
+}
+.stream-dialog video {
+  display: block;
+  width: 100%;
+  max-height: min(70vh, 480px);
+  margin-top: 0.8rem;
+  background: #000;
+  border-radius: 0.6rem;
 }
 .notice-toast {
   position: fixed;

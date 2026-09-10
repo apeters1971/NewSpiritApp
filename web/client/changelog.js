@@ -4,6 +4,8 @@
       date: "2026-09-10",
       items: {
         de: [
+          "Streamer können oben mit Aufnehmen einen Live-Stream vom Computer oder Handy starten. Alle können mit Abspielen zuschauen. Die Streamer-Rolle steht im Profil in der Verwaltung.",
+          "Im Notenarchiv gibt es Share URL: YouTube, Spotify und ähnliche Links, ohne Datei.",
           "Oben schaltet eine rote Wecker-Glocke Benachrichtigungen — standardmäßig an. Neue Chats und Termine erscheinen als Hinweis in der App, solange sie offen ist.",
           "Das Changelog beginnt mit „New Spirit App (Author: AJP)“ und hat keinen Prompt mehr am Ende.",
           "Eigene Chat-Nachrichten haben unter dem Text ein Stift- und ein Papierkorb-Symbol — in der Mitglieder-App und in der Verwaltung.",
@@ -22,6 +24,8 @@
           "Sprachnachrichten im Chat mit automatischer Abschrift. Chorleiter können Kanäle haben.",
         ],
         en: [
+          "Streamers can start a live stream from a computer or phone with the Record button on top. Everyone can watch with Play. The streamer role is a checkbox on the person in the controller.",
+          "The music archive has Share URL: YouTube, Spotify, and similar links, with no file upload.",
           "A red alarm-clock icon in the header toggles notifications — on by default. New chats and dates show as a banner in the app while it is open.",
           "The changelog starts with “New Spirit App (Author: AJP)” and no longer ends with a prompt.",
           "Your chat messages have a pencil and a paper-bin icon under the text — in the member app and in the controller.",

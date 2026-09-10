@@ -87,6 +87,12 @@
           <button type="button" id="btn-header-notices" class="btn ghost header-notices on" aria-pressed="true" data-i18n-aria="noticesOn" aria-label="Benachrichtigungen an">
             <span class="header-notices-icon" aria-hidden="true"></span>
           </button>
+          <button type="button" id="btn-header-record" class="btn ghost header-stream header-record" hidden data-i18n-aria="streamStart" aria-label="Live-Stream starten">
+            <span class="header-record-icon" aria-hidden="true"></span>
+          </button>
+          <button type="button" id="btn-header-play" class="btn ghost header-stream header-play" disabled data-i18n-aria="streamPlay" aria-label="Live-Stream ansehen">
+            <span class="header-play-icon" aria-hidden="true"></span>
+          </button>
           <button type="button" id="btn-header-chat" class="btn ghost header-chat" hidden data-i18n-aria="chatBrand" aria-label="Chat">
             <span class="header-chat-icon" aria-hidden="true"></span>
             <span id="header-chat-unread" class="menu-unread" hidden></span>
@@ -346,6 +352,17 @@
     </div>
     <div id="titles-list" class="titles-list"></div>
     <div id="title-detail" class="title-detail" hidden></div>
+  </dialog>
+  <dialog id="stream-dialog" class="dialog stream-dialog">
+    <div class="dialog-head">
+      <div>
+        <p class="brand" data-i18n="streamBrand">Live</p>
+        <h2 id="stream-who">Live</h2>
+      </div>
+      <button type="button" id="stream-close" class="btn ghost" data-i18n="close">Schließen</button>
+    </div>
+    <video id="stream-video" autoplay playsinline></video>
+    <p id="stream-status" class="muted"></p>
   </dialog>
   <dialog id="changelog-dialog" class="dialog changelog-dialog">
     <div class="changelog-window">

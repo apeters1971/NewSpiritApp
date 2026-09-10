@@ -91,10 +91,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/archive/{id}", s.handleArchiveItem)
 	mux.HandleFunc("GET /api/archive/{id}/files/{fileId}", s.handleArchiveFile)
 	mux.HandleFunc("POST /api/archive/{id}/files", s.handleArchiveUpload)
+	mux.HandleFunc("POST /api/archive/{id}/links", s.handleArchiveAddLink)
 	mux.HandleFunc("GET /api/proposals", s.handleProposals)
 	mux.HandleFunc("POST /api/proposals", s.handleCreateProposal)
 	mux.HandleFunc("GET /api/directory", s.handleDirectory)
 	mux.HandleFunc("GET /api/me/calendar", s.handleMeCalendar)
+	mux.HandleFunc("GET /api/stream", s.handleStreamStatus)
 	mux.HandleFunc("GET /calendar/{token}", s.handleCalendarFeed)
 	mux.HandleFunc("GET /ws/client", s.handleMemberWS)
 
@@ -133,6 +135,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PATCH /api/controller/archive/{id}", s.handleControllerArchiveUpdate)
 	mux.HandleFunc("DELETE /api/controller/archive/{id}", s.handleControllerArchiveDelete)
 	mux.HandleFunc("POST /api/controller/archive/{id}/files", s.handleControllerArchiveUpload)
+	mux.HandleFunc("POST /api/controller/archive/{id}/links", s.handleControllerArchiveAddLink)
 	mux.HandleFunc("PATCH /api/controller/archive/{id}/files/{fileId}", s.handleControllerArchiveUpdateFile)
 	mux.HandleFunc("DELETE /api/controller/archive/{id}/files/{fileId}", s.handleControllerArchiveDeleteFile)
 	mux.HandleFunc("GET /api/controller/archive/{id}/files/{fileId}", s.handleControllerArchiveFile)
@@ -268,7 +271,7 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"user": user, "unread": unread})
+	writeJSON(w, http.StatusOK, map[string]any{"user": user, "unread": unread, "stream": s.Hub.LiveStream()})
 }
 
 func (s *Server) handleMePassword(w http.ResponseWriter, r *http.Request) {
@@ -1203,6 +1206,7 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		Phone    string `json:"phone"`
 		Birthday string `json:"birthday"`
 		AltEmail string `json:"altEmail"`
+		Streamer bool   `json:"streamer"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json")
@@ -1215,6 +1219,13 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Address != "" || body.Phone != "" || body.Birthday != "" || body.AltEmail != "" {
 		user, err = s.Store.SetUserInfo(user.ID, body.Address, body.Phone, body.Birthday, body.AltEmail)
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+	}
+	if body.Streamer {
+		user, err = s.Store.SetUserStreamer(user.ID, true)
 		if err != nil {
 			writeStoreError(w, err)
 			return
@@ -1234,12 +1245,18 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 		Role     string `json:"role"`
 		Subrole  string `json:"subrole"`
+		Streamer bool   `json:"streamer"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
 	user, err := s.Store.UpdateUser(r.PathValue("id"), body.Nickname, body.Email, body.Password, body.Role, body.Subrole)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	user, err = s.Store.SetUserStreamer(user.ID, body.Streamer)
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -1502,6 +1519,18 @@ func (s *Server) handleFreezePoll(w http.ResponseWriter, r *http.Request) {
 }
 
 func writeArchiveFile(w http.ResponseWriter, r *http.Request, f store.ArchiveFile) {
+	if f.Kind == store.ArchiveKindLink {
+		target := strings.TrimSpace(f.URL)
+		if target == "" {
+			target = strings.TrimSpace(string(f.Data))
+		}
+		if target == "" {
+			writeError(w, http.StatusNotFound, "not found")
+			return
+		}
+		http.Redirect(w, r, target, http.StatusFound)
+		return
+	}
 	w.Header().Set("Content-Type", f.MIME)
 	w.Header().Set("Cache-Control", "private, max-age=3600")
 	name := f.Name
@@ -1561,6 +1590,44 @@ func (s *Server) applyArchiveUpload(w http.ResponseWriter, r *http.Request, id, 
 	}
 	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
 	writeJSON(w, http.StatusOK, map[string]any{"item": item})
+}
+
+func (s *Server) applyArchiveLink(w http.ResponseWriter, r *http.Request, id, createdBy string, pending bool) {
+	var body struct {
+		URL  string `json:"url"`
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	var item store.ArchiveItem
+	var err error
+	if pending {
+		item, err = s.Store.AddMemberArchiveLink(id, body.Name, body.URL, createdBy)
+	} else {
+		item, err = s.Store.AddArchiveLink(id, body.Name, body.URL)
+	}
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusCreated, map[string]any{"item": item})
+}
+
+func (s *Server) handleArchiveAddLink(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	id := r.PathValue("id")
+	if err := s.Store.MemberCanAccessArchive(user.ID, id); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.applyArchiveLink(w, r, id, user.ID, true)
 }
 
 func (s *Server) handleArchiveUpload(w http.ResponseWriter, r *http.Request) {
@@ -1728,6 +1795,13 @@ func (s *Server) handleControllerArchiveUpload(w http.ResponseWriter, r *http.Re
 	s.applyArchiveUpload(w, r, r.PathValue("id"), "", false)
 }
 
+func (s *Server) handleControllerArchiveAddLink(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	s.applyArchiveLink(w, r, r.PathValue("id"), "", false)
+}
+
 func (s *Server) handleControllerArchiveUpdateFile(w http.ResponseWriter, r *http.Request) {
 	if !s.requireController(w, r) {
 		return
@@ -1735,12 +1809,21 @@ func (s *Server) handleControllerArchiveUpdateFile(w http.ResponseWriter, r *htt
 	var body struct {
 		Name string `json:"name"`
 		Role string `json:"role"`
+		URL  string `json:"url"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	item, err := s.Store.UpdateArchiveFile(r.PathValue("id"), r.PathValue("fileId"), body.Name, body.Role)
+	id := r.PathValue("id")
+	fileID := r.PathValue("fileId")
+	var item store.ArchiveItem
+	var err error
+	if strings.TrimSpace(body.URL) != "" {
+		item, err = s.Store.UpdateArchiveLink(id, fileID, body.Name, body.URL)
+	} else {
+		item, err = s.Store.UpdateArchiveFile(id, fileID, body.Name, body.Role)
+	}
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -1967,8 +2050,13 @@ func (s *Server) handleMemberWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c := s.Hub.RegisterMember(conn, user.ID, user.Role)
-	defer s.Hub.UnregisterMember(c)
-	s.readLoop(conn)
+	defer func() {
+		if s.Hub.StopStream(user.ID) {
+			s.Hub.Broadcast(hub.Envelope{Type: "streamEnded"})
+		}
+		s.Hub.UnregisterMember(c)
+	}()
+	s.readMemberLoop(conn, user)
 }
 
 func (s *Server) handleControllerWS(w http.ResponseWriter, r *http.Request) {

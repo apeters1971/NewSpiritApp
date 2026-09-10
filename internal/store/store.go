@@ -42,6 +42,7 @@ type User struct {
 	PhotoUpdatedAt     *time.Time `json:"photoUpdatedAt,omitempty"`
 	Channels           []Channel  `json:"channels,omitempty"`
 	MustChangePassword bool       `json:"mustChangePassword,omitempty"`
+	Streamer           bool       `json:"streamer"`
 	CreatedAt          time.Time  `json:"createdAt"`
 }
 
@@ -264,6 +265,7 @@ CREATE TABLE IF NOT EXISTS settings (
 	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN birthday TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN alt_email TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0`)
+	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN streamer INTEGER NOT NULL DEFAULT 0`)
 	_, _ = s.db.Exec(`
 CREATE TABLE IF NOT EXISTS chat_reactions (
   message_id TEXT NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
@@ -487,6 +489,16 @@ func (s *Store) UpdateUser(id, nickname, email, password, role, subrole string) 
 	return s.UserByID(id)
 }
 
+func (s *Store) SetUserStreamer(id string, on bool) (User, error) {
+	if _, err := s.UserByID(id); err != nil {
+		return User{}, err
+	}
+	if _, err := s.db.Exec(`UPDATE users SET streamer=? WHERE id=?`, boolInt(on), id); err != nil {
+		return User{}, err
+	}
+	return s.UserByID(id)
+}
+
 func (s *Store) ChangeOwnPassword(id, password string) (User, error) {
 	if len(password) < 6 {
 		return User{}, fmt.Errorf("password must be at least 6 characters")
@@ -574,7 +586,7 @@ func (s *Store) DeleteUser(id string) error {
 }
 
 func (s *Store) ListUsers() ([]User, error) {
-	rows, err := s.db.Query(`SELECT id, nickname, email, role, subrole, address, phone, alt_email, birthday, must_change_password, created_at FROM users ORDER BY nickname COLLATE NOCASE`)
+	rows, err := s.db.Query(`SELECT id, nickname, email, role, subrole, address, phone, alt_email, birthday, must_change_password, streamer, created_at FROM users ORDER BY nickname COLLATE NOCASE`)
 	if err != nil {
 		return nil, err
 	}
@@ -634,7 +646,7 @@ func (s *Store) ListDirectory() ([]DirectoryEntry, error) {
 }
 
 func (s *Store) UserByID(id string) (User, error) {
-	u, err := scanUserRow(s.db.QueryRow(`SELECT id, nickname, email, role, subrole, address, phone, alt_email, birthday, must_change_password, created_at FROM users WHERE id=?`, id))
+	u, err := scanUserRow(s.db.QueryRow(`SELECT id, nickname, email, role, subrole, address, phone, alt_email, birthday, must_change_password, streamer, created_at FROM users WHERE id=?`, id))
 	if err != nil {
 		return User{}, err
 	}
@@ -654,11 +666,11 @@ func (s *Store) Login(email, password string) (User, string, error) {
 	}
 	var u User
 	var hash, created string
-	var mustChange int
+	var mustChange, streamer int
 	err := s.db.QueryRow(
-		`SELECT id, nickname, email, password_hash, role, subrole, address, phone, alt_email, birthday, must_change_password, created_at FROM users WHERE email=?`,
+		`SELECT id, nickname, email, password_hash, role, subrole, address, phone, alt_email, birthday, must_change_password, streamer, created_at FROM users WHERE email=?`,
 		email,
-	).Scan(&u.ID, &u.Nickname, &u.Email, &hash, &u.Role, &u.Subrole, &u.Address, &u.Phone, &u.AltEmail, &u.Birthday, &mustChange, &created)
+	).Scan(&u.ID, &u.Nickname, &u.Email, &hash, &u.Role, &u.Subrole, &u.Address, &u.Phone, &u.AltEmail, &u.Birthday, &mustChange, &streamer, &created)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, "", ErrUnauthorized
 	}
@@ -670,6 +682,7 @@ func (s *Store) Login(email, password string) (User, string, error) {
 	}
 	u.CreatedAt = parseTime(created)
 	u.MustChangePassword = mustChange != 0
+	u.Streamer = streamer != 0
 	sid := newID()
 	if _, err := s.db.Exec(`INSERT INTO sessions(id, user_id, created_at) VALUES(?,?,?)`, sid, u.ID, fmtTime(now())); err != nil {
 		return User{}, "", err
@@ -688,7 +701,7 @@ func (s *Store) UserBySession(sessionID string) (User, error) {
 		return User{}, ErrUnauthorized
 	}
 	u, err := scanUserRow(s.db.QueryRow(`
-SELECT u.id, u.nickname, u.email, u.role, u.subrole, u.address, u.phone, u.alt_email, u.birthday, u.must_change_password, u.created_at
+SELECT u.id, u.nickname, u.email, u.role, u.subrole, u.address, u.phone, u.alt_email, u.birthday, u.must_change_password, u.streamer, u.created_at
 FROM sessions s
 JOIN users u ON u.id = s.user_id
 WHERE s.id=? AND s.revoked_at IS NULL`, sessionID))
@@ -1309,8 +1322,8 @@ type rowScanner interface {
 func scanUser(rs rowScanner) (User, error) {
 	var u User
 	var created string
-	var mustChange int
-	if err := rs.Scan(&u.ID, &u.Nickname, &u.Email, &u.Role, &u.Subrole, &u.Address, &u.Phone, &u.AltEmail, &u.Birthday, &mustChange, &created); err != nil {
+	var mustChange, streamer int
+	if err := rs.Scan(&u.ID, &u.Nickname, &u.Email, &u.Role, &u.Subrole, &u.Address, &u.Phone, &u.AltEmail, &u.Birthday, &mustChange, &streamer, &created); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return User{}, ErrNotFound
 		}
@@ -1318,6 +1331,7 @@ func scanUser(rs rowScanner) (User, error) {
 	}
 	u.CreatedAt = parseTime(created)
 	u.MustChangePassword = mustChange != 0
+	u.Streamer = streamer != 0
 	return u, nil
 }
 

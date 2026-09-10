@@ -2,11 +2,19 @@ package hub
 
 import (
 	"encoding/json"
+	"errors"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 )
+
+var ErrStreamBusy = errors.New("stream busy")
+
+type LiveStream struct {
+	UserID   string `json:"userId"`
+	Nickname string `json:"nickname"`
+}
 
 type Envelope struct {
 	Type string `json:"type"`
@@ -29,6 +37,7 @@ type Hub struct {
 	mu          sync.RWMutex
 	members     map[string]map[*Conn]struct{}
 	controllers map[*Conn]struct{}
+	live        *LiveStream
 }
 
 func New() *Hub {
@@ -116,6 +125,51 @@ func (h *Hub) BroadcastToRoles(roles []string, env Envelope) {
 		default:
 		}
 	}
+}
+
+func (h *Hub) SendToUser(userID string, env Envelope) {
+	raw, err := json.Marshal(env)
+	if err != nil {
+		return
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for c := range h.members[userID] {
+		select {
+		case c.send <- raw:
+		default:
+		}
+	}
+}
+
+func (h *Hub) StartStream(userID, nickname string) (LiveStream, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.live != nil && h.live.UserID != userID {
+		return LiveStream{}, ErrStreamBusy
+	}
+	h.live = &LiveStream{UserID: userID, Nickname: nickname}
+	return *h.live, nil
+}
+
+func (h *Hub) StopStream(userID string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.live == nil || h.live.UserID != userID {
+		return false
+	}
+	h.live = nil
+	return true
+}
+
+func (h *Hub) LiveStream() *LiveStream {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.live == nil {
+		return nil
+	}
+	copy := *h.live
+	return &copy
 }
 
 func (h *Hub) Broadcast(env Envelope) {
