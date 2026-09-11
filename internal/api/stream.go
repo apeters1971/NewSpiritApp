@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/apeters/newspirit/internal/hub"
@@ -41,11 +42,16 @@ func (s *Server) handleMemberStream(user store.User, raw []byte) {
 		Type string `json:"type"`
 		Data struct {
 			To        string          `json:"to"`
+			Kind      string          `json:"kind"`
 			SDP       json.RawMessage `json:"sdp"`
 			Candidate json.RawMessage `json:"candidate"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(raw, &msg); err != nil || msg.Type == "" {
+		return
+	}
+	if strings.HasPrefix(msg.Type, "call") {
+		s.handleMemberCall(user, msg.Type, msg.Data.To, msg.Data.Kind, msg.Data.SDP, msg.Data.Candidate)
 		return
 	}
 	switch msg.Type {

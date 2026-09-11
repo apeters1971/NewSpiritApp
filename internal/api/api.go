@@ -34,6 +34,8 @@ type Server struct {
 	upgrader            websocket.Upgrader
 	dmMu                sync.Mutex
 	dms                 map[string][]store.ChatMessage
+	callMu              sync.Mutex
+	calls               map[string]string
 }
 
 type Options struct {
@@ -52,6 +54,7 @@ func New(st *store.Store, h *hub.Hub, opt Options, clientFS, controllerFS fs.FS)
 		ClientFS:            clientFS,
 		ControllerFS:        controllerFS,
 		dms:                 map[string][]store.ChatMessage{},
+		calls:               map[string]string{},
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},
@@ -2197,6 +2200,12 @@ func (s *Server) handleMemberWS(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		if s.Hub.StopStream(user.ID) {
 			s.Hub.Broadcast(hub.Envelope{Type: "streamEnded"})
+		}
+		if peer := s.clearCall(user.ID); peer != "" {
+			s.Hub.SendToUser(peer, hub.Envelope{
+				Type: "callHangup",
+				Data: map[string]any{"from": user.ID, "nickname": user.Nickname},
+			})
 		}
 		s.Hub.UnregisterMember(c)
 		s.publishOnline()

@@ -529,7 +529,23 @@
         <p class="brand" data-i18n="chatBrand">Chat</p>
         <h2 id="chat-title">Chat</h2>
       </div>
-      <button type="button" id="chat-close" class="btn ghost" data-i18n="close">Schließen</button>
+      <div class="dialog-head-actions">
+        <div id="chat-call-actions" class="chat-call-actions" hidden>
+          <button type="button" id="chat-call-audio" class="chat-call-btn" data-i18n-aria="callAudio" aria-label="Anruf"></button>
+          <button type="button" id="chat-call-video" class="chat-call-btn video" data-i18n-aria="callVideo" aria-label="Videoanruf"></button>
+        </div>
+        <button type="button" id="chat-close" class="btn ghost" data-i18n="close">Schließen</button>
+      </div>
+    </div>
+    <div id="call-stage" class="call-stage" hidden>
+      <div class="call-videos">
+        <video id="call-remote" autoplay playsinline></video>
+        <video id="call-local" autoplay playsinline muted></video>
+      </div>
+      <div class="call-bar">
+        <p id="call-status" class="muted"></p>
+        <button type="button" id="call-hangup" class="btn call-hangup" data-i18n="callHangup">Auflegen</button>
+      </div>
     </div>
     <div id="chat-list" class="chat-list"></div>
     <form id="chat-form" class="chat-composer">
@@ -554,6 +570,15 @@
     <button type="button" id="chat-close-bottom" class="btn ghost chat-close-bottom" data-i18n="close">Schließen</button>
   </section>
   </section>
+  <dialog id="call-incoming" class="dialog call-incoming">
+    <p class="brand" data-i18n="callBrand">Anruf</p>
+    <h2 id="call-incoming-title"></h2>
+    <p id="call-incoming-text" class="muted"></p>
+    <div class="call-incoming-actions">
+      <button type="button" id="call-accept" class="btn" data-i18n="callAccept">Annehmen</button>
+      <button type="button" id="call-decline" class="btn ghost" data-i18n="callDecline">Ablehnen</button>
+    </div>
+  </dialog>
   <div id="notice-toast" class="notice-toast" hidden>
     <button type="button" id="notice-toast-open" class="notice-toast-open">
       <strong id="notice-toast-title"></strong>

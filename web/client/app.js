@@ -1459,6 +1459,7 @@ function leaveChatPane() {
     return;
   }
   const closing = chatRoom;
+  hangupCall(true);
   discardVoiceRecord();
   editingChatId = "";
   chatRoom = "";
@@ -2413,6 +2414,7 @@ function paintChatComposerMode() {
   document.getElementById("chat-form")?.classList.toggle("temp-dm", isDMRoom(chatRoom));
   const brand = document.querySelector("#chat-dialog .brand");
   if (brand) brand.textContent = I18N.t(isDMRoom(chatRoom) ? "chatPrivate" : "chatBrand");
+  paintChatCallActions();
 }
 
 let voiceRec = null;
@@ -2603,6 +2605,7 @@ async function openPrivateChat(peerId, nickname) {
   if (!me || !peerId || peerId === me.id) return;
   try {
     if (isDMRoom(chatRoom) && dmPeerId(chatRoom) !== peerId) {
+      hangupCall(true);
       await api(`/api/dms/${encodeURIComponent(dmPeerId(chatRoom))}/close`, { method: "POST" }).catch(() => {});
     }
     const data = await api(`/api/dms/${encodeURIComponent(peerId)}`, { method: "POST" });
@@ -2630,7 +2633,10 @@ function receiveDMClose(data) {
 async function openChat(room, title) {
   const event = room.startsWith("event:");
   if (!me || isDMRoom(room) || (!event && !canUseChatRoom(room))) return;
-  if (isDMRoom(chatRoom)) notifyDMClose(chatRoom);
+  if (isDMRoom(chatRoom)) {
+    hangupCall(true);
+    notifyDMClose(chatRoom);
+  }
   chatPeer = null;
   chatRoom = room;
   renderChatTabs();
@@ -2659,6 +2665,319 @@ function wsSend(obj) {
     memberWS.send(JSON.stringify(obj));
   }
 }
+
+let callSession = null;
+
+function dmRoomFor(a, b) {
+  if (!a || !b || a === b) return "";
+  return a < b ? `dm:${a}:${b}` : `dm:${b}:${a}`;
+}
+
+function paintChatCallActions() {
+  const box = document.getElementById("chat-call-actions");
+  if (box) box.hidden = !isDMRoom(chatRoom);
+  const busy = !!(callSession && callSession.state && callSession.state !== "ended");
+  ["chat-call-audio", "chat-call-video"].forEach((id) => {
+    const btn = document.getElementById(id);
+    if (btn) btn.disabled = busy;
+  });
+}
+
+function setCallStatus(key) {
+  const el = document.getElementById("call-status");
+  if (el) el.textContent = key ? I18N.t(key) : "";
+}
+
+function paintIncomingCall() {
+  const title = document.getElementById("call-incoming-title");
+  const text = document.getElementById("call-incoming-text");
+  const name = callSession?.peerName || I18N.t("callBrand");
+  if (title) title.textContent = name;
+  if (text) {
+    text.textContent = I18N.t(callSession?.kind === "video" ? "callIncomingVideo" : "callIncomingAudio");
+  }
+}
+
+function showCallStage() {
+  const stage = document.getElementById("call-stage");
+  if (!stage) return;
+  stage.hidden = false;
+  stage.classList.toggle("audio", callSession?.kind !== "video");
+  paintChatCallActions();
+}
+
+function hideCallStage() {
+  const stage = document.getElementById("call-stage");
+  if (stage) {
+    stage.hidden = true;
+    stage.classList.remove("audio");
+  }
+  const remote = document.getElementById("call-remote");
+  const local = document.getElementById("call-local");
+  if (remote) remote.srcObject = null;
+  if (local) local.srcObject = null;
+}
+
+function closeIncomingCall() {
+  const dialog = document.getElementById("call-incoming");
+  if (dialog?.open) dialog.close();
+}
+
+function stopCallMedia(session) {
+  session?.local?.getTracks().forEach((t) => t.stop());
+  if (session?.pc) {
+    session.pc.ontrack = null;
+    session.pc.onicecandidate = null;
+    session.pc.onconnectionstatechange = null;
+    session.pc.close();
+  }
+  if (session?.timer) clearTimeout(session.timer);
+}
+
+function teardownCall() {
+  stopCallMedia(callSession);
+  callSession = null;
+  closeIncomingCall();
+  hideCallStage();
+  paintChatCallActions();
+}
+
+function hangupCall(notify) {
+  const peer = callSession?.peerId;
+  const state = callSession?.state;
+  teardownCall();
+  if (notify && peer) {
+    const type = state === "out" ? "callCancel" : state === "in" ? "callDecline" : "callHangup";
+    wsSend({ type, data: { to: peer } });
+  }
+}
+
+async function attachCallMedia(kind) {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error(I18N.t("callNeedMedia"));
+  }
+  const video = kind === "video" ? { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } } : false;
+  return navigator.mediaDevices.getUserMedia({ audio: true, video });
+}
+
+function bindCallPeer(pc, peerId) {
+  pc.onicecandidate = (e) => {
+    if (e.candidate) wsSend({ type: "callIce", data: { to: peerId, candidate: e.candidate } });
+  };
+  pc.ontrack = (e) => {
+    const remote = document.getElementById("call-remote");
+    if (!remote) return;
+    remote.srcObject = e.streams[0] || new MediaStream([e.track]);
+    remote.play().catch(() => {});
+  };
+  pc.onconnectionstatechange = () => {
+    if (!callSession || callSession.pc !== pc) return;
+    if (pc.connectionState === "connected") setCallStatus("callActive");
+    if (["failed", "closed"].includes(pc.connectionState)) hangupCall(false);
+  };
+}
+
+async function flushCallIce(session) {
+  if (!session?.pc?.remoteDescription || !session.pendingIce?.length) return;
+  const queued = session.pendingIce.splice(0);
+  for (const candidate of queued) {
+    try { await session.pc.addIceCandidate(candidate); } catch {}
+  }
+}
+
+function startCallTimer() {
+  if (!callSession) return;
+  if (callSession.timer) clearTimeout(callSession.timer);
+  callSession.timer = setTimeout(() => {
+    if (callSession && (callSession.state === "out" || callSession.state === "in")) {
+      hangupCall(true);
+      setCallStatus("callBusy");
+    }
+  }, 40000);
+}
+
+async function startCall(kind) {
+  const peerId = chatPeer?.id || dmPeerId(chatRoom);
+  if (!me || !peerId || !isDMRoom(chatRoom)) return;
+  if (callSession) return;
+  kind = kind === "video" ? "video" : "audio";
+  let stream;
+  try {
+    stream = await attachCallMedia(kind);
+  } catch {
+    showError(document.getElementById("chat-error"), I18N.t("callNeedMedia"));
+    return;
+  }
+  const pc = new RTCPeerConnection(STREAM_ICE);
+  stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+  const local = document.getElementById("call-local");
+  if (local) {
+    local.srcObject = stream;
+    local.play().catch(() => {});
+  }
+  callSession = {
+    peerId,
+    peerName: chatPeer?.nickname || "",
+    kind,
+    state: "out",
+    pc,
+    local: stream,
+    pendingIce: [],
+  };
+  bindCallPeer(pc, peerId);
+  showCallStage();
+  setCallStatus("callCalling");
+  startCallTimer();
+  try {
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    wsSend({ type: "callInvite", data: { to: peerId, kind, sdp: pc.localDescription } });
+  } catch {
+    hangupCall(true);
+    showError(document.getElementById("chat-error"), I18N.t("callNeedMedia"));
+  }
+}
+
+function onCallInvite(data) {
+  const from = data?.from;
+  if (!from || !me || from === me.id) return;
+  if (callSession) {
+    wsSend({ type: "callBusy", data: { to: from } });
+    return;
+  }
+  callSession = {
+    peerId: from,
+    peerName: data.nickname || "",
+    kind: data.kind === "video" ? "video" : "audio",
+    state: "in",
+    offer: data.sdp,
+    pendingIce: [],
+  };
+  paintIncomingCall();
+  const dialog = document.getElementById("call-incoming");
+  if (dialog && !dialog.open) dialog.showModal();
+  startCallTimer();
+  showDesktopNotice(`${callSession.peerName} · ${I18N.t("callBrand")}`, I18N.t(callSession.kind === "video" ? "callIncomingVideo" : "callIncomingAudio"), {
+    kind: "call",
+    tag: `call:${from}`,
+  });
+}
+
+async function acceptCall() {
+  if (!callSession || callSession.state !== "in") return;
+  const { peerId, peerName, kind, offer } = callSession;
+  closeIncomingCall();
+  if (me && isDMRoom(chatRoom) && dmPeerId(chatRoom) !== peerId) {
+    notifyDMClose(chatRoom);
+  }
+  if (me && (!isDMRoom(chatRoom) || dmPeerId(chatRoom) !== peerId)) {
+    showEphemeralChat(dmRoomFor(me.id, peerId), { id: peerId, nickname: peerName }, []);
+  }
+  let stream;
+  try {
+    stream = await attachCallMedia(kind);
+  } catch {
+    wsSend({ type: "callDecline", data: { to: peerId } });
+    teardownCall();
+    showError(document.getElementById("chat-error"), I18N.t("callNeedMedia"));
+    return;
+  }
+  const pc = new RTCPeerConnection(STREAM_ICE);
+  stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+  const local = document.getElementById("call-local");
+  if (local) {
+    local.srcObject = stream;
+    local.play().catch(() => {});
+  }
+  callSession.pc = pc;
+  callSession.local = stream;
+  callSession.state = "up";
+  bindCallPeer(pc, peerId);
+  showCallStage();
+  setCallStatus("callConnecting");
+  try {
+    await pc.setRemoteDescription(offer);
+    await flushCallIce(callSession);
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    wsSend({ type: "callAnswer", data: { to: peerId, kind, sdp: pc.localDescription } });
+    if (callSession.timer) clearTimeout(callSession.timer);
+  } catch {
+    hangupCall(true);
+    showError(document.getElementById("chat-error"), I18N.t("callNeedMedia"));
+  }
+}
+
+function declineCall() {
+  const peer = callSession?.peerId;
+  teardownCall();
+  if (peer) wsSend({ type: "callDecline", data: { to: peer } });
+}
+
+async function onCallAnswer(data) {
+  if (!callSession || callSession.state !== "out" || data?.from !== callSession.peerId || !data?.sdp) return;
+  try {
+    await callSession.pc.setRemoteDescription(data.sdp);
+    callSession.state = "up";
+    if (callSession.timer) clearTimeout(callSession.timer);
+    setCallStatus("callConnecting");
+    await flushCallIce(callSession);
+  } catch {
+    hangupCall(true);
+  }
+}
+
+async function onCallIce(data) {
+  if (!callSession || data?.from !== callSession.peerId || !data?.candidate) return;
+  if (!callSession.pc || !callSession.pc.remoteDescription) {
+    callSession.pendingIce.push(data.candidate);
+    return;
+  }
+  try { await callSession.pc.addIceCandidate(data.candidate); } catch {}
+}
+
+function onCallEnded(status) {
+  teardownCall();
+  if (status && paneVisible("chat-dialog")) {
+    showError(document.getElementById("chat-error"), I18N.t(status));
+  }
+}
+
+function handleCallMessage(msg) {
+  switch (msg.type) {
+    case "callInvite":
+      onCallInvite(msg.data);
+      return true;
+    case "callAnswer":
+      onCallAnswer(msg.data);
+      return true;
+    case "callIce":
+      onCallIce(msg.data);
+      return true;
+    case "callDecline":
+      if (callSession && msg.data?.from === callSession.peerId) onCallEnded("callDeclined");
+      return true;
+    case "callBusy":
+      if (callSession && (!msg.data?.from || msg.data.from === callSession.peerId)) onCallEnded("callBusy");
+      return true;
+    case "callHangup":
+    case "callCancel":
+      if (callSession && msg.data?.from === callSession.peerId) onCallEnded("callEnded");
+      return true;
+    default:
+      return false;
+  }
+}
+
+document.getElementById("chat-call-audio")?.addEventListener("click", () => startCall("audio"));
+document.getElementById("chat-call-video")?.addEventListener("click", () => startCall("video"));
+document.getElementById("call-accept")?.addEventListener("click", () => acceptCall());
+document.getElementById("call-decline")?.addEventListener("click", () => declineCall());
+document.getElementById("call-hangup")?.addEventListener("click", () => hangupCall(true));
+document.getElementById("call-incoming")?.addEventListener("cancel", (e) => {
+  e.preventDefault();
+  declineCall();
+});
 
 function applyLiveStream(stream, announce) {
   const next = stream && stream.userId ? { userId: stream.userId, nickname: stream.nickname || "" } : null;
@@ -3040,6 +3359,7 @@ function connectWS() {
     let msg = {};
     try { msg = JSON.parse(ev.data); } catch { return; }
     if (handleStreamMessage(msg)) return;
+    if (handleCallMessage(msg)) return;
     if (msg.type === "online") {
       paintOnline(msg.data);
       return;
@@ -3098,6 +3418,7 @@ function connectWS() {
   ws.onclose = () => {
     if (memberWS === ws) memberWS = null;
     resetLocalStream(true);
+    hangupCall(false);
     setTimeout(connectWS, 2000);
   };
 }
@@ -3116,6 +3437,12 @@ I18N.onChange(() => {
     renderChatTabs();
     paintNoticesButton();
     paintStreamButtons();
+    paintChatCallActions();
+    if (document.getElementById("call-incoming")?.open) paintIncomingCall();
+    if (callSession && document.getElementById("call-stage") && !document.getElementById("call-stage").hidden) {
+      const key = callSession.state === "out" ? "callCalling" : callSession.state === "up" ? "callActive" : "callConnecting";
+      setCallStatus(key);
+    }
     paintChatSize();
     if (document.getElementById("stream-dialog").open) {
       const input = chatTextEl();
