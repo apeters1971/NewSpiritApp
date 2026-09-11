@@ -1083,34 +1083,93 @@ body.menu-open::before {
   gap: 0.75rem;
 }
 .call-bar #call-status { margin: 0; }
-.call-bar-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  flex: 0 0 auto;
+.call-fs-btn {
+  appearance: none;
+  position: absolute;
+  top: max(0.45rem, env(safe-area-inset-top, 0px));
+  right: max(0.45rem, env(safe-area-inset-right, 0px));
+  z-index: 3;
+  width: 2.4rem;
+  height: 2.4rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.45rem;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  cursor: pointer;
 }
-.chat-dialog.call-full .call-stage {
-  flex: 1 1 auto;
-  min-height: 0;
-  border-bottom: 0;
+.call-fs-btn:hover { background: rgba(0, 0, 0, 0.68); }
+.call-fs-btn::before {
+  content: "";
+  display: block;
+  width: 1.2rem;
+  height: 1.2rem;
+  margin: 0 auto;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z'/%3E%3C/svg%3E") center / contain no-repeat;
 }
-.chat-dialog.call-full .call-videos,
-.chat-dialog.call-full .call-videos video {
+.call-stage.full .call-fs-btn::before {
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.call-stage.full,
+.call-stage:fullscreen,
+.call-stage:-webkit-full-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  gap: 0;
+  border: 0;
+  background: #000;
+}
+.call-stage.full .call-videos,
+.call-stage:fullscreen .call-videos,
+.call-stage:-webkit-full-screen .call-videos {
   flex: 1 1 auto;
   min-height: 0;
   max-height: none;
+  height: auto;
+  border-radius: 0;
+}
+.call-stage.full .call-videos video,
+.call-stage:fullscreen .call-videos video,
+.call-stage:-webkit-full-screen .call-videos video {
+  min-height: 0;
+  max-height: none;
   height: 100%;
+  width: 100%;
+  object-fit: contain;
 }
-.chat-dialog.call-full .call-videos video { object-fit: contain; }
-.chat-dialog.call-full #call-local {
-  max-width: 12rem;
-  max-height: 9rem;
+.call-stage.full #call-local,
+.call-stage:fullscreen #call-local,
+.call-stage:-webkit-full-screen #call-local {
+  bottom: 4.6rem;
+  max-width: 8.5rem;
+  max-height: 11rem;
 }
-.chat-dialog.call-full .chat-list,
-.chat-dialog.call-full #chat-form,
-.chat-dialog.call-full #chat-close-bottom {
-  display: none;
+.call-stage.full .call-bar,
+.call-stage:fullscreen .call-bar,
+.call-stage:-webkit-full-screen .call-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  padding: 0.75rem 0.9rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.72));
 }
+.call-stage.full .call-bar #call-status,
+.call-stage:fullscreen .call-bar #call-status {
+  color: #fff;
+}
+body.call-fs { overflow: hidden; }
 .call-hangup {
   background: var(--danger);
   border-color: var(--danger);

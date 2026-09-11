@@ -2783,6 +2783,20 @@ function paintIncomingCall() {
   }
 }
 
+function fsElement() {
+  return document.fullscreenElement || document.webkitFullscreenElement || null;
+}
+
+function requestCallFs(el) {
+  const fn = el.requestFullscreen || el.webkitRequestFullscreen || el.webkitRequestFullScreen;
+  return fn ? Promise.resolve(fn.call(el)) : Promise.reject();
+}
+
+function exitCallFs() {
+  const fn = document.exitFullscreen || document.webkitExitFullscreen;
+  return fn && fsElement() ? Promise.resolve(fn.call(document)) : Promise.resolve();
+}
+
 function paintCallSize() {
   const btn = document.getElementById("call-size");
   const stage = document.getElementById("call-stage");
@@ -2790,13 +2804,42 @@ function paintCallSize() {
   const video = !!(callSession?.kind === "video" && !stage.hidden);
   btn.hidden = !video;
   const full = stage.classList.contains("full");
-  btn.textContent = I18N.t(full ? "callReduce" : "callExpand");
+  const label = I18N.t(full ? "callReduce" : "callExpand");
+  btn.setAttribute("aria-label", label);
   btn.setAttribute("aria-pressed", full ? "true" : "false");
 }
 
-function setCallFull(full) {
-  document.getElementById("chat-dialog")?.classList.toggle("call-full", full);
-  document.getElementById("call-stage")?.classList.toggle("full", full);
+let callFsLock = false;
+
+async function setCallFull(full) {
+  const stage = document.getElementById("call-stage");
+  if (!stage || callFsLock) return;
+  callFsLock = true;
+  try {
+    stage.classList.toggle("full", full);
+    document.body.classList.toggle("call-fs", full);
+    if (full) {
+      try { await requestCallFs(stage); } catch {}
+    } else {
+      try { await exitCallFs(); } catch {}
+    }
+  } finally {
+    callFsLock = false;
+    paintCallSize();
+  }
+}
+
+function syncCallFullscreen() {
+  const stage = document.getElementById("call-stage");
+  if (!stage) return;
+  const native = fsElement() === stage;
+  if (native) {
+    stage.classList.add("full");
+    document.body.classList.add("call-fs");
+  } else if (stage.classList.contains("full") && !callFsLock) {
+    stage.classList.remove("full");
+    document.body.classList.remove("call-fs");
+  }
   paintCallSize();
 }
 
@@ -3083,6 +3126,8 @@ document.getElementById("call-size")?.addEventListener("click", () => {
   const stage = document.getElementById("call-stage");
   setCallFull(!stage?.classList.contains("full"));
 });
+document.addEventListener("fullscreenchange", syncCallFullscreen);
+document.addEventListener("webkitfullscreenchange", syncCallFullscreen);
 document.getElementById("call-incoming")?.addEventListener("cancel", (e) => {
   e.preventDefault();
   declineCall();
