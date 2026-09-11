@@ -5,7 +5,10 @@
   --ink: #e8eef5;
   --muted: #93a1b3;
   --line: rgba(232, 238, 245, 0.12);
-  --accent: #3dd6c6;
+  --accent: #e28b98;
+  --accent-rgb: 226, 139, 152;
+  --gold: #d4b07a;
+  --gold-rgb: 212, 176, 122;
   --warn: #f0a35e;
   --danger: #f07178;
   --ok: #7fd99a;
@@ -14,13 +17,13 @@
   --chrome: #152028;
   --deep: #0c141a;
   --card: #101820;
-  --wash: #1d3a3a;
-  --on-accent: #062c28;
+  --wash: #3a2820;
+  --on-accent: #2a1216;
   --menu: rgba(10, 15, 20, 0.97);
   --overlay: rgba(8, 12, 16, 0.45);
   --scrim: rgba(8, 12, 16, 0.72);
   --bubble: #1c2a35;
-  --bubble-mine: #1a6b64;
+  --bubble-mine: #6e3a44;
   --tip: #1a242e;
   --faint: rgba(232, 238, 245, 0.45);
   --faint-strong: rgba(232, 238, 245, 0.62);
@@ -36,18 +39,21 @@ html[data-theme="light"] {
   --ink: #1c232b;
   --muted: #5a6876;
   --line: rgba(28, 35, 43, 0.12);
-  --accent: #1aa896;
+  --accent: #b24a5a;
+  --accent-rgb: 178, 74, 90;
+  --gold: #9a7040;
+  --gold-rgb: 154, 112, 64;
   --surface: #ffffff;
   --chrome: #ebe4d6;
   --deep: #f7f3ea;
   --card: #ffffff;
-  --wash: #c5e4de;
-  --on-accent: #062c28;
+  --wash: #edd6cc;
+  --on-accent: #fff6f4;
   --menu: rgba(255, 253, 248, 0.98);
   --overlay: rgba(40, 32, 24, 0.28);
   --scrim: rgba(40, 32, 24, 0.4);
   --bubble: #e4ebf0;
-  --bubble-mine: #b7e4dc;
+  --bubble-mine: #f0cdd2;
   --tip: #fffdf8;
   --faint: rgba(28, 35, 43, 0.42);
   --faint-strong: rgba(28, 35, 43, 0.55);
@@ -72,7 +78,7 @@ body {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   font-size: 0.75rem;
-  color: var(--accent);
+  color: var(--gold);
 }
 .muted { color: var(--muted); }
 .error { color: var(--danger); }
@@ -157,7 +163,7 @@ body {
   flex: 0 0 auto;
 }
 button.avatar { cursor: pointer; appearance: none; }
-.avatar.has-photo { border-style: solid; border-color: rgba(61, 214, 198, 0.45); background: #000; }
+.avatar.has-photo { border-style: solid; border-color: rgba(var(--accent-rgb), 0.45); background: #000; }
 .avatar img {
   width: 100%;
   height: 100%;
@@ -207,7 +213,7 @@ button.avatar { cursor: pointer; appearance: none; }
   font-size: 0.78rem;
   padding: 0.4rem 0.65rem;
 }
-.info-btn.has-info { border-color: rgba(61, 214, 198, 0.45); color: var(--accent); }
+.info-btn.has-info { border-color: rgba(var(--accent-rgb), 0.45); color: var(--accent); }
 .info-form label { display: block; margin: 0.55rem 0 0.3rem; font-size: 0.9rem; }
 .info-form input, .info-form textarea {
   width: 100%;
@@ -288,9 +294,9 @@ button.avatar { cursor: pointer; appearance: none; }
   gap: 0.4rem;
 }
 .btn.install {
-  background: rgba(61, 214, 198, 0.16);
+  background: rgba(var(--accent-rgb), 0.16);
   border-color: var(--accent);
-  color: #9eefe6;
+  color: #f0c4ca;
 }
 .btn.install-open::before {
   content: "";
@@ -316,11 +322,11 @@ button.avatar {
   a.btn:hover,
   .vote-row button:hover:not(:disabled) {
     filter: brightness(1.16);
-    box-shadow: 0 0 0 2px rgba(61, 214, 198, 0.5);
+    box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.5);
   }
   .btn.ghost:hover:not(:disabled) {
-    background: rgba(61, 214, 198, 0.12);
-    border-color: rgba(61, 214, 198, 0.55);
+    background: rgba(var(--accent-rgb), 0.12);
+    border-color: rgba(var(--accent-rgb), 0.55);
   }
   .btn.song:hover:not(:disabled) {
     background: rgba(196, 160, 255, 0.32);
@@ -344,7 +350,7 @@ button.avatar {
   }
   .btn.install:hover:not(:disabled),
   .btn.install-open:hover:not(:disabled) {
-    background: rgba(61, 214, 198, 0.28);
+    background: rgba(var(--accent-rgb), 0.28);
   }
   .btn.danger:hover:not(:disabled) {
     background: rgba(240, 113, 120, 0.14);
@@ -353,11 +359,11 @@ button.avatar {
   }
   .lang-btn:hover:not(:disabled):not(.on) {
     color: var(--ink);
-    background: rgba(61, 214, 198, 0.12);
+    background: rgba(var(--accent-rgb), 0.12);
   }
   button.avatar:hover {
     border-color: var(--accent);
-    box-shadow: 0 0 0 2px rgba(61, 214, 198, 0.4);
+    box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.4);
   }
   .chat-emoji-toggle:hover,
   .chat-emoji-panel button:hover,
@@ -368,7 +374,7 @@ button.avatar {
   .chat-voice-del:hover,
   .chat-rec-cancel:hover,
   .chat-rec-send:hover {
-    background: rgba(61, 214, 198, 0.16);
+    background: rgba(var(--accent-rgb), 0.16);
   }
 }
 
@@ -447,7 +453,7 @@ button.avatar {
 .app-tabs .header-tool.on,
 .app-tabs .btn.ghost.header-chat.on {
   color: var(--accent);
-  background: rgba(61, 214, 198, 0.14);
+  background: rgba(var(--accent-rgb), 0.14);
   border-color: transparent;
 }
 .app-tabs .btn.ghost.header-chat {
@@ -456,7 +462,7 @@ button.avatar {
   color: var(--ink);
 }
 .app-tabs .btn.ghost.header-chat:hover:not(:disabled) {
-  background: rgba(61, 214, 198, 0.12);
+  background: rgba(var(--accent-rgb), 0.12);
   border-color: transparent;
   color: var(--accent);
 }
@@ -523,7 +529,7 @@ button.avatar {
   color: var(--ink);
 }
 .btn.ghost.header-tool:hover:not(:disabled) {
-  background: rgba(61, 214, 198, 0.12);
+  background: rgba(var(--accent-rgb), 0.12);
   border-color: transparent;
   color: var(--accent);
 }
@@ -981,7 +987,7 @@ body.menu-open::before {
   padding: 0.7rem 0.65rem 0.45rem;
   margin: 0;
   background:
-    radial-gradient(700px 280px at 10% 0%, rgba(61, 214, 198, 0.06), transparent 55%),
+    radial-gradient(700px 280px at 10% 0%, rgba(var(--accent-rgb), 0.06), transparent 55%),
     var(--deep);
 }
 .chat-row {
@@ -1070,7 +1076,7 @@ body.menu-open::before {
 }
 .chat-edit-btn:hover {
   color: var(--accent);
-  background: rgba(61, 214, 198, 0.16);
+  background: rgba(var(--accent-rgb), 0.16);
 }
 .chat-edit-form { margin: 0.15rem 0 0; }
 .chat-edit-form textarea {
@@ -1113,8 +1119,8 @@ body.menu-open::before {
 }
 .chat-react span { margin-left: 0.18rem; color: var(--muted); }
 .chat-react.on {
-  border-color: rgba(61, 214, 198, 0.55);
-  background: rgba(61, 214, 198, 0.16);
+  border-color: rgba(var(--accent-rgb), 0.55);
+  background: rgba(var(--accent-rgb), 0.16);
 }
 .chat-react-add { padding: 0.1rem 0.32rem; }
 .chat-picker {
@@ -1161,7 +1167,7 @@ body.menu-open::before {
   cursor: pointer;
 }
 .chat-emoji-toggle[aria-expanded="true"] {
-  background: rgba(61, 214, 198, 0.16);
+  background: rgba(var(--accent-rgb), 0.16);
 }
 .chat-emoji-panel {
   position: absolute;
@@ -1423,8 +1429,8 @@ body.menu-open::before {
 }
 .spirit {
   margin-bottom: 1.25rem;
-  border: 1px solid rgba(61, 214, 198, 0.35);
-  background: linear-gradient(120deg, rgba(61, 214, 198, 0.16), var(--panel));
+  border: 1px solid rgba(var(--gold-rgb), 0.4);
+  background: linear-gradient(120deg, rgba(var(--gold-rgb), 0.22), rgba(var(--accent-rgb), 0.12), var(--panel));
   padding: 0.85rem 1rem;
 }
 .spirit .brand { margin-bottom: 0.25rem; }
@@ -1478,7 +1484,7 @@ body.menu-open::before {
   background: var(--panel);
   overflow: hidden;
 }
-.fold-channels { border-color: rgba(61, 214, 198, 0.35); }
+.fold-channels { border-color: rgba(var(--gold-rgb), 0.4); }
 .fold-next {
   border-color: rgba(240, 163, 94, 0.5);
   background: linear-gradient(120deg, rgba(240, 163, 94, 0.28), var(--panel));
@@ -1593,9 +1599,9 @@ body.menu-open::before {
   cursor: pointer;
 }
 .overview-item:last-child { border-bottom: 0; }
-.overview-item:hover { background: rgba(61, 214, 198, 0.08); }
+.overview-item:hover { background: rgba(var(--accent-rgb), 0.08); }
 .overview-item.current {
-  background: rgba(61, 214, 198, 0.12);
+  background: rgba(var(--accent-rgb), 0.12);
   box-shadow: inset 3px 0 0 var(--accent);
 }
 .overview-item.needs-vote {
@@ -1751,7 +1757,7 @@ p.notes { margin: 0.55rem 0 0; color: var(--muted); white-space: pre-wrap; }
   text-transform: uppercase;
   font-weight: 650;
 }
-.badge.voting { background: rgba(61, 214, 198, 0.16); color: var(--accent); }
+.badge.voting { background: rgba(var(--accent-rgb), 0.16); color: var(--accent); }
 .badge.accepted { background: rgba(127, 217, 154, 0.16); color: var(--ok); }
 .badge.cancelled { background: rgba(240, 113, 120, 0.16); color: var(--danger); }
 .badge.yes { background: rgba(127, 217, 154, 0.15); color: var(--ok); }
@@ -1845,8 +1851,8 @@ p.notes { margin: 0.55rem 0 0; color: var(--muted); white-space: pre-wrap; }
   cursor: pointer;
 }
 .icon-btn:hover:not(:disabled) {
-  background: rgba(61, 214, 198, 0.12);
-  border-color: rgba(61, 214, 198, 0.55);
+  background: rgba(var(--accent-rgb), 0.12);
+  border-color: rgba(var(--accent-rgb), 0.55);
 }
 .icon-btn:disabled { opacity: 0.4; cursor: default; }
 .icon-btn.copied { color: var(--ok); border-color: rgba(127, 217, 154, 0.55); }
@@ -1991,7 +1997,7 @@ p.notes { margin: 0.55rem 0 0; color: var(--muted); white-space: pre-wrap; }
   text-align: left;
   cursor: pointer;
 }
-.title-item:hover { background: rgba(61, 214, 198, 0.08); }
+.title-item:hover { background: rgba(var(--accent-rgb), 0.08); }
 .title-num {
   flex: 0 0 2.1rem;
   color: var(--muted);
@@ -2297,5 +2303,5 @@ html[data-theme="light"] .btn.song { color: #5b3d9e; }
 html[data-theme="light"] .btn.book { color: #246b40; }
 html[data-theme="light"] .btn.notes { color: #8a6910; }
 html[data-theme="light"] .btn.calendar { color: #2c508c; }
-html[data-theme="light"] .btn.install { color: #0d6b62; }
-html[data-theme="light"] .chat-row.mine .chat-bubble { color: #0d2f2b; }
+html[data-theme="light"] .btn.install { color: #8a3d48; }
+html[data-theme="light"] .chat-row.mine .chat-bubble { color: #3a1a20; }

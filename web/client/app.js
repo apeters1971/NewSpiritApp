@@ -76,7 +76,7 @@ const COMPOSE_EMOJIS = [
   "⭐", "✨", "🎉", "💯", "👀", "✅", "🎵", "🎶", "🎤", "🎸",
   "🎹", "🥁",
 ];
-const MEMBER_COLORS = ["#3dd6c6", "#f0a35e", "#8cb4ff", "#e38cff", "#7fd99a", "#f07178", "#ffd166", "#9ad0c8"];
+const MEMBER_COLORS = ["#e28b98", "#f0a35e", "#8cb4ff", "#e38cff", "#7fd99a", "#f07178", "#ffd166", "#d4b07a"];
 
 async function api(path, opts = {}) {
   const res = await fetch(path, {

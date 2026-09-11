@@ -4,9 +4,11 @@
       date: "2026-09-11",
       items: {
         de: [
+          "Farben folgen dem Logo: Gold für Marke und Flächen, Rose für Akzente — in Hell und Dunkel.",
           "Neben DE/EN gibt es ein Hell/Dunkel-Symbol. Dark bleibt Standard; Hell merkt sich das Gerät.",
         ],
         en: [
+          "Colors follow the logo: gold for the brand and washes, rose for accents — in light and dark.",
           "A sun/moon control next to DE/EN switches the current dark look to a light theme and remembers it.",
         ],
       },
