@@ -515,6 +515,23 @@ func TestChatRoom(t *testing.T) {
 	if _, err := st.SetAdminAlias(strings.Repeat("x", 41)); err == nil {
 		t.Fatal("expected long alias error")
 	}
+	if got := st.NewsTicker(); got != "" {
+		t.Fatalf("default ticker %q", got)
+	}
+	ticker, err := st.SetNewsTicker("  Probe fällt aus  ")
+	if err != nil || ticker != "Probe fällt aus" {
+		t.Fatalf("set ticker %q %v", ticker, err)
+	}
+	if got := st.NewsTicker(); got != "Probe fällt aus" {
+		t.Fatalf("read ticker %q", got)
+	}
+	cleared, err := st.SetNewsTicker("   ")
+	if err != nil || cleared != "" {
+		t.Fatalf("clear ticker %q %v", cleared, err)
+	}
+	if _, err := st.SetNewsTicker(strings.Repeat("x", 401)); err == nil {
+		t.Fatal("expected long ticker error")
+	}
 
 	edited, err := st.UpdateChatMessage(ada.ID, RoleChoir, msg.ID, "  Hello choir  ", false)
 	if err != nil || edited.Text != "Hello choir" {

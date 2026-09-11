@@ -1,6 +1,33 @@
 package hub
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
+
+func TestOnlineUserIDsCountsPeopleOnce(t *testing.T) {
+	h := New()
+	if n := h.OnlineCount(); n != 0 || len(h.OnlineUserIDs()) != 0 {
+		t.Fatalf("empty hub %d %v", n, h.OnlineUserIDs())
+	}
+	a1 := h.RegisterMember(nil, "ada", "choir")
+	a2 := h.RegisterMember(nil, "ada", "choir")
+	_ = h.RegisterMember(nil, "ben", "band")
+	ids := h.OnlineUserIDs()
+	slices.Sort(ids)
+	if h.OnlineCount() != 2 || len(ids) != 2 || ids[0] != "ada" || ids[1] != "ben" {
+		t.Fatalf("online %d %v", h.OnlineCount(), ids)
+	}
+	h.UnregisterMember(a1)
+	if h.OnlineCount() != 2 {
+		t.Fatalf("ada still online %d", h.OnlineCount())
+	}
+	h.UnregisterMember(a2)
+	ids = h.OnlineUserIDs()
+	if h.OnlineCount() != 1 || len(ids) != 1 || ids[0] != "ben" {
+		t.Fatalf("after ada left %d %v", h.OnlineCount(), ids)
+	}
+}
 
 func TestLiveStreamOneAtATime(t *testing.T) {
 	h := New()

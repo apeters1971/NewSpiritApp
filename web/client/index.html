@@ -100,6 +100,12 @@
             <button type="button" class="lang-btn" data-lang="de">DE</button>
             <button type="button" class="lang-btn" data-lang="en">EN</button>
           </div>
+          <div class="online-chip" id="online-chip" hidden>
+            <button type="button" class="online-chip-btn" id="online-chip-btn" aria-haspopup="true" aria-expanded="false" aria-controls="online-chip-list">
+              <span id="online-chip-label">0 online</span>
+            </button>
+            <ul id="online-chip-list" class="online-chip-list"></ul>
+          </div>
           <button type="button" class="btn ghost theme-toggle" data-theme-toggle aria-label="Hellmodus" aria-pressed="false">
             <span class="theme-toggle-icon" aria-hidden="true"></span>
           </button>
@@ -154,6 +160,9 @@
           <span id="header-chat-unread" class="menu-unread" hidden></span>
         </button>
       </nav>
+      <div id="news-ticker" class="news-ticker" hidden role="status" aria-live="polite" data-i18n-aria="newsTicker" aria-label="Lauftext">
+        <p class="news-ticker-text"></p>
+      </div>
     </header>
     <nav id="top-actions" class="top-actions">
       <div class="menu-head">

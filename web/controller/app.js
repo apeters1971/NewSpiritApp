@@ -554,8 +554,10 @@ async function loadState() {
 
 function fillSettingsForm() {
   const input = document.getElementById("admin-alias");
-  if (!input) return;
+  const ticker = document.getElementById("news-ticker");
+  if (!input || !ticker) return;
   input.value = state.adminAlias || "Admin";
+  ticker.value = state.newsTicker || "";
   showError(document.getElementById("settings-error"), "");
 }
 
@@ -2306,9 +2308,13 @@ document.getElementById("settings-form").addEventListener("submit", async (e) =>
   try {
     const data = await api("/api/controller/settings", {
       method: "PATCH",
-      body: JSON.stringify({ adminAlias: document.getElementById("admin-alias").value }),
+      body: JSON.stringify({
+        adminAlias: document.getElementById("admin-alias").value,
+        newsTicker: document.getElementById("news-ticker").value,
+      }),
     });
     state.adminAlias = data.adminAlias || "Admin";
+    state.newsTicker = data.newsTicker || "";
     fillSettingsForm();
     chatMessages.forEach((m) => {
       if (m.isAdmin) m.nickname = state.adminAlias;

@@ -98,6 +98,9 @@
       adminAlias: "Chat-Name der Verwaltung",
       adminAliasHint: "So erscheint die Verwaltung in den Chats, statt „Admin“.",
       errAdminAliasLong: "Chat-Name ist zu lang",
+      newsTicker: "Lauftext",
+      newsTickerHint: "Erscheint unter der Tab-Leiste bei allen Mitgliedern. Leer lassen zum Ausblenden.",
+      errNewsTickerLong: "Lauftext ist zu lang",
       noContacts: "Noch keine Kontakte.",
       spiritOfTheYear: "Spirit of the Year",
       spiritPoints: "Punkte",
@@ -525,6 +528,9 @@
       adminAlias: "Admin chat name",
       adminAliasHint: "This is how the controller appears in chats, instead of “Admin”.",
       errAdminAliasLong: "Chat name is too long",
+      newsTicker: "News ticker",
+      newsTickerHint: "Shown under the tab bar for every member. Leave empty to hide it.",
+      errNewsTickerLong: "News ticker is too long",
       noContacts: "No contacts yet.",
       spiritOfTheYear: "Spirit of the Year",
       spiritPoints: "points",
@@ -979,6 +985,7 @@
     if (raw.includes("unknown chat")) return t("errChatRoom");
     if (raw.includes("unknown reaction")) return t("errChatReact");
     if (raw.includes("admin alias is too long")) return t("errAdminAliasLong");
+    if (raw.includes("news ticker is too long")) return t("errNewsTickerLong");
     if (raw.includes("not for your role")) return t("errNotYourRole");
     if (raw.includes("poll is frozen")) return t("errPollFrozen");
     if (raw.includes("poll option")) return t("errPollVote");

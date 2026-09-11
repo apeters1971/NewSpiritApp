@@ -46,6 +46,11 @@ type User struct {
 	CreatedAt          time.Time  `json:"createdAt"`
 }
 
+type OnlinePerson struct {
+	ID       string `json:"id"`
+	Nickname string `json:"nickname"`
+}
+
 type DirectoryEntry struct {
 	ID             string     `json:"id"`
 	Nickname       string     `json:"nickname"`
@@ -583,6 +588,46 @@ func (s *Store) DeleteUser(id string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (s *Store) PeopleByIDs(ids []string) ([]OnlinePerson, error) {
+	if len(ids) == 0 {
+		return []OnlinePerson{}, nil
+	}
+	seen := map[string]struct{}{}
+	args := make([]any, 0, len(ids))
+	ph := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		args = append(args, id)
+		ph = append(ph, "?")
+	}
+	if len(args) == 0 {
+		return []OnlinePerson{}, nil
+	}
+	rows, err := s.db.Query(
+		`SELECT id, nickname FROM users WHERE id IN (`+strings.Join(ph, ",")+`) ORDER BY nickname COLLATE NOCASE`,
+		args...,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []OnlinePerson{}
+	for rows.Next() {
+		var p OnlinePerson
+		if err := rows.Scan(&p.ID, &p.Nickname); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) ListUsers() ([]User, error) {

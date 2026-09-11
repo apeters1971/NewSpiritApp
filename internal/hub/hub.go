@@ -93,6 +93,16 @@ func (h *Hub) OnlineCount() int {
 	return len(h.members)
 }
 
+func (h *Hub) OnlineUserIDs() []string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	ids := make([]string, 0, len(h.members))
+	for id := range h.members {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
 func (h *Hub) BroadcastToRole(role string, env Envelope) {
 	h.BroadcastToRoles([]string{role}, env)
 }
@@ -196,6 +206,9 @@ func (h *Hub) Broadcast(env Envelope) {
 }
 
 func (h *Hub) writer(c *Conn) {
+	if c.conn == nil {
+		return
+	}
 	ticker := time.NewTicker(25 * time.Second)
 	defer ticker.Stop()
 	for {

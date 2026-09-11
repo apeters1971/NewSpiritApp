@@ -1129,6 +1129,91 @@ function showGate(which) {
   if (which !== "app") showTab("home");
 }
 
+let newsTickerRun = 0;
+let newsTickerPause = false;
+let newsTickerWait = 0;
+
+function stopNewsTicker(bar) {
+  newsTickerRun += 1;
+  if (newsTickerWait) {
+    clearTimeout(newsTickerWait);
+    newsTickerWait = 0;
+  }
+  bar?.querySelector(".news-ticker-text")?.getAnimations().forEach((anim) => anim.cancel());
+}
+
+function paintNewsTicker(text) {
+  const bar = document.getElementById("news-ticker");
+  if (!bar) return;
+  const el = bar.querySelector(".news-ticker-text");
+  if (!el) return;
+  const clean = String(text || "").trim();
+  stopNewsTicker(bar);
+  const runId = newsTickerRun;
+  if (!clean) {
+    el.textContent = "";
+    bar.hidden = true;
+    return;
+  }
+  el.textContent = clean;
+  bar.hidden = false;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+  const cycle = () => {
+    if (runId !== newsTickerRun || bar.hidden) return;
+    const from = bar.clientWidth;
+    const to = -el.scrollWidth;
+    const ms = Math.max(8000, ((from - to) / 80) * 1000);
+    const anim = el.animate(
+      [{ transform: `translateX(${from}px)` }, { transform: `translateX(${to}px)` }],
+      { duration: ms, easing: "linear", fill: "forwards" },
+    );
+    if (newsTickerPause) anim.pause();
+    anim.finished.then(() => {
+      if (runId !== newsTickerRun) return;
+      newsTickerWait = window.setTimeout(cycle, 2000);
+    }).catch(() => {});
+  };
+  requestAnimationFrame(cycle);
+}
+
+(() => {
+  const bar = document.getElementById("news-ticker");
+  if (!bar) return;
+  bar.addEventListener("mouseenter", () => {
+    newsTickerPause = true;
+    bar.querySelector(".news-ticker-text")?.getAnimations().forEach((anim) => anim.pause());
+  });
+  bar.addEventListener("mouseleave", () => {
+    newsTickerPause = false;
+    bar.querySelector(".news-ticker-text")?.getAnimations().forEach((anim) => anim.play());
+  });
+  window.addEventListener("resize", () => {
+    if (bar.hidden) return;
+    paintNewsTicker(bar.querySelector(".news-ticker-text")?.textContent || "");
+  });
+})();
+
+let onlinePeople = [];
+
+function paintOnline(people) {
+  if (Array.isArray(people)) onlinePeople = people;
+  const chip = document.getElementById("online-chip");
+  const label = document.getElementById("online-chip-label");
+  const list = document.getElementById("online-chip-list");
+  const btn = document.getElementById("online-chip-btn");
+  if (!chip || !label || !list) return;
+  const n = onlinePeople.length;
+  label.textContent = `${n} ${I18N.t("online")}`;
+  if (btn) btn.setAttribute("aria-label", label.textContent);
+  list.replaceChildren(...onlinePeople.map((p) => {
+    const li = document.createElement("li");
+    li.textContent = p.nickname || p.id || "";
+    return li;
+  }));
+  chip.hidden = false;
+}
+
 async function enterApp() {
   showGate("app");
   document.getElementById("who-name").textContent = me.nickname;
@@ -1138,6 +1223,7 @@ async function enterApp() {
   paintMyChannels();
   renderChatTabs();
   paintStreamButtons();
+  api("/api/me").then((data) => paintNewsTicker(data.newsTicker)).catch(() => {});
   showTab("home");
   await loadDates();
   await loadMixer().catch(() => {});
@@ -1212,6 +1298,8 @@ async function boot() {
     me = data.user;
     applyUnread(data.unread);
     applyLiveStream(data.stream, false);
+    paintNewsTicker(data.newsTicker);
+    paintOnline(data.online);
     if (me.mustChangePassword) {
       showGate("password");
       document.getElementById("pw-new").value = "";
@@ -2830,6 +2918,10 @@ function connectWS() {
     let msg = {};
     try { msg = JSON.parse(ev.data); } catch { return; }
     if (handleStreamMessage(msg)) return;
+    if (msg.type === "online") {
+      paintOnline(msg.data);
+      return;
+    }
     if (msg.type === "chat") {
       noteChatMessage(msg.data);
       if (chatRoom && msg.data?.room === chatRoom) appendChat(msg.data);
@@ -2852,6 +2944,8 @@ function connectWS() {
         me = data.user;
         applyUnread(data.unread);
         applyLiveStream(data.stream, false);
+        paintNewsTicker(data.newsTicker);
+        paintOnline(data.online);
         renderChatTabs();
         if (me.mustChangePassword) {
           showGate("password");
@@ -2882,6 +2976,7 @@ I18N.onChange(() => {
   I18N.apply();
   paintThemeButtons();
   paintInstallButtons();
+  paintOnline();
   if (me && !me.mustChangePassword) {
     document.getElementById("who-name").textContent = me.nickname;
     document.getElementById("who-meta").textContent = `${I18N.role(me.role)} · ${I18N.subrole(me.subrole)} · ${me.email}`;

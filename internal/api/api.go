@@ -271,7 +271,13 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"user": user, "unread": unread, "stream": s.Hub.LiveStream()})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"user":       user,
+		"unread":     unread,
+		"stream":     s.Hub.LiveStream(),
+		"newsTicker": s.Store.NewsTicker(),
+		"online":     s.onlinePeople(),
+	})
 }
 
 func (s *Server) handleMePassword(w http.ResponseWriter, r *http.Request) {
@@ -1168,6 +1174,7 @@ func (s *Server) handleControllerState(w http.ResponseWriter, r *http.Request) {
 		"online":     s.Hub.OnlineCount(),
 		"ranking":    rank,
 		"adminAlias": s.Store.AdminAlias(),
+		"newsTicker": s.Store.NewsTicker(),
 		"archive":    archive,
 		"channels":   channels,
 		"proposals":  proposals,
@@ -1181,6 +1188,7 @@ func (s *Server) handleControllerSettings(w http.ResponseWriter, r *http.Request
 	}
 	var body struct {
 		AdminAlias string `json:"adminAlias"`
+		NewsTicker string `json:"newsTicker"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json")
@@ -1191,7 +1199,13 @@ func (s *Server) handleControllerSettings(w http.ResponseWriter, r *http.Request
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"adminAlias": alias})
+	ticker, err := s.Store.SetNewsTicker(body.NewsTicker)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"adminAlias": alias, "newsTicker": ticker})
 }
 
 func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
@@ -2052,11 +2066,13 @@ func (s *Server) handleMemberWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c := s.Hub.RegisterMember(conn, user.ID, user.Role)
+	s.publishOnline()
 	defer func() {
 		if s.Hub.StopStream(user.ID) {
 			s.Hub.Broadcast(hub.Envelope{Type: "streamEnded"})
 		}
 		s.Hub.UnregisterMember(c)
+		s.publishOnline()
 	}()
 	s.readMemberLoop(conn, user)
 }
@@ -2133,6 +2149,18 @@ func serveFSFile(w http.ResponseWriter, r *http.Request, fsys fs.FS, name string
 		return
 	}
 	http.ServeContent(w, r, name, stat.ModTime(), bytes.NewReader(raw))
+}
+
+func (s *Server) onlinePeople() []store.OnlinePerson {
+	people, err := s.Store.PeopleByIDs(s.Hub.OnlineUserIDs())
+	if err != nil {
+		return []store.OnlinePerson{}
+	}
+	return people
+}
+
+func (s *Server) publishOnline() {
+	s.Hub.Broadcast(hub.Envelope{Type: "online", Data: s.onlinePeople()})
 }
 
 func writeStoreError(w http.ResponseWriter, err error) {

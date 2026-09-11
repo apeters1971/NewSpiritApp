@@ -835,7 +835,7 @@ button.avatar {
 .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 .tab-panel > h2 { margin: 0 0 0.7rem; font-size: 1.2rem; }
 .settings-form {
-  max-width: 28rem;
+  max-width: 36rem;
   position: static;
 }
 .settings-form .muted { margin: 0 0 0.65rem; }
