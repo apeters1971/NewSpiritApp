@@ -735,10 +735,27 @@ function archiveRoleLabel(role) {
 }
 
 function archiveKindAccept(kind) {
-  if (kind === "audio" || kind === "tracks") return "audio/*";
+  if (kind === "audio" || kind === "tracks") return ".mp3,.m4a,.wav,.aac,.ogg,.flac,.aiff,.aif,.caf";
   if (kind === "lyrics") return "application/pdf,text/plain,image/*";
   if (kind === "midi") return ".mid,.midi,.kar,.xml,.musicxml,.mxl,audio/midi,application/xml,application/vnd.recordare.musicxml+xml,application/vnd.recordare.musicxml";
   return "application/pdf,image/*";
+}
+
+function openArchiveFilePicker(id, kind, accept, extra) {
+  const old = document.getElementById(id);
+  if (!old) return null;
+  const input = old.cloneNode(false);
+  input.removeAttribute("capture");
+  input.multiple = false;
+  input.accept = accept || "";
+  input.value = "";
+  input.dataset.kind = kind;
+  Object.entries(extra || {}).forEach(([key, value]) => {
+    if (value) input.dataset[key] = value;
+    else delete input.dataset[key];
+  });
+  old.replaceWith(input);
+  return input;
 }
 
 function archiveFilesOf(item, kind) {
@@ -2634,11 +2651,10 @@ document.getElementById("archive-files").addEventListener("click", (e) => {
   }
   const upload = e.target.closest("[data-upload]");
   if (upload && selectedArchive) {
-    const input = document.getElementById("archive-file");
-    input.dataset.kind = upload.dataset.upload;
-    input.dataset.role = upload.dataset.role || "";
-    input.accept = upload.dataset.accept || "";
-    input.value = "";
+    const kind = upload.dataset.upload;
+    const input = openArchiveFilePicker("archive-file", kind, upload.dataset.accept || archiveKindAccept(kind), { role: upload.dataset.role || "" });
+    if (!input) return;
+    input.addEventListener("change", onControllerArchiveFile);
     input.click();
     return;
   }
@@ -2679,7 +2695,7 @@ document.getElementById("archive-files").addEventListener("change", async (e) =>
   }
 });
 
-document.getElementById("archive-file").addEventListener("change", async (e) => {
+async function onControllerArchiveFile(e) {
   const file = e.target.files?.[0];
   const kind = e.target.dataset.kind;
   if (!file || !kind || !selectedArchive) return;
@@ -2692,7 +2708,8 @@ document.getElementById("archive-file").addEventListener("change", async (e) => 
     showError(document.getElementById("archive-error"), err.message);
   }
   e.target.value = "";
-});
+}
+document.getElementById("archive-file").addEventListener("change", onControllerArchiveFile);
 
 document.getElementById("inherit-titles").addEventListener("change", (e) => {
   const d = state.dates.find((x) => x.id === e.target.value);

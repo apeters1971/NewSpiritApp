@@ -791,10 +791,27 @@ function archiveFileLabel(file, kindLabel) {
 }
 
 function archiveKindAccept(kind) {
-  if (kind === "audio" || kind === "tracks") return "audio/*";
+  if (kind === "audio" || kind === "tracks") return ".mp3,.m4a,.wav,.aac,.ogg,.flac,.aiff,.aif,.caf";
   if (kind === "lyrics") return "application/pdf,text/plain,image/*";
   if (kind === "midi") return ".mid,.midi,.kar,.xml,.musicxml,.mxl,audio/midi,application/xml,application/vnd.recordare.musicxml+xml,application/vnd.recordare.musicxml";
   return "application/pdf,image/*";
+}
+
+function openArchiveFilePicker(id, kind, accept, extra) {
+  const old = document.getElementById(id);
+  if (!old) return null;
+  const input = old.cloneNode(false);
+  input.removeAttribute("capture");
+  input.multiple = false;
+  input.accept = accept || "";
+  input.value = "";
+  input.dataset.kind = kind;
+  Object.entries(extra || {}).forEach(([key, value]) => {
+    if (value) input.dataset[key] = value;
+    else delete input.dataset[key];
+  });
+  old.replaceWith(input);
+  return input;
 }
 
 function archiveManageHTML(item) {
@@ -4772,11 +4789,10 @@ document.getElementById("archive-detail").addEventListener("click", (e) => {
   }
   const upload = e.target.closest("[data-archive-upload]");
   if (!upload) return;
-  const input = document.getElementById("archive-member-file");
-  input.dataset.kind = upload.dataset.archiveUpload;
-  input.dataset.accept = upload.dataset.accept || "";
-  input.accept = upload.dataset.accept || "";
-  input.value = "";
+  const kind = upload.dataset.archiveUpload;
+  const input = openArchiveFilePicker("archive-member-file", kind, upload.dataset.accept || archiveKindAccept(kind));
+  if (!input) return;
+  input.addEventListener("change", onArchiveMemberFile);
   input.click();
 });
 
@@ -4803,7 +4819,7 @@ document.getElementById("archive-create").addEventListener("submit", async (e) =
   }
 });
 
-document.getElementById("archive-member-file").addEventListener("change", async (e) => {
+async function onArchiveMemberFile(e) {
   const input = e.target;
   const file = input.files?.[0];
   const kind = input.dataset.kind;
@@ -4829,7 +4845,8 @@ document.getElementById("archive-member-file").addEventListener("change", async 
   } finally {
     input.value = "";
   }
-});
+}
+document.getElementById("archive-member-file").addEventListener("change", onArchiveMemberFile);
 
 document.getElementById("directory-close").addEventListener("click", () => {
   showTab("home");
