@@ -420,6 +420,7 @@ function renderDateDetail() {
       <button type="button" class="btn ghost" id="btn-titles">${I18N.t("titles")}${(d.titles || []).length ? ` (${d.titles.length})` : ""}</button>
       ${d.chatOpen ? `<button type="button" class="btn ghost" id="btn-event-chat">${I18N.t("eventChat")}</button>` : ""}
       <button type="button" class="btn ghost" id="btn-gallery">${I18N.t("gallery")}${d.galleryCount ? ` (${d.galleryCount})` : ""}</button>
+      <button type="button" class="btn ghost" id="btn-promo">${I18N.t("promo")}${d.promoCount ? ` (${d.promoCount})` : ""}</button>
     </div>`;
 }
 

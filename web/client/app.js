@@ -299,6 +299,7 @@ function renderDate(date) {
       <button type="button" class="btn ghost" data-titles="${date.id}">${I18N.t("titles")}${(date.titles || []).length ? ` (${date.titles.length})` : ""}</button>
       ${date.chatOpen ? `<button type="button" class="btn ghost" data-event-chat="${date.id}">${I18N.t("eventChat")}</button>` : ""}
       <button type="button" class="btn ghost" data-gallery="${date.id}">${I18N.t("gallery")}${date.galleryCount ? ` (${date.galleryCount})` : ""}</button>
+      <button type="button" class="btn ghost" data-promo="${date.id}">${I18N.t("promo")}${date.promoCount ? ` (${date.promoCount})` : ""}</button>
     </div>
     ${pollOpen(date) ? "" : renderCounts(date)}
     ${pollOpen(date) ? "" : renderRoster(date)}
@@ -593,6 +594,7 @@ function renderNextUp() {
         <button type="button" class="btn ghost" data-titles="${next.id}">${I18N.t("titles")}</button>
         <button type="button" class="btn ghost" data-event-chat="${next.id}">${I18N.t("chatBrand")}</button>
         <button type="button" class="btn ghost" data-gallery="${next.id}">${I18N.t("gallery")}${next.galleryCount ? ` (${next.galleryCount})` : ""}</button>
+        <button type="button" class="btn ghost" data-promo="${next.id}">${I18N.t("promo")}${next.promoCount ? ` (${next.promoCount})` : ""}</button>
       </div>
     </div>
     ${next.schedule ? `<div class="schedule-box">

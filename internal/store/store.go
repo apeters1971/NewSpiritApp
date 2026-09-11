@@ -128,6 +128,7 @@ type DateView struct {
 	ChatOpen      bool           `json:"chatOpen"`
 	Titles        []ArchiveItem  `json:"titles"`
 	GalleryCount  int            `json:"galleryCount"`
+	PromoCount    int            `json:"promoCount"`
 }
 
 func Open(path string) (*Store, error) {
@@ -300,6 +301,9 @@ CREATE TABLE IF NOT EXISTS settings (
 		return err
 	}
 	if err := s.migrateGallery(); err != nil {
+		return err
+	}
+	if err := s.migratePromo(); err != nil {
 		return err
 	}
 	if err := s.migrateAbsences(); err != nil {
@@ -947,6 +951,7 @@ func (s *Store) DeleteDate(id string) error {
 		return ErrNotFound
 	}
 	_ = s.removeGalleryDir(id)
+	_ = s.removePromoDir(id)
 	return nil
 }
 
@@ -1102,6 +1107,11 @@ func (s *Store) DateView(id string, viewer *User) (DateView, error) {
 		return DateView{}, err
 	}
 	view.GalleryCount = counts[id]
+	promoCounts, err := s.promoCounts([]string{id})
+	if err != nil {
+		return DateView{}, err
+	}
+	view.PromoCount = promoCounts[id]
 	return view, nil
 }
 
@@ -1129,6 +1139,10 @@ func (s *Store) ListDateViews(viewer *User) ([]DateView, error) {
 	if err != nil {
 		return nil, err
 	}
+	promoCounts, err := s.promoCounts(ids)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]DateView, 0, len(ids))
 	for _, d := range dates {
 		if viewer != nil && !RoleSeesDate(viewer.Role, d.Roles) {
@@ -1139,6 +1153,7 @@ func (s *Store) ListDateViews(viewer *User) ([]DateView, error) {
 			return nil, err
 		}
 		v.GalleryCount = galleryCounts[d.ID]
+		v.PromoCount = promoCounts[d.ID]
 		out = append(out, v)
 	}
 	return out, nil

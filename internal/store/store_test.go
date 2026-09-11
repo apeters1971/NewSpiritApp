@@ -1282,6 +1282,98 @@ func TestGallery(t *testing.T) {
 	}
 }
 
+func TestPromo(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "promo.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	ada, err := st.CreateUser("Ada", "ada@example.com", "secret1", RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	band, err := st.CreateUser("Cara", "cara@example.com", "secret1", RoleBand, "Drums")
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Date(2026, 9, 20, 18, 0, 0, 0, time.UTC)
+	d, err := st.CreateDate("Sunday concert", CategoryConcert, start, nil, "Hall", "", "", []string{RoleChoir}, Bring{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.MemberCanSeeDate(ada, d.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.MemberCanSeeDate(band, d.ID); err == nil {
+		t.Fatal("band should not see choir date")
+	}
+
+	ticket, err := st.AddPromoTicket(d.ID, "Ticketshop", "https://tickets.example.com/ns")
+	if err != nil || ticket.Kind != PromoKindTicket || ticket.URL != "https://tickets.example.com/ns" || ticket.Name != "Ticketshop" {
+		t.Fatalf("ticket %+v %v", ticket, err)
+	}
+	if _, err := st.AddPromoTicket(d.ID, "Bad", "ftp://nope.example"); err == nil {
+		t.Fatal("expected rejected url")
+	}
+	if _, err := st.AddPromoTicket(d.ID, "Bad", "not-a-url"); err == nil {
+		t.Fatal("expected rejected url")
+	}
+
+	img := image.NewRGBA(image.Rect(0, 0, 8, 8))
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, nil); err != nil {
+		t.Fatal(err)
+	}
+	flyer, err := st.AddPromoFile(d.ID, PromoKindFlyer, "sommer.jpg", bytes.NewReader(buf.Bytes()))
+	if err != nil || flyer.Kind != PromoKindFlyer || flyer.MIME != "image/jpeg" {
+		t.Fatalf("flyer %+v %v", flyer, err)
+	}
+	if _, err := st.AddPromoFile(d.ID, PromoKindFlyer, "notes.txt", bytes.NewReader([]byte("hello"))); err == nil {
+		t.Fatal("expected rejected type")
+	}
+	if _, err := st.AddPromoFile(d.ID, PromoKindTicket, "x.jpg", bytes.NewReader(buf.Bytes())); err == nil {
+		t.Fatal("expected rejected kind")
+	}
+	pdf := []byte("%PDF-1.1\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n")
+	poster, err := st.AddPromoFile(d.ID, PromoKindPoster, "plakat.pdf", bytes.NewReader(pdf))
+	if err != nil || poster.MIME != "application/pdf" {
+		t.Fatalf("poster %+v %v", poster, err)
+	}
+
+	view, err := st.DateView(d.ID, &ada)
+	if err != nil || view.PromoCount != 3 {
+		t.Fatalf("count %d %v", view.PromoCount, err)
+	}
+	list, err := st.ListPromo(d.ID)
+	if err != nil || len(list) != 3 {
+		t.Fatalf("list %+v %v", list, err)
+	}
+	got, path, err := st.PromoFilePath(d.ID, flyer.ID)
+	if err != nil || got.ID != flyer.ID || path == "" {
+		t.Fatalf("file %+v %q %v", got, path, err)
+	}
+	if _, _, err := st.PromoFilePath(d.ID, ticket.ID); err != ErrNotFound {
+		t.Fatalf("ticket file %v", err)
+	}
+	if err := st.DeletePromoItem(d.ID, ticket.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DeletePromoItem(d.ID, flyer.ID); err != nil {
+		t.Fatal(err)
+	}
+	list, err = st.ListPromo(d.ID)
+	if err != nil || len(list) != 1 || list[0].ID != poster.ID {
+		t.Fatalf("after delete %+v %v", list, err)
+	}
+	if err := st.DeleteDate(d.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.ListPromo(d.ID); err != ErrNotFound {
+		t.Fatalf("deleted date %v", err)
+	}
+}
+
 func tinyWAV() []byte {
 	b := bytes.Repeat([]byte{0}, 80)
 	copy(b[0:], []byte("RIFF"))
