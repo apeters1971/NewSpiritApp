@@ -22,6 +22,9 @@ func TestOnlineUserIDsCountsPeopleOnce(t *testing.T) {
 	if h.OnlineCount() != 2 {
 		t.Fatalf("ada still online %d", h.OnlineCount())
 	}
+	if !h.IsOnline("ada") || !h.IsOnline("ben") || h.IsOnline("cara") {
+		t.Fatal("online check")
+	}
 	h.UnregisterMember(a2)
 	ids = h.OnlineUserIDs()
 	if h.OnlineCount() != 1 || len(ids) != 1 || ids[0] != "ben" {

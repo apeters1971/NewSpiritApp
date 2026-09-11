@@ -1324,6 +1324,8 @@ body.menu-open::before {
 .chat-composer.recording .chat-media-btn,
 .chat-composer.recording .chat-voice-btn,
 .chat-composer.recording .chat-send-btn { display: none; }
+.chat-composer.temp-dm .chat-media-btn,
+.chat-composer.temp-dm .chat-voice-btn { display: none; }
 .chat-media {
   position: relative;
   margin: 0.2rem 0 0.1rem;
@@ -1487,6 +1489,23 @@ body.menu-open::before {
   line-height: 1.45;
 }
 .online-chip-list li { margin: 0; }
+.online-chip-list li.me { color: var(--muted); font-weight: 600; }
+.online-chip-person {
+  appearance: none;
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0.15rem 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 650;
+  text-align: left;
+  cursor: pointer;
+}
+.online-chip-person:hover,
+.online-chip-person:focus-visible { color: var(--accent); }
 .online-chip:hover .online-chip-list,
 .online-chip:focus-within .online-chip-list { display: block; }
 @media (hover: hover) {

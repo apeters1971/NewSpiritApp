@@ -103,6 +103,15 @@ func (h *Hub) OnlineUserIDs() []string {
 	return ids
 }
 
+func (h *Hub) IsOnline(userID string) bool {
+	if userID == "" {
+		return false
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.members[userID]) > 0
+}
+
 func (h *Hub) BroadcastToRole(role string, env Envelope) {
 	h.BroadcastToRoles([]string{role}, env)
 }

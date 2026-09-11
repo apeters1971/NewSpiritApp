@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/apeters/newspirit/internal/hub"
@@ -31,6 +32,8 @@ type Server struct {
 	ClientFS            fs.FS
 	ControllerFS        fs.FS
 	upgrader            websocket.Upgrader
+	dmMu                sync.Mutex
+	dms                 map[string][]store.ChatMessage
 }
 
 type Options struct {
@@ -48,6 +51,7 @@ func New(st *store.Store, h *hub.Hub, opt Options, clientFS, controllerFS fs.FS)
 		CloudflareAccountID: strings.TrimSpace(opt.CloudflareAccountID),
 		ClientFS:            clientFS,
 		ControllerFS:        controllerFS,
+		dms:                 map[string][]store.ChatMessage{},
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},
@@ -76,6 +80,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/dates/{id}/gallery", s.handleGalleryList)
 	mux.HandleFunc("POST /api/dates/{id}/gallery", s.handleGalleryUpload)
 	mux.HandleFunc("GET /api/dates/{id}/gallery/{fileId}", s.handleGalleryFile)
+	mux.HandleFunc("POST /api/dms/{id}", s.handleDMOpen)
+	mux.HandleFunc("POST /api/dms/{id}/messages", s.handleDMPost)
+	mux.HandleFunc("POST /api/dms/{id}/close", s.handleDMClose)
 	mux.HandleFunc("GET /api/chats/{room}", s.handleChatList)
 	mux.HandleFunc("POST /api/chats/{room}", s.handleChatPost)
 	mux.HandleFunc("POST /api/chats/{room}/voice", s.handleChatVoice)
@@ -659,6 +666,126 @@ func (s *Server) handleAddComment(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) publishChat(room string, env hub.Envelope) {
 	s.Hub.BroadcastToRoles(s.Store.ChatRoomRoles(room), env)
+}
+
+func (s *Server) dmPeer(r *http.Request, user store.User) (store.User, string, error) {
+	peer, err := s.Store.UserByID(r.PathValue("id"))
+	if err != nil {
+		return store.User{}, "", err
+	}
+	if peer.ID == user.ID {
+		return store.User{}, "", fmt.Errorf("cannot chat with yourself")
+	}
+	room := store.DMRoom(user.ID, peer.ID)
+	if room == "" {
+		return store.User{}, "", fmt.Errorf("cannot chat with yourself")
+	}
+	return peer, room, nil
+}
+
+func (s *Server) listDM(room string) []store.ChatMessage {
+	s.dmMu.Lock()
+	defer s.dmMu.Unlock()
+	src := s.dms[room]
+	out := make([]store.ChatMessage, len(src))
+	copy(out, src)
+	return out
+}
+
+func (s *Server) appendDM(room string, msg store.ChatMessage) {
+	s.dmMu.Lock()
+	defer s.dmMu.Unlock()
+	s.dms[room] = append(s.dms[room], msg)
+}
+
+func (s *Server) clearDM(room string) {
+	s.dmMu.Lock()
+	defer s.dmMu.Unlock()
+	delete(s.dms, room)
+}
+
+func (s *Server) publishDM(room string, env hub.Envelope) {
+	left, right, ok := store.ParseDMRoom(room)
+	if !ok {
+		return
+	}
+	s.Hub.SendToUser(left, env)
+	s.Hub.SendToUser(right, env)
+}
+
+func (s *Server) handleDMOpen(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	peer, room, err := s.dmPeer(r, user)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if !s.Hub.IsOnline(peer.ID) {
+		writeError(w, http.StatusBadRequest, "this person is not online")
+		return
+	}
+	msgs := s.listDM(room)
+	s.Hub.SendToUser(peer.ID, hub.Envelope{
+		Type: "dmOpen",
+		Data: map[string]any{
+			"room":     room,
+			"peer":     store.OnlinePerson{ID: user.ID, Nickname: user.Nickname},
+			"messages": msgs,
+		},
+	})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"room":     room,
+		"peer":     store.OnlinePerson{ID: peer.ID, Nickname: peer.Nickname},
+		"messages": msgs,
+	})
+}
+
+func (s *Server) handleDMPost(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	_, room, err := s.dmPeer(r, user)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	var body struct {
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	msg, err := store.NewEphemeralChatMessage(user, room, body.Text)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.appendDM(room, msg)
+	s.publishDM(room, hub.Envelope{Type: "chat", Data: msg})
+	writeJSON(w, http.StatusCreated, map[string]any{"message": msg})
+}
+
+func (s *Server) handleDMClose(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	_, room, err := s.dmPeer(r, user)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.clearDM(room)
+	s.publishDM(room, hub.Envelope{Type: "dmClose", Data: map[string]any{"room": room}})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (s *Server) handleChatList(w http.ResponseWriter, r *http.Request) {

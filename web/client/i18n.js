@@ -295,6 +295,7 @@
       streamPublishing: "Du sendest live.",
       streamNone: "Gerade kein Live-Stream.",
       chatBrand: "Chat",
+      chatPrivate: "Privater Chat",
       chatExpand: "Vollbild",
       chatReduce: "Klein",
       chatToday: "Heute",
@@ -335,6 +336,9 @@
       errChat: "Nachricht fehlt",
       errChatLong: "Nachricht ist zu lang",
       errChatRoom: "Dieser Chat gilt nicht für deine Rolle",
+      errChatSelf: "Du kannst nicht mit dir selbst chatten",
+      errChatOffline: "Diese Person ist nicht online",
+      errChatForbidden: "Dieser Chat ist nicht für dich",
       errDateRole: "Dieser Termin gilt nicht für deine Rolle",
       errChatClosed: "Dieser Chat ist geschlossen.",
       errChatReact: "Unbekannte Reaktion",
@@ -727,6 +731,7 @@
       streamPublishing: "You are live.",
       streamNone: "No live stream right now.",
       chatBrand: "Chat",
+      chatPrivate: "Private chat",
       chatExpand: "Full size",
       chatReduce: "Small",
       chatToday: "Today",
@@ -767,6 +772,9 @@
       errChat: "Message is required",
       errChatLong: "Message is too long",
       errChatRoom: "This chat is not for your role",
+      errChatSelf: "You cannot chat with yourself",
+      errChatOffline: "This person is not online",
+      errChatForbidden: "This chat is not for you",
       errDateRole: "This date is not for your role",
       errChatClosed: "This chat is closed.",
       errChatReact: "Unknown reaction",
@@ -897,6 +905,9 @@
     "invalid birthday": "errBirthday",
     "message is required": "errChat",
     "message is too long": "errChatLong",
+    "cannot chat with yourself": "errChatSelf",
+    "this person is not online": "errChatOffline",
+    "this chat is not for you": "errChatForbidden",
     "composer is too long": "errComposerLong",
     "title is too long": "errTitleLong",
     "file is required": "errFile",
@@ -976,6 +987,9 @@
     if (raw.includes("already")) return t("errAlreadyFinal");
     if (raw.includes("voting is locked")) return t("errLocked");
     if (raw.includes("this chat is not for your role")) return t("errChatRoom");
+    if (raw.includes("cannot chat with yourself")) return t("errChatSelf");
+    if (raw.includes("this person is not online")) return t("errChatOffline");
+    if (raw.includes("this chat is not for you")) return t("errChatForbidden");
     if (raw.includes("you can only delete your own messages")) return t("errDeleteOwn");
     if (raw.includes("you can only edit your own messages")) return t("errChatEditOwn");
     if (raw.includes("this message cannot be edited")) return t("errChatEditKind");

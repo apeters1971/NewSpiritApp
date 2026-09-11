@@ -360,6 +360,60 @@ func TestDirectory(t *testing.T) {
 	}
 }
 
+func TestDMRoom(t *testing.T) {
+	if got := DMRoom("b", "a"); got != "dm:a:b" {
+		t.Fatalf("sorted room %q", got)
+	}
+	if DMRoom("ada", "ada") != "" || DMRoom("", "ada") != "" {
+		t.Fatal("self or empty should be empty")
+	}
+	left, right, ok := ParseDMRoom("dm:aaa:bbb")
+	if !ok || left != "aaa" || right != "bbb" {
+		t.Fatalf("parse %s %s %v", left, right, ok)
+	}
+	if _, _, ok := ParseDMRoom("dm:only"); ok {
+		t.Fatal("need two ids")
+	}
+	if _, _, ok := ParseDMRoom("choir"); ok {
+		t.Fatal("group is not a dm")
+	}
+	peer, ok := DMPeer("dm:ada:cara", "ada")
+	if !ok || peer != "cara" {
+		t.Fatalf("peer %s %v", peer, ok)
+	}
+	if _, ok := DMPeer("dm:ada:cara", "ben"); ok {
+		t.Fatal("stranger must not join")
+	}
+
+	st, err := Open(filepath.Join(t.TempDir(), "dm.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ada, err := st.CreateUser("Ada", "ada@example.com", "secret1", RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cara, err := st.CreateUser("Cara", "cara@example.com", "secret1", RoleBand, "Drums")
+	if err != nil {
+		t.Fatal(err)
+	}
+	room := DMRoom(ada.ID, cara.ID)
+	msg, err := NewEphemeralChatMessage(ada, room, "hi")
+	if err != nil || msg.Text != "hi" || msg.Room != room || msg.ID == "" {
+		t.Fatalf("ephemeral %+v %v", msg, err)
+	}
+	if _, err := NewEphemeralChatMessage(ada, "dm:nope:nope", "hi"); err == nil {
+		t.Fatal("stranger room should fail")
+	}
+	if _, err := st.AddChatMessage(ada.ID, room, "persisted"); err == nil {
+		t.Fatal("dm must not persist in group chat store")
+	}
+	if _, err := NewEphemeralChatMessage(ada, room, ""); err == nil {
+		t.Fatal("empty message should fail")
+	}
+}
+
 func TestChatRoom(t *testing.T) {
 	st, err := Open(filepath.Join(t.TempDir(), "chat.db"))
 	if err != nil {

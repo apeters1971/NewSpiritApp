@@ -51,6 +51,8 @@ let titlesDateId = "";
 let galleryDateId = "";
 let galleryItems = [];
 let chatRoom = "";
+let chatPeer = null;
+let dmIgnoreClose = false;
 let chatMessages = [];
 let chatUnread = {};
 let savedChat = null;
@@ -346,6 +348,22 @@ function canUseChatRoom(room) {
   if (me.role === "chorleiter") return true;
   if (me.role === "ehemalige") return room === "choir";
   return me.role === room;
+}
+
+function isDMRoom(room) {
+  return typeof room === "string" && room.startsWith("dm:");
+}
+
+function dmPeerId(room) {
+  if (!isDMRoom(room) || !me) return "";
+  const rest = room.slice(3);
+  const i = rest.indexOf(":");
+  if (i < 1) return "";
+  const a = rest.slice(0, i);
+  const b = rest.slice(i + 1);
+  if (me.id === a) return b;
+  if (me.id === b) return a;
+  return "";
 }
 
 function primaryChatRoom() {
@@ -1067,11 +1085,13 @@ function notifyChatMessage(m) {
   const date = m.room.startsWith("event:")
     ? dates.find((d) => d.id === m.room.slice("event:".length))
     : null;
-  const roomLabel = chatTitle(m.room, date?.title);
+  const roomLabel = chatTitle(m.room, isDMRoom(m.room) ? (chatPeer?.nickname || I18N.t("chatPrivate")) : date?.title);
   const who = m.nickname || I18N.t("chatBrand");
   showDesktopNotice(`${who} · ${roomLabel}`, chatNoticeBody(m), {
     kind: "chat",
     room: m.room,
+    peerId: isDMRoom(m.room) ? dmPeerId(m.room) : "",
+    peerName: isDMRoom(m.room) ? (chatPeer?.nickname || "") : "",
     tag: `chat:${m.room}`,
   });
 }
@@ -1091,6 +1111,11 @@ async function handleNotifyClick(data) {
     if (data?.kind === "chat" && data.room) {
       if (data.room === LIVE_ROOM) {
         if (liveStream) await startWatch();
+        return;
+      }
+      if (isDMRoom(data.room)) {
+        const peer = data.peerId || dmPeerId(data.room);
+        if (peer) await openPrivateChat(peer, data.peerName || "");
         return;
       }
       const title = data.room.startsWith("event:")
@@ -1208,11 +1233,29 @@ function paintOnline(people) {
   if (btn) btn.setAttribute("aria-label", label.textContent);
   list.replaceChildren(...onlinePeople.map((p) => {
     const li = document.createElement("li");
-    li.textContent = p.nickname || p.id || "";
+    const mine = !!(me && p.id === me.id);
+    if (mine) {
+      li.className = "me";
+      li.textContent = p.nickname || p.id || "";
+      return li;
+    }
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "online-chip-person";
+    btn.textContent = p.nickname || p.id || "";
+    btn.dataset.user = p.id || "";
+    btn.dataset.nickname = p.nickname || "";
+    li.append(btn);
     return li;
   }));
   chip.hidden = false;
 }
+
+document.getElementById("online-chip-list")?.addEventListener("click", (e) => {
+  const btn = e.target.closest(".online-chip-person");
+  if (!btn?.dataset.user) return;
+  openPrivateChat(btn.dataset.user, btn.dataset.nickname);
+});
 
 async function enterApp() {
   showGate("app");
@@ -1402,17 +1445,28 @@ function markTab(tab) {
   });
 }
 
+function notifyDMClose(room) {
+  if (!isDMRoom(room) || dmIgnoreClose) return;
+  const peer = dmPeerId(room);
+  if (!peer) return;
+  api(`/api/dms/${encodeURIComponent(peer)}/close`, { method: "POST" }).catch(() => {});
+}
+
 function leaveChatPane() {
   setChatEmojiOpen(false);
   if (streamChatOpen()) {
     savedChat = null;
     return;
   }
+  const closing = chatRoom;
   discardVoiceRecord();
   editingChatId = "";
   chatRoom = "";
+  chatPeer = null;
   chatMessages = [];
   renderChatTabs();
+  paintChatComposerMode();
+  notifyDMClose(closing);
 }
 
 function leaveArchivePane() {
@@ -1440,6 +1494,10 @@ async function activateTab(tab) {
       return;
     }
     if (tab === "chat") {
+      if (isDMRoom(chatRoom)) {
+        showEphemeralChat(chatRoom, chatPeer, chatMessages);
+        return;
+      }
       const room = chatRoom && (chatRoom.startsWith("event:") || canUseChatRoom(chatRoom))
         ? chatRoom
         : primaryChatRoom();
@@ -2014,6 +2072,10 @@ function chatBadge(n) {
 
 function noteChatMessage(m) {
   if (!m?.room) return;
+  if (isDMRoom(m.room)) {
+    notifyChatMessage(m);
+    return;
+  }
   if (CHAT_ROOMS.includes(m.room)) {
     if (chatRoom === m.room) {
       chatUnread[m.room] = 0;
@@ -2077,6 +2139,7 @@ function chatAuthorKey(m) {
 }
 
 function chatReactionsHTML(m) {
+  if (isDMRoom(chatRoom) || isDMRoom(m?.room)) return "";
   const chips = (m.reactions || []).map((r) => `
     <button type="button" class="chat-react ${r.mine ? "on" : ""}" data-id="${m.id}" data-react="${r.emoji}">
       ${r.emoji}<span>${r.count}</span>
@@ -2273,6 +2336,7 @@ function removeChat(id) {
 let editingChatId = "";
 
 function canDeleteChat(m) {
+  if (isDMRoom(chatRoom) || isDMRoom(m?.room)) return false;
   return !!(me && m && !m.isAdmin && m.userId === me.id);
 }
 
@@ -2339,9 +2403,16 @@ function chatEmojiPanelEl() {
 
 function chatTitle(room, title) {
   if (title) return title;
+  if (isDMRoom(room)) return chatPeer?.nickname || I18N.t("chatPrivate");
   if (room === LIVE_ROOM) return I18N.t("chat.live");
   if (CHAT_ROOMS.includes(room)) return I18N.t(`chat.${room}`);
   return I18N.t("eventChat");
+}
+
+function paintChatComposerMode() {
+  document.getElementById("chat-form")?.classList.toggle("temp-dm", isDMRoom(chatRoom));
+  const brand = document.querySelector("#chat-dialog .brand");
+  if (brand) brand.textContent = I18N.t(isDMRoom(chatRoom) ? "chatPrivate" : "chatBrand");
 }
 
 let voiceRec = null;
@@ -2380,6 +2451,7 @@ function discardVoiceRecord() {
 }
 
 async function startVoiceRecord() {
+  if (isDMRoom(chatRoom)) return;
   const errEl = chatErrorEl();
   showError(errEl, "");
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
@@ -2508,15 +2580,65 @@ function toggleChatVoice(id) {
   btn.setAttribute("aria-label", I18N.t("chatVoicePause"));
 }
 
+function showEphemeralChat(room, peer, messages) {
+  chatRoom = room;
+  chatPeer = peer && peer.id ? { id: peer.id, nickname: peer.nickname || "" } : chatPeer;
+  chatMessages = Array.isArray(messages) ? messages.slice() : [];
+  renderChatTabs();
+  document.getElementById("chat-title").textContent = chatTitle(room, chatPeer?.nickname);
+  discardVoiceRecord();
+  document.getElementById("chat-text").value = "";
+  showError(document.getElementById("chat-error"), "");
+  const input = document.getElementById("chat-text");
+  input.placeholder = I18N.t("chatWrite");
+  paintChatComposerMode();
+  showTab("chat");
+  setChatFull(true);
+  paintChatSize();
+  renderChat();
+  input.focus();
+}
+
+async function openPrivateChat(peerId, nickname) {
+  if (!me || !peerId || peerId === me.id) return;
+  try {
+    if (isDMRoom(chatRoom) && dmPeerId(chatRoom) !== peerId) {
+      await api(`/api/dms/${encodeURIComponent(dmPeerId(chatRoom))}/close`, { method: "POST" }).catch(() => {});
+    }
+    const data = await api(`/api/dms/${encodeURIComponent(peerId)}`, { method: "POST" });
+    showEphemeralChat(data.room, data.peer || { id: peerId, nickname: nickname || "" }, data.messages || []);
+  } catch (err) {
+    showError(document.getElementById("chat-error"), err.message);
+  }
+}
+
+function receiveDMOpen(data) {
+  if (!data?.room || !isDMRoom(data.room)) return;
+  if (isDMRoom(chatRoom) && chatRoom !== data.room) {
+    notifyDMClose(chatRoom);
+  }
+  showEphemeralChat(data.room, data.peer, data.messages || []);
+}
+
+function receiveDMClose(data) {
+  if (!data?.room || data.room !== chatRoom) return;
+  dmIgnoreClose = true;
+  showTab("home");
+  dmIgnoreClose = false;
+}
+
 async function openChat(room, title) {
   const event = room.startsWith("event:");
-  if (!me || (!event && !canUseChatRoom(room))) return;
+  if (!me || isDMRoom(room) || (!event && !canUseChatRoom(room))) return;
+  if (isDMRoom(chatRoom)) notifyDMClose(chatRoom);
+  chatPeer = null;
   chatRoom = room;
   renderChatTabs();
   document.getElementById("chat-title").textContent = chatTitle(room, title);
   discardVoiceRecord();
   document.getElementById("chat-text").value = "";
   showError(document.getElementById("chat-error"), "");
+  paintChatComposerMode();
   const data = await api(`/api/chats/${encodeURIComponent(room)}`);
   chatMessages = data.messages || [];
   chatUnread[room] = 0;
@@ -2922,6 +3044,14 @@ function connectWS() {
       paintOnline(msg.data);
       return;
     }
+    if (msg.type === "dmOpen") {
+      receiveDMOpen(msg.data);
+      return;
+    }
+    if (msg.type === "dmClose") {
+      receiveDMClose(msg.data);
+      return;
+    }
     if (msg.type === "chat") {
       noteChatMessage(msg.data);
       if (chatRoom && msg.data?.room === chatRoom) appendChat(msg.data);
@@ -2996,8 +3126,9 @@ I18N.onChange(() => {
       const date = chatRoom.startsWith("event:")
         ? dates.find((d) => d.id === chatRoom.slice("event:".length))
         : null;
-      document.getElementById("chat-title").textContent = chatTitle(chatRoom, date?.title);
+      document.getElementById("chat-title").textContent = chatTitle(chatRoom, chatPeer?.nickname || date?.title);
       document.getElementById("chat-text").placeholder = I18N.t("chatWrite");
+      paintChatComposerMode();
       renderChat(document.getElementById("chat-list").scrollTop);
     }
     if (paneVisible("proposals-dialog")) renderProposalList();
@@ -3056,7 +3187,10 @@ async function sendChat() {
   const text = input.value.trim();
   if (!text) return;
   try {
-    const data = await api(`/api/chats/${encodeURIComponent(chatRoom)}`, {
+    const path = isDMRoom(chatRoom)
+      ? `/api/dms/${encodeURIComponent(dmPeerId(chatRoom) || chatPeer?.id || "")}/messages`
+      : `/api/chats/${encodeURIComponent(chatRoom)}`;
+    const data = await api(path, {
       method: "POST",
       body: JSON.stringify({ text }),
     });
@@ -3102,7 +3236,7 @@ bindChatComposer("stream-");
 
 async function sendChatMedia(file) {
   const errEl = chatErrorEl();
-  if (!chatRoom || !file) return;
+  if (!chatRoom || !file || isDMRoom(chatRoom)) return;
   const form = new FormData();
   form.append("file", file, file.name || "media");
   try {

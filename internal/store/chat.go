@@ -11,6 +11,7 @@ const (
 	ChatAdminName      = "Admin"
 	ChatReadController = "controller"
 	EventRoomPrefix    = "event:"
+	DMRoomPrefix       = "dm:"
 	ChatRoomLive       = "live"
 	chatReactionActor  = ""
 )
@@ -49,6 +50,65 @@ func ParseEventRoom(room string) (string, bool) {
 	}
 	id := strings.TrimPrefix(room, EventRoomPrefix)
 	return id, id != ""
+}
+
+func DMRoom(a, b string) string {
+	a, b = strings.TrimSpace(a), strings.TrimSpace(b)
+	if a == "" || b == "" || a == b {
+		return ""
+	}
+	if a > b {
+		a, b = b, a
+	}
+	return DMRoomPrefix + a + ":" + b
+}
+
+func ParseDMRoom(room string) (left, right string, ok bool) {
+	if !strings.HasPrefix(room, DMRoomPrefix) {
+		return "", "", false
+	}
+	left, right, found := strings.Cut(strings.TrimPrefix(room, DMRoomPrefix), ":")
+	if !found || left == "" || right == "" || strings.Contains(right, ":") {
+		return "", "", false
+	}
+	return left, right, true
+}
+
+func DMPeer(room, userID string) (string, bool) {
+	left, right, ok := ParseDMRoom(room)
+	if !ok {
+		return "", false
+	}
+	switch userID {
+	case left:
+		return right, true
+	case right:
+		return left, true
+	default:
+		return "", false
+	}
+}
+
+func NewEphemeralChatMessage(u User, room, text string) (ChatMessage, error) {
+	text, err := prepareChatText(text)
+	if err != nil {
+		return ChatMessage{}, err
+	}
+	if _, ok := DMPeer(room, u.ID); !ok {
+		return ChatMessage{}, fmt.Errorf("%w: this chat is not for you", ErrForbidden)
+	}
+	return ChatMessage{
+		ID:             newID(),
+		Room:           room,
+		UserID:         u.ID,
+		Nickname:       u.Nickname,
+		HasPhoto:       u.HasPhoto,
+		PhotoUpdatedAt: u.PhotoUpdatedAt,
+		Text:           text,
+		Kind:           ChatKindText,
+		CreatedAt:      now(),
+		Reactions:      []ChatReaction{},
+	}, nil
 }
 
 func ValidChatRoom(room string) bool {

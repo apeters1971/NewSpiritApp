@@ -4,12 +4,14 @@
       date: "2026-09-11",
       items: {
         de: [
+          "Ein Name in der Online-Liste öffnet einen kurzen privaten Chat — auf beiden Seiten. Beim Schließen ist alles weg.",
           "Neben DE/EN steht, wie viele online sind. Darüber liegen die Namen.",
           "Unter der Tab-Leiste läuft ein Newsticker. Den Text setzt die Verwaltung unter Einstellungen.",
           "Farben folgen dem Logo: Gold für Marke und Flächen, Rose für Akzente — in Hell und Dunkel.",
           "Neben DE/EN gibt es ein Hell/Dunkel-Symbol. Dark bleibt Standard; Hell merkt sich das Gerät.",
         ],
         en: [
+          "A name in the online list opens a short private chat for both of you. Closing it wipes the messages.",
           "Next to DE/EN, a count shows who is online. Hover it for names.",
           "A news ticker runs under the tab bar. The controller sets the text in Settings.",
           "Colors follow the logo: gold for the brand and washes, rose for accents — in light and dark.",
