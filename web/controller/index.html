@@ -420,6 +420,53 @@
       <div id="gallery-list" class="gallery-list"></div>
     </div>
   </dialog>
+  <dialog id="promo-dialog" class="dialog promo-dialog">
+    <div class="dialog-head">
+      <div>
+        <p class="brand" data-i18n="promo">VVK/Werbung</p>
+        <h2 id="promo-heading">Termin</h2>
+      </div>
+      <button type="button" id="promo-close" class="btn ghost" data-i18n="close">Schließen</button>
+    </div>
+    <div class="promo-body">
+      <p class="muted" data-i18n="promoLede">Tickets, Flyer und Plakate zu diesem Termin.</p>
+      <p id="promo-error" class="error" hidden></p>
+      <section class="promo-section">
+        <h3 data-i18n="promoNote">Hinweis</h3>
+        <form id="promo-note-form" class="promo-note-form">
+          <textarea id="promo-note" rows="4" maxlength="2000"></textarea>
+          <p class="muted gallery-limit" data-i18n="promoNoteHint">Kurzer Text zu Tickets, Flyer und Plakaten.</p>
+          <button type="submit" class="btn" data-i18n="promoSaveNote">Hinweis speichern</button>
+        </form>
+      </section>
+      <section class="promo-section">
+        <h3 data-i18n="promoTickets">Tickets</h3>
+        <form id="promo-ticket-form" class="promo-ticket-form">
+          <input id="promo-ticket-name" type="text" autocomplete="off" />
+          <input id="promo-ticket-url" type="url" required autocomplete="off" />
+          <button type="submit" class="btn" data-i18n="promoAddTicket">Ticket-Link hinzufügen</button>
+        </form>
+        <div id="promo-tickets" class="promo-items"></div>
+      </section>
+      <section class="promo-section">
+        <h3 data-i18n="promoFlyer">Flyer</h3>
+        <div class="promo-file-add">
+          <button type="button" class="btn" id="promo-add-flyer" data-i18n="promoAddFile">Datei hinzufügen</button>
+          <p class="muted gallery-limit" data-i18n="promoFileHint">PDF oder JPG</p>
+        </div>
+        <div id="promo-flyers" class="promo-items"></div>
+      </section>
+      <section class="promo-section">
+        <h3 data-i18n="promoPoster">Plakate</h3>
+        <div class="promo-file-add">
+          <button type="button" class="btn" id="promo-add-poster" data-i18n="promoAddFile">Datei hinzufügen</button>
+          <p class="muted gallery-limit" data-i18n="promoFileHint">PDF oder JPG</p>
+        </div>
+        <div id="promo-posters" class="promo-items"></div>
+      </section>
+      <input id="promo-file" type="file" accept=".pdf,.jpg,.jpeg,application/pdf,image/jpeg" multiple hidden />
+    </div>
+  </dialog>
   <dialog id="comment-dialog" class="dialog">
     <div class="dialog-head">
       <div>

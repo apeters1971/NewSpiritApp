@@ -357,8 +357,12 @@
       promoAddFile: "Datei hinzufügen",
       promoFileHint: "PDF oder JPG",
       promoOpen: "Öffnen",
+      promoNote: "Hinweis",
+      promoNoteHint: "Kurzer Text zu Tickets, Flyer und Plakaten.",
+      promoSaveNote: "Hinweis speichern",
       confirmDeletePromo: "Diesen Eintrag entfernen?",
       errPromoKind: "Ungültige Kategorie",
+      errPromoConcert: "VVK/Werbung gibt es nur bei Konzerten",
       chatReact: "Reaktion",
       "chat.choir": "Chor-Chat",
       "chat.band": "Band-Chat",
@@ -824,8 +828,12 @@
       promoAddFile: "Add file",
       promoFileHint: "PDF or JPG",
       promoOpen: "Open",
+      promoNote: "Note",
+      promoNoteHint: "A short note about tickets, flyers, and posters.",
+      promoSaveNote: "Save note",
       confirmDeletePromo: "Remove this item?",
       errPromoKind: "Invalid category",
+      errPromoConcert: "Tickets / promo is only for concerts",
       chatReact: "React",
       "chat.choir": "Choir Chat",
       "chat.band": "Band Chat",
@@ -997,6 +1005,7 @@
     "invalid attendance": "errAttendance",
     "this date is not for your role": "errDateRole",
     "unknown promo kind": "errPromoKind",
+    "promo is only for concerts": "errPromoConcert",
   };
 
   function stored() {

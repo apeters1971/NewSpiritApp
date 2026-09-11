@@ -2346,6 +2346,43 @@ p.notes { margin: 0.55rem 0 0; color: var(--muted); white-space: pre-wrap; }
 }
 .gallery-card .meta { margin: 0.4rem 0 0; color: var(--muted); font-size: 0.78rem; }
 .gallery-card .btn { margin-top: 0.45rem; }
+.promo-dialog[open] {
+  width: min(560px, calc(100vw - 2rem));
+  max-height: min(85vh, 720px);
+}
+.promo-body {
+  display: grid;
+  gap: 1rem;
+  min-height: 0;
+  overflow: auto;
+}
+.promo-section h3 {
+  margin: 0 0 0.45rem;
+  font-size: 0.95rem;
+}
+.promo-items { display: grid; gap: 0.4rem; }
+.promo-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  border: 1px solid var(--line);
+  background: var(--card);
+  padding: 0.55rem 0.7rem;
+}
+.promo-row a {
+  color: var(--accent);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.promo-note {
+  margin: 0;
+  white-space: pre-wrap;
+  border: 1px solid var(--line);
+  background: var(--card);
+  padding: 0.7rem 0.8rem;
+}
 
 @media (max-width: 640px) {
   .card-head { flex-direction: column; }

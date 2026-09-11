@@ -134,6 +134,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/controller/dates/{id}/gallery/{fileId}", s.handleControllerGalleryDelete)
 	mux.HandleFunc("GET /api/controller/dates/{id}/promo", s.handleControllerPromoList)
 	mux.HandleFunc("POST /api/controller/dates/{id}/promo", s.handleControllerPromoAdd)
+	mux.HandleFunc("PATCH /api/controller/dates/{id}/promo", s.handleControllerPromoNote)
 	mux.HandleFunc("GET /api/controller/dates/{id}/promo/{fileId}", s.handleControllerPromoFile)
 	mux.HandleFunc("DELETE /api/controller/dates/{id}/promo/{fileId}", s.handleControllerPromoDelete)
 	mux.HandleFunc("GET /api/controller/chats/{room}", s.handleControllerChatList)

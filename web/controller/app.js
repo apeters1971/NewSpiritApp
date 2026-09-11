@@ -24,6 +24,10 @@ let chatMessages = [];
 let chatUnread = {};
 let galleryDateId = "";
 let galleryItems = [];
+let promoDateId = "";
+let promoItems = [];
+let promoNote = "";
+let promoFileKind = "";
 
 const CHAT_ROOMS = ["choir", "band", "orchestra", "live"];
 const CHAT_API = "/api/controller/chats";
@@ -420,7 +424,7 @@ function renderDateDetail() {
       <button type="button" class="btn ghost" id="btn-titles">${I18N.t("titles")}${(d.titles || []).length ? ` (${d.titles.length})` : ""}</button>
       ${d.chatOpen ? `<button type="button" class="btn ghost" id="btn-event-chat">${I18N.t("eventChat")}</button>` : ""}
       <button type="button" class="btn ghost" id="btn-gallery">${I18N.t("gallery")}${d.galleryCount ? ` (${d.galleryCount})` : ""}</button>
-      <button type="button" class="btn ghost" id="btn-promo">${I18N.t("promo")}${d.promoCount ? ` (${d.promoCount})` : ""}</button>
+      ${dateShowsPromo(d) ? `<button type="button" class="btn ghost" id="btn-promo">${I18N.t("promo")}${d.promoCount ? ` (${d.promoCount})` : ""}</button>` : ""}
     </div>`;
 }
 
@@ -523,6 +527,10 @@ function fillDateForm(d) {
   captureDateForm();
 }
 
+function dateShowsPromo(d) {
+  return d?.category === "concert";
+}
+
 function escapeHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, (ch) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -550,6 +558,18 @@ async function loadState() {
       galleryItems = data.gallery || [];
       renderGallery();
     }).catch(() => {});
+  }
+  if (document.getElementById("promo-dialog")?.open && promoDateId) {
+    const openDate = state.dates.find((d) => d.id === promoDateId);
+    if (!dateShowsPromo(openDate)) {
+      document.getElementById("promo-dialog").close();
+    } else {
+      api(`/api/controller/dates/${encodeURIComponent(promoDateId)}/promo`).then((data) => {
+        promoItems = data.promo || [];
+        promoNote = data.note || "";
+        renderPromo();
+      }).catch(() => {});
+    }
   }
 }
 
@@ -1299,6 +1319,12 @@ document.getElementById("date-detail").addEventListener("click", async (e) => {
     openGallery(selectedDate).catch((err) => alert(err.message));
     return;
   }
+  if (e.target.closest("#btn-promo") && selectedDate) {
+    const event = state.dates.find((x) => x.id === selectedDate);
+    if (!dateShowsPromo(event)) return;
+    openPromo(selectedDate).catch((err) => alert(err.message));
+    return;
+  }
   if (e.target.closest("#btn-event-chat") && selectedDate) {
     const event = state.dates.find((x) => x.id === selectedDate);
     if (!event) return;
@@ -1516,6 +1542,178 @@ document.getElementById("gallery-list").addEventListener("click", async (e) => {
     await openGallery(galleryDateId);
   } catch (err) {
     showError(document.getElementById("gallery-error"), err.message);
+  }
+});
+
+const PROMO_MAX_BYTES = 12 * 1024 * 1024;
+
+function promoFileURL(dateId, item) {
+  return `/api/controller/dates/${encodeURIComponent(dateId)}/promo/${encodeURIComponent(item.id)}`;
+}
+
+function promoHref(dateId, item) {
+  if (item.kind === "ticket") return item.url || "#";
+  return promoFileURL(dateId, item);
+}
+
+function renderPromoItems(kind, emptyKey) {
+  const rows = promoItems.filter((item) => item.kind === kind);
+  if (!rows.length) return `<p class="muted">${I18N.t(emptyKey)}</p>`;
+  return rows.map((item) => `<article class="promo-row">
+    <a href="${escapeHtml(promoHref(promoDateId, item))}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.name || I18N.t("promoOpen"))}</a>
+    <button type="button" class="btn ghost danger" data-promo-del="${item.id}">${I18N.t("delete")}</button>
+  </article>`).join("");
+}
+
+function renderPromo() {
+  const date = state.dates.find((d) => d.id === promoDateId);
+  document.getElementById("promo-heading").textContent = date?.title || I18N.t("event");
+  document.getElementById("promo-ticket-name").placeholder = I18N.t("promoTicketName");
+  document.getElementById("promo-ticket-url").placeholder = I18N.t("promoTicketURL");
+  const noteEl = document.getElementById("promo-note");
+  if (noteEl && document.activeElement !== noteEl) noteEl.value = promoNote;
+  document.getElementById("promo-tickets").innerHTML = renderPromoItems("ticket", "promoEmptyTickets");
+  document.getElementById("promo-flyers").innerHTML = renderPromoItems("flyer", "promoEmptyFlyer");
+  document.getElementById("promo-posters").innerHTML = renderPromoItems("poster", "promoEmptyPoster");
+}
+
+async function openPromo(id) {
+  const date = state.dates.find((d) => d.id === id);
+  if (!dateShowsPromo(date)) return;
+  promoDateId = id;
+  showError(document.getElementById("promo-error"), "");
+  const data = await api(`/api/controller/dates/${encodeURIComponent(id)}/promo`);
+  promoItems = data.promo || [];
+  promoNote = data.note || "";
+  renderPromo();
+  const dialog = document.getElementById("promo-dialog");
+  if (!dialog.open) dialog.showModal();
+}
+
+async function uploadPromoFile(dateId, kind, file) {
+  const fd = new FormData();
+  fd.append("kind", kind);
+  fd.append("file", file);
+  const res = await fetch(`/api/controller/dates/${encodeURIComponent(dateId)}/promo`, {
+    method: "POST",
+    credentials: "same-origin",
+    body: fd,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(I18N.error(data.error || res.statusText));
+  return data;
+}
+
+document.getElementById("promo-close").addEventListener("click", () => {
+  document.getElementById("promo-dialog").close();
+});
+
+document.getElementById("promo-dialog").addEventListener("close", () => {
+  promoDateId = "";
+  promoItems = [];
+  promoNote = "";
+  promoFileKind = "";
+  document.getElementById("promo-note-form").reset();
+  document.getElementById("promo-ticket-form").reset();
+  document.getElementById("promo-tickets").innerHTML = "";
+  document.getElementById("promo-flyers").innerHTML = "";
+  document.getElementById("promo-posters").innerHTML = "";
+});
+
+document.getElementById("promo-note-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!promoDateId) return;
+  const errEl = document.getElementById("promo-error");
+  showError(errEl, "");
+  try {
+    const data = await api(`/api/controller/dates/${encodeURIComponent(promoDateId)}/promo`, {
+      method: "PATCH",
+      body: JSON.stringify({ note: document.getElementById("promo-note").value }),
+    });
+    promoNote = data.note || "";
+    document.getElementById("promo-note").value = promoNote;
+  } catch (err) {
+    showError(errEl, err.message);
+  }
+});
+
+document.getElementById("promo-ticket-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!promoDateId) return;
+  const errEl = document.getElementById("promo-error");
+  showError(errEl, "");
+  try {
+    await api(`/api/controller/dates/${encodeURIComponent(promoDateId)}/promo`, {
+      method: "POST",
+      body: JSON.stringify({
+        kind: "ticket",
+        name: document.getElementById("promo-ticket-name").value,
+        url: document.getElementById("promo-ticket-url").value,
+      }),
+    });
+    document.getElementById("promo-ticket-form").reset();
+    await loadState();
+    await openPromo(promoDateId);
+  } catch (err) {
+    showError(errEl, err.message);
+  }
+});
+
+document.getElementById("promo-add-flyer").addEventListener("click", () => {
+  promoFileKind = "flyer";
+  const input = document.getElementById("promo-file");
+  input.value = "";
+  input.click();
+});
+
+document.getElementById("promo-add-poster").addEventListener("click", () => {
+  promoFileKind = "poster";
+  const input = document.getElementById("promo-file");
+  input.value = "";
+  input.click();
+});
+
+document.getElementById("promo-file").addEventListener("change", async (e) => {
+  const files = [...(e.target.files || [])];
+  const kind = promoFileKind;
+  const errEl = document.getElementById("promo-error");
+  showError(errEl, "");
+  if (!files.length || !promoDateId || (kind !== "flyer" && kind !== "poster")) return;
+  const errors = [];
+  for (const file of files) {
+    if (file.size > PROMO_MAX_BYTES) {
+      errors.push(`${file.name}: ${I18N.t("errFileLarge")}`);
+      continue;
+    }
+    try {
+      await uploadPromoFile(promoDateId, kind, file);
+    } catch (err) {
+      errors.push(`${file.name}: ${err.message}`);
+    }
+  }
+  try {
+    await loadState();
+    if (promoDateId) await openPromo(promoDateId);
+  } catch (err) {
+    errors.push(err.message);
+  }
+  if (errors.length) showError(errEl, errors.join("\n"));
+  e.target.value = "";
+  promoFileKind = "";
+});
+
+document.getElementById("promo-dialog").addEventListener("click", async (e) => {
+  const del = e.target.closest("[data-promo-del]");
+  if (!del || !promoDateId) return;
+  if (!confirm(I18N.t("confirmDeletePromo"))) return;
+  const errEl = document.getElementById("promo-error");
+  showError(errEl, "");
+  try {
+    await api(`/api/controller/dates/${encodeURIComponent(promoDateId)}/promo/${encodeURIComponent(del.dataset.promoDel)}`, { method: "DELETE" });
+    await loadState();
+    await openPromo(promoDateId);
+  } catch (err) {
+    showError(errEl, err.message);
   }
 });
 

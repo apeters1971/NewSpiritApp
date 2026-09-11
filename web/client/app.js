@@ -50,6 +50,9 @@ let commentDateId = "";
 let titlesDateId = "";
 let galleryDateId = "";
 let galleryItems = [];
+let promoDateId = "";
+let promoItems = [];
+let promoNote = "";
 let chatRoom = "";
 let chatPeer = null;
 let dmIgnoreClose = false;
@@ -299,11 +302,15 @@ function renderDate(date) {
       <button type="button" class="btn ghost" data-titles="${date.id}">${I18N.t("titles")}${(date.titles || []).length ? ` (${date.titles.length})` : ""}</button>
       ${date.chatOpen ? `<button type="button" class="btn ghost" data-event-chat="${date.id}">${I18N.t("eventChat")}</button>` : ""}
       <button type="button" class="btn ghost" data-gallery="${date.id}">${I18N.t("gallery")}${date.galleryCount ? ` (${date.galleryCount})` : ""}</button>
-      <button type="button" class="btn ghost" data-promo="${date.id}">${I18N.t("promo")}${date.promoCount ? ` (${date.promoCount})` : ""}</button>
+      ${dateShowsPromo(date) ? `<button type="button" class="btn ghost" data-promo="${date.id}">${I18N.t("promo")}${date.promoCount ? ` (${date.promoCount})` : ""}</button>` : ""}
     </div>
     ${pollOpen(date) ? "" : renderCounts(date)}
     ${pollOpen(date) ? "" : renderRoster(date)}
   </article>`;
+}
+
+function dateShowsPromo(d) {
+  return d?.category === "concert";
 }
 
 function escapeHtml(s) {
@@ -594,7 +601,7 @@ function renderNextUp() {
         <button type="button" class="btn ghost" data-titles="${next.id}">${I18N.t("titles")}</button>
         <button type="button" class="btn ghost" data-event-chat="${next.id}">${I18N.t("chatBrand")}</button>
         <button type="button" class="btn ghost" data-gallery="${next.id}">${I18N.t("gallery")}${next.galleryCount ? ` (${next.galleryCount})` : ""}</button>
-        <button type="button" class="btn ghost" data-promo="${next.id}">${I18N.t("promo")}${next.promoCount ? ` (${next.promoCount})` : ""}</button>
+        ${dateShowsPromo(next) ? `<button type="button" class="btn ghost" data-promo="${next.id}">${I18N.t("promo")}${next.promoCount ? ` (${next.promoCount})` : ""}</button>` : ""}
       </div>
     </div>
     ${next.schedule ? `<div class="schedule-box">
@@ -982,6 +989,60 @@ async function openGallery(id) {
     const dialog = document.getElementById("gallery-dialog");
     if (!dialog.open) dialog.showModal();
     paintGallerySize();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+const PROMO_SECTIONS = [
+  { id: "ticket", title: "promoTickets", empty: "promoEmptyTickets" },
+  { id: "flyer", title: "promoFlyer", empty: "promoEmptyFlyer" },
+  { id: "poster", title: "promoPoster", empty: "promoEmptyPoster" },
+];
+
+function promoFileURL(dateId, item) {
+  return `/api/dates/${encodeURIComponent(dateId)}/promo/${encodeURIComponent(item.id)}`;
+}
+
+function promoHref(dateId, item) {
+  if (item.kind === "ticket") return item.url || "#";
+  return promoFileURL(dateId, item);
+}
+
+function renderPromo() {
+  const list = document.getElementById("promo-list");
+  const date = dates.find((d) => d.id === promoDateId);
+  document.getElementById("promo-heading").textContent = date?.title || I18N.t("event");
+  if (!list) return;
+  const note = promoNote
+    ? `<section class="promo-section"><p class="promo-note">${escapeHtml(promoNote)}</p></section>`
+    : "";
+  list.innerHTML = note + PROMO_SECTIONS.map((section) => {
+    const rows = promoItems.filter((item) => item.kind === section.id);
+    const body = rows.length
+      ? rows.map((item) => `<article class="promo-row">
+          <a href="${escapeHtml(promoHref(promoDateId, item))}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.name || I18N.t("promoOpen"))}</a>
+        </article>`).join("")
+      : `<p class="muted">${I18N.t(section.empty)}</p>`;
+    return `<section class="promo-section">
+      <h3>${I18N.t(section.title)}</h3>
+      <div class="promo-items">${body}</div>
+    </section>`;
+  }).join("");
+}
+
+async function openPromo(id) {
+  const date = dates.find((d) => d.id === id);
+  if (!date || !dateShowsPromo(date)) return;
+  promoDateId = id;
+  showError(document.getElementById("promo-error"), "");
+  try {
+    const data = await api(`/api/dates/${encodeURIComponent(id)}/promo`);
+    promoItems = data.promo || [];
+    promoNote = data.note || "";
+    renderPromo();
+    const dialog = document.getElementById("promo-dialog");
+    if (!dialog.open) dialog.showModal();
   } catch (err) {
     alert(err.message);
   }
@@ -1799,6 +1860,11 @@ document.getElementById("next-up").addEventListener("click", async (e) => {
     await openGallery(galleryBtn.dataset.gallery);
     return;
   }
+  const promoBtn = e.target.closest("[data-promo]");
+  if (promoBtn) {
+    await openPromo(promoBtn.dataset.promo);
+    return;
+  }
   const eventChat = e.target.closest("[data-event-chat]");
   if (!eventChat) return;
   const date = dates.find((d) => d.id === eventChat.dataset.eventChat);
@@ -1829,6 +1895,11 @@ datesEl.addEventListener("click", async (e) => {
   const galleryBtn = e.target.closest("button[data-gallery]");
   if (galleryBtn) {
     await openGallery(galleryBtn.dataset.gallery);
+    return;
+  }
+  const promoBtn = e.target.closest("button[data-promo]");
+  if (promoBtn) {
+    await openPromo(promoBtn.dataset.promo);
     return;
   }
   const eventChat = e.target.closest("button[data-event-chat]");
@@ -1903,6 +1974,18 @@ function setGalleryFull(full) {
 
 document.getElementById("gallery-close").addEventListener("click", () => {
   document.getElementById("gallery-dialog").close();
+});
+
+document.getElementById("promo-close").addEventListener("click", () => {
+  document.getElementById("promo-dialog").close();
+});
+
+document.getElementById("promo-dialog").addEventListener("close", () => {
+  promoDateId = "";
+  promoItems = [];
+  promoNote = "";
+  const list = document.getElementById("promo-list");
+  if (list) list.innerHTML = "";
 });
 
 document.getElementById("gallery-shrink").addEventListener("click", () => setGalleryFull(false));
@@ -3414,6 +3497,7 @@ function connectWS() {
         if (paneVisible("directory-dialog")) loadDirectory().catch(() => {});
         if (paneVisible("archive-dialog")) loadArchive().catch(() => {});
         if (document.getElementById("gallery-dialog").open && galleryDateId) openGallery(galleryDateId).catch(() => {});
+        if (document.getElementById("promo-dialog")?.open && promoDateId) openPromo(promoDateId).catch(() => {});
       }
     }
   };

@@ -4,7 +4,7 @@
       date: "2026-09-11",
       items: {
         de: [
-          "Bei Terminen gibt es VVK/Werbung direkt nach der Galerie: Ticket-Links, Flyer und Plakate. Die Verwaltung legt sie an; Mitglieder öffnen sie nur.",
+          "Bei Konzerten gibt es VVK/Werbung direkt nach der Galerie: Ticket-Links, Flyer, Plakate und ein Hinweis der Verwaltung. Mitglieder sehen und öffnen sie nur.",
           "Im privaten Chat gibt es Anruf und Videoanruf. Die andere Person nimmt an oder lehnt ab — Ton und Bild laufen in beide Richtungen.",
           "Ein Name in der Online-Liste öffnet einen kurzen privaten Chat — auf beiden Seiten. Beim Schließen ist alles weg.",
           "Neben DE/EN steht, wie viele online sind. Darüber liegen die Namen.",
@@ -13,7 +13,7 @@
           "Neben DE/EN gibt es ein Hell/Dunkel-Symbol. Dark bleibt Standard; Hell merkt sich das Gerät.",
         ],
         en: [
-          "Dates have Tickets / promo right after the gallery: ticket links, flyers, and posters. The controller adds them; members can only open them.",
+          "Concerts have Tickets / promo right after the gallery: ticket links, flyers, posters, and a note from the controller. Members can only view and open them.",
           "Private chats have audio and video call buttons. The other person accepts or declines, then both sides hear and see each other.",
           "A name in the online list opens a short private chat for both of you. Closing it wipes the messages.",
           "Next to DE/EN, a count shows who is online. Hover it for names.",

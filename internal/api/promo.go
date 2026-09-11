@@ -34,7 +34,12 @@ func (s *Server) handlePromoList(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"promo": items})
+	note, err := s.Store.PromoNote(id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"promo": items, "note": note})
 }
 
 func (s *Server) handlePromoFile(w http.ResponseWriter, r *http.Request) {
@@ -60,12 +65,18 @@ func (s *Server) handleControllerPromoList(w http.ResponseWriter, r *http.Reques
 	if !s.requireController(w, r) {
 		return
 	}
-	items, err := s.Store.ListPromo(r.PathValue("id"))
+	id := r.PathValue("id")
+	items, err := s.Store.ListPromo(id)
 	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"promo": items})
+	note, err := s.Store.PromoNote(id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"promo": items, "note": note})
 }
 
 func (s *Server) handleControllerPromoAdd(w http.ResponseWriter, r *http.Request) {
@@ -104,6 +115,26 @@ func (s *Server) handleControllerPromoAdd(w http.ResponseWriter, r *http.Request
 	}
 	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
 	writeJSON(w, http.StatusCreated, map[string]any{"item": item})
+}
+
+func (s *Server) handleControllerPromoNote(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	var body struct {
+		Note string `json:"note"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	note, err := s.Store.SetPromoNote(r.PathValue("id"), body.Note)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"note": note})
 }
 
 func (s *Server) addControllerPromoFile(w http.ResponseWriter, r *http.Request, dateID string) (store.PromoItem, error) {

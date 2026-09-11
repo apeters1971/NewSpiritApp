@@ -1319,6 +1319,16 @@ func TestPromo(t *testing.T) {
 	if _, err := st.AddPromoTicket(d.ID, "Bad", "not-a-url"); err == nil {
 		t.Fatal("expected rejected url")
 	}
+	rehearsal, err := st.CreateDate("Practice", CategoryRehearsal, start.Add(24*time.Hour), nil, "Hall", "", "", []string{RoleChoir}, Bring{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.AddPromoTicket(rehearsal.ID, "Ticketshop", "https://tickets.example.com/ns"); err == nil {
+		t.Fatal("expected promo rejected on rehearsal")
+	}
+	if _, err := st.ListPromo(rehearsal.ID); err == nil {
+		t.Fatal("expected list rejected on rehearsal")
+	}
 
 	img := image.NewRGBA(image.Rect(0, 0, 8, 8))
 	var buf bytes.Buffer
@@ -1361,6 +1371,25 @@ func TestPromo(t *testing.T) {
 	}
 	if err := st.DeletePromoItem(d.ID, flyer.ID); err != nil {
 		t.Fatal(err)
+	}
+	note, err := st.SetPromoNote(d.ID, "  Abendkasse ab 18 Uhr.  ")
+	if err != nil || note != "Abendkasse ab 18 Uhr." {
+		t.Fatalf("note %q %v", note, err)
+	}
+	gotNote, err := st.PromoNote(d.ID)
+	if err != nil || gotNote != note {
+		t.Fatalf("read note %q %v", gotNote, err)
+	}
+	if _, err := st.SetPromoNote(d.ID, strings.Repeat("x", 2001)); err == nil {
+		t.Fatal("expected long note rejected")
+	}
+	cleared, err := st.SetPromoNote(d.ID, "  ")
+	if err != nil || cleared != "" {
+		t.Fatalf("clear %q %v", cleared, err)
+	}
+	gotNote, err = st.PromoNote(d.ID)
+	if err != nil || gotNote != "" {
+		t.Fatalf("empty note %q %v", gotNote, err)
 	}
 	list, err = st.ListPromo(d.ID)
 	if err != nil || len(list) != 1 || list[0].ID != poster.ID {

@@ -10,6 +10,15 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
+)
+
+const (
+	PromoKindTicket = "ticket"
+	PromoKindFlyer  = "flyer"
+	PromoKindPoster = "poster"
+	PromoMaxBytes   = 12 << 20
+	promoNoteMax    = 2000
 )
 
 type PromoItem struct {
@@ -30,6 +39,21 @@ func ValidPromoFileKind(kind string) bool {
 	return kind == PromoKindFlyer || kind == PromoKindPoster
 }
 
+func DateAllowsPromo(category string) bool {
+	return category == CategoryConcert
+}
+
+func (s *Store) requirePromoDate(dateID string) error {
+	d, err := s.dateRow(dateID)
+	if err != nil {
+		return err
+	}
+	if !DateAllowsPromo(d.Category) {
+		return fmt.Errorf("promo is only for concerts")
+	}
+	return nil
+}
+
 func (s *Store) migratePromo() error {
 	_, err := s.db.Exec(`
 CREATE TABLE IF NOT EXISTS date_promo (
@@ -42,8 +66,58 @@ CREATE TABLE IF NOT EXISTS date_promo (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_date_promo_date ON date_promo(date_id, kind, created_at);
+CREATE TABLE IF NOT EXISTS date_promo_notes (
+  date_id TEXT PRIMARY KEY REFERENCES dates(id) ON DELETE CASCADE,
+  note TEXT NOT NULL DEFAULT ''
+);
 `)
 	return err
+}
+
+func (s *Store) PromoNote(dateID string) (string, error) {
+	if err := s.requirePromoDate(dateID); err != nil {
+		return "", err
+	}
+	var note string
+	err := s.db.QueryRow(`SELECT note FROM date_promo_notes WHERE date_id=?`, dateID).Scan(&note)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return note, nil
+}
+
+func (s *Store) SetPromoNote(dateID, note string) (string, error) {
+	if err := s.requirePromoDate(dateID); err != nil {
+		return "", err
+	}
+	note, err := preparePromoNote(note)
+	if err != nil {
+		return "", err
+	}
+	if note == "" {
+		_, err = s.db.Exec(`DELETE FROM date_promo_notes WHERE date_id=?`, dateID)
+		return "", err
+	}
+	_, err = s.db.Exec(
+		`INSERT INTO date_promo_notes(date_id, note) VALUES(?,?)
+		 ON CONFLICT(date_id) DO UPDATE SET note=excluded.note`,
+		dateID, note,
+	)
+	if err != nil {
+		return "", err
+	}
+	return note, nil
+}
+
+func preparePromoNote(note string) (string, error) {
+	note = strings.TrimSpace(strings.ReplaceAll(note, "\r\n", "\n"))
+	if utf8.RuneCountInString(note) > promoNoteMax {
+		return "", fmt.Errorf("comment is too long")
+	}
+	return note, nil
 }
 
 func (s *Store) promoCounts(ids []string) (map[string]int, error) {
@@ -74,7 +148,7 @@ func (s *Store) promoCounts(ids []string) (map[string]int, error) {
 }
 
 func (s *Store) ListPromo(dateID string) ([]PromoItem, error) {
-	if _, err := s.dateRow(dateID); err != nil {
+	if err := s.requirePromoDate(dateID); err != nil {
 		return nil, err
 	}
 	rows, err := s.db.Query(
@@ -97,7 +171,7 @@ func (s *Store) ListPromo(dateID string) ([]PromoItem, error) {
 }
 
 func (s *Store) AddPromoTicket(dateID, name, rawURL string) (PromoItem, error) {
-	if _, err := s.dateRow(dateID); err != nil {
+	if err := s.requirePromoDate(dateID); err != nil {
 		return PromoItem{}, err
 	}
 	rawURL, err := prepareArchiveURL(rawURL)
@@ -130,7 +204,7 @@ func (s *Store) AddPromoFile(dateID, kind, filename string, r io.Reader) (PromoI
 	if !ValidPromoFileKind(kind) {
 		return PromoItem{}, fmt.Errorf("unknown promo kind")
 	}
-	if _, err := s.dateRow(dateID); err != nil {
+	if err := s.requirePromoDate(dateID); err != nil {
 		return PromoItem{}, err
 	}
 	head := make([]byte, 512)
@@ -193,6 +267,9 @@ func (s *Store) AddPromoFile(dateID, kind, filename string, r io.Reader) (PromoI
 }
 
 func (s *Store) PromoFilePath(dateID, fileID string) (PromoItem, string, error) {
+	if err := s.requirePromoDate(dateID); err != nil {
+		return PromoItem{}, "", err
+	}
 	item, err := s.promoItemRow(dateID, fileID)
 	if err != nil {
 		return PromoItem{}, "", err
@@ -211,6 +288,9 @@ func (s *Store) PromoFilePath(dateID, fileID string) (PromoItem, string, error) 
 }
 
 func (s *Store) DeletePromoItem(dateID, fileID string) error {
+	if err := s.requirePromoDate(dateID); err != nil {
+		return err
+	}
 	item, err := s.promoItemRow(dateID, fileID)
 	if err != nil {
 		return err
