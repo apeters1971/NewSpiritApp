@@ -1,3 +1,34 @@
+const THEME_KEY = "spirit-theme";
+
+function currentTheme() {
+  return document.documentElement.dataset.theme === "light" ? "light" : "dark";
+}
+
+function paintThemeButtons() {
+  const light = currentTheme() === "light";
+  const label = I18N.t(light ? "themeToDark" : "themeToLight");
+  document.querySelectorAll("[data-theme-toggle]").forEach((btn) => {
+    btn.setAttribute("aria-pressed", light ? "true" : "false");
+    btn.setAttribute("aria-label", label);
+  });
+}
+
+function applyTheme(theme) {
+  const next = theme === "light" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem(THEME_KEY, next); } catch {}
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", next === "light" ? "#f3efe6" : "#10161c");
+  paintThemeButtons();
+}
+
+document.querySelectorAll("[data-theme-toggle]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    applyTheme(currentTheme() === "light" ? "dark" : "light");
+  });
+});
+applyTheme(currentTheme());
+
 const CHOICES = ["yes", "maybe", "no", "unknown"];
 const CHOIR_VOICES = ["Sopran", "Alt", "Tenor/Bass"];
 
@@ -2849,6 +2880,7 @@ function connectWS() {
 
 I18N.onChange(() => {
   I18N.apply();
+  paintThemeButtons();
   paintInstallButtons();
   if (me && !me.mustChangePassword) {
     document.getElementById("who-name").textContent = me.nickname;

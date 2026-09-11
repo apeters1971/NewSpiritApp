@@ -4,6 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#10161c" />
+  <script>
+    try {
+      var t = localStorage.getItem("spirit-theme");
+      if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="New Spirit" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -16,9 +22,14 @@
 <body>
   <section id="login-view" class="gate">
     <form id="login-form" class="gate-card">
-      <div class="lang-switch" role="group" data-i18n-aria="lang">
-        <button type="button" class="lang-btn" data-lang="de">DE</button>
-        <button type="button" class="lang-btn" data-lang="en">EN</button>
+      <div class="gate-tools">
+        <div class="lang-switch" role="group" data-i18n-aria="lang">
+          <button type="button" class="lang-btn" data-lang="de">DE</button>
+          <button type="button" class="lang-btn" data-lang="en">EN</button>
+        </div>
+        <button type="button" class="btn ghost theme-toggle" data-theme-toggle aria-label="Hellmodus" aria-pressed="false">
+          <span class="theme-toggle-icon" aria-hidden="true"></span>
+        </button>
       </div>
       <button type="button" class="logo-btn" data-changelog data-i18n-aria="changelogOpen" aria-label="Changelog öffnen">
         <img class="logo logo-login" src="/static/nsgc-symbol.png" alt="New Spirit Gospel Choir" />
@@ -38,9 +49,14 @@
 
   <section id="pw-view" class="gate" hidden>
     <form id="pw-form" class="gate-card">
-      <div class="lang-switch" role="group" data-i18n-aria="lang">
-        <button type="button" class="lang-btn" data-lang="de">DE</button>
-        <button type="button" class="lang-btn" data-lang="en">EN</button>
+      <div class="gate-tools">
+        <div class="lang-switch" role="group" data-i18n-aria="lang">
+          <button type="button" class="lang-btn" data-lang="de">DE</button>
+          <button type="button" class="lang-btn" data-lang="en">EN</button>
+        </div>
+        <button type="button" class="btn ghost theme-toggle" data-theme-toggle aria-label="Hellmodus" aria-pressed="false">
+          <span class="theme-toggle-icon" aria-hidden="true"></span>
+        </button>
       </div>
       <button type="button" class="logo-btn" data-changelog data-i18n-aria="changelogOpen" aria-label="Changelog öffnen">
         <img class="logo logo-login" src="/static/nsgc-symbol.png" alt="New Spirit Gospel Choir" />
@@ -84,6 +100,9 @@
             <button type="button" class="lang-btn" data-lang="de">DE</button>
             <button type="button" class="lang-btn" data-lang="en">EN</button>
           </div>
+          <button type="button" class="btn ghost theme-toggle" data-theme-toggle aria-label="Hellmodus" aria-pressed="false">
+            <span class="theme-toggle-icon" aria-hidden="true"></span>
+          </button>
           <button type="button" id="btn-header-notices" class="btn ghost header-notices on" aria-pressed="true" data-i18n-aria="noticesOn" aria-label="Benachrichtigungen an">
             <span class="header-notices-icon" aria-hidden="true"></span>
           </button>

@@ -1,6 +1,17 @@
 (() => {
   const ENTRIES = [
     {
+      date: "2026-09-11",
+      items: {
+        de: [
+          "Neben DE/EN gibt es ein Hell/Dunkel-Symbol. Dark bleibt Standard; Hell merkt sich das Gerät.",
+        ],
+        en: [
+          "A sun/moon control next to DE/EN switches the current dark look to a light theme and remembers it.",
+        ],
+      },
+    },
+    {
       date: "2026-09-10",
       items: {
         de: [
