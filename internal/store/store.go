@@ -303,6 +303,9 @@ CREATE TABLE IF NOT EXISTS settings (
 	if err := s.migrateGallery(); err != nil {
 		return err
 	}
+	if err := s.migrateAlbums(); err != nil {
+		return err
+	}
 	if err := s.migratePromo(); err != nil {
 		return err
 	}

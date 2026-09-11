@@ -50,6 +50,11 @@ let commentDateId = "";
 let titlesDateId = "";
 let galleryDateId = "";
 let galleryItems = [];
+let hubAlbums = [];
+let hubAlbumId = "";
+let hubAlbumItems = [];
+let hubMonths = [];
+let hubMonth = null;
 let promoDateId = "";
 let promoItems = [];
 let promoNote = "";
@@ -994,6 +999,329 @@ async function openGallery(id) {
   }
 }
 
+function hubAlbumTitle(album) {
+  if (album.kind === "live") return I18N.t("galleryLive");
+  if (album.kind === "general") return I18N.t("galleryGeneral");
+  return album.title || I18N.t("event");
+}
+
+function hubItemURL(album, item) {
+  if (album.kind === "date") {
+    return `/api/dates/${encodeURIComponent(album.id)}/gallery/${encodeURIComponent(item.id)}`;
+  }
+  return `/api/galleries/${encodeURIComponent(album.id)}/files/${encodeURIComponent(item.id)}`;
+}
+
+function findHubAlbum(albumId) {
+  return hubAlbums.find((album) => album.id === albumId) || null;
+}
+
+function findHubItem(albumId, itemId) {
+  const album = findHubAlbum(albumId) || { id: albumId, kind: albumId === "live" || albumId === "general" ? albumId : "date" };
+  const item = hubAlbumItems.find((it) => it.id === itemId)
+    || (album.cover && album.cover.id === itemId ? album.cover : null)
+    || (album.items || []).find((it) => it.id === itemId);
+  if (!item) return null;
+  return { album, item };
+}
+
+function galleryCountLabel(n) {
+  if (!n) return I18N.t("galleryEmpty");
+  if (n === 1) return I18N.t("galleryOneFile");
+  return I18N.t("galleryManyFiles").replace("{n}", String(n));
+}
+
+function hubCoverMedia(album) {
+  const cover = album.cover;
+  if (!cover) {
+    const emptyKey = album.kind === "live" ? "galleryLiveEmpty" : album.kind === "general" ? "galleryGeneralEmpty" : "galleryEmpty";
+    return `<span class="hub-gallery-empty">${I18N.t(emptyKey)}</span>`;
+  }
+  if (cover.kind === "video") {
+    return `<span class="hub-gallery-play" aria-hidden="true"></span><span class="visually-hidden">${I18N.t("galleryTakeVideo")}</span>`;
+  }
+  return `<img class="gallery-media" src="${hubItemURL(album, cover)}" alt="" />`;
+}
+
+function galleryMonthKey(year, month) {
+  return `${year}-${String(month).padStart(2, "0")}`;
+}
+
+function galleryMonthLabel(year, month) {
+  return new Date(year, month - 1, 1).toLocaleDateString(I18N.locale(), { month: "long", year: "numeric" });
+}
+
+function galleryMonthCode(year, month) {
+  return `${String(month).padStart(2, "0")}/${year}`;
+}
+
+function hubOpenAlbum() {
+  return findHubAlbum(hubAlbumId);
+}
+
+function hubUploadTarget(kind) {
+  const album = hubOpenAlbum();
+  if (album?.kind === "date") return { type: "date", id: album.id };
+  if (kind === "upload") return { type: "album", id: "general" };
+  return { type: "album", id: "live" };
+}
+
+function paintHubGalleryHead() {
+  const title = document.getElementById("gallery-hub-title");
+  const back = document.getElementById("hub-gallery-back");
+  const hint = document.getElementById("hub-gallery-hint");
+  const upload = document.getElementById("hub-gallery-upload");
+  const album = hubOpenAlbum();
+  if (title) {
+    if (album && hubMonth) title.textContent = `${hubAlbumTitle(album)} · ${galleryMonthCode(hubMonth.year, hubMonth.month)}`;
+    else if (album) title.textContent = hubAlbumTitle(album);
+    else title.textContent = I18N.t("galleryHubTitle");
+  }
+  if (back) back.hidden = !hubAlbumId;
+  if (hint) {
+    hint.textContent = album?.kind === "date"
+      ? I18N.t("galleryHubHintEvent").replace("{title}", hubAlbumTitle(album))
+      : I18N.t("galleryHubHint");
+  }
+  if (upload) upload.accept = album?.kind === "date" ? "image/*,video/*" : "image/*";
+}
+
+function hubItemCard(album, item) {
+  const url = hubItemURL(album, item);
+  const media = item.kind === "video"
+    ? `<span class="hub-gallery-play" aria-hidden="true"></span><span class="visually-hidden">${I18N.t("galleryTakeVideo")}</span>`
+    : `<img class="gallery-media" src="${url}" alt="" />`;
+  return `<button type="button" class="hub-gallery-card${item.kind === "video" ? " video" : ""}" data-hub-album="${escapeHtml(album.id)}" data-hub-item="${escapeHtml(item.id)}">${media}</button>`;
+}
+
+function hubCoverCard(album, attrs, title, meta) {
+  return `<button type="button" class="hub-gallery-cover ${escapeHtml(album.kind || "")}" ${attrs}>
+    <span class="hub-gallery-cover-frame${album.cover?.kind === "video" ? " video" : ""}">${hubCoverMedia(album)}</span>
+    <span class="hub-gallery-cover-text">
+      <strong>${escapeHtml(title)}</strong>
+      <span class="meta">${escapeHtml(meta)}</span>
+    </span>
+  </button>`;
+}
+
+function renderGalleryHub() {
+  const list = document.getElementById("hub-gallery-list");
+  if (!list) return;
+  paintHubGalleryHead();
+  const album = findHubAlbum(hubAlbumId) || { id: hubAlbumId, kind: hubAlbumId };
+  if (hubAlbumId && hubMonth) {
+    if (!hubAlbumItems.length) {
+      list.innerHTML = `<p class="muted">${I18N.t("galleryMonthEmpty")}</p>`;
+      return;
+    }
+    list.innerHTML = `<div class="hub-gallery-grid">${hubAlbumItems.map((item) => hubItemCard(album, item)).join("")}</div>`;
+    return;
+  }
+  if (hubAlbumId && (album.kind === "live" || album.kind === "general")) {
+    const emptyKey = album.kind === "live" ? "galleryLiveEmpty" : "galleryGeneralEmpty";
+    if (!hubMonths.length) {
+      list.innerHTML = `<p class="muted">${I18N.t(emptyKey)}</p>`;
+      return;
+    }
+    list.innerHTML = `<div class="hub-gallery-covers">${hubMonths.map((folder) => {
+      const card = { ...album, cover: folder.cover, count: folder.count };
+      const meta = `${galleryMonthCode(folder.year, folder.month)} · ${galleryCountLabel(folder.count || 0)}`;
+      return hubCoverCard(card, `data-hub-month="${galleryMonthKey(folder.year, folder.month)}"`, galleryMonthLabel(folder.year, folder.month), meta);
+    }).join("")}</div>`;
+    return;
+  }
+  if (hubAlbumId) {
+    if (!hubAlbumItems.length) {
+      list.innerHTML = `<p class="muted">${I18N.t("galleryEmpty")}</p>`;
+      return;
+    }
+    list.innerHTML = `<div class="hub-gallery-grid">${hubAlbumItems.map((item) => hubItemCard(album, item)).join("")}</div>`;
+    return;
+  }
+  const eventAlbums = hubAlbums.filter((item) => item.kind === "date");
+  list.innerHTML = `<div class="hub-gallery-covers">${hubAlbums.map((item) => {
+    const when = item.startsAt ? formatWhen(item.startsAt) : "";
+    const cat = item.category ? I18N.category(item.category) : "";
+    const meta = [galleryCountLabel(item.count || 0), when, cat].filter(Boolean).join(" · ");
+    return hubCoverCard(item, `data-hub-open="${escapeHtml(item.id)}"`, hubAlbumTitle(item), meta);
+  }).join("")}</div>` + (eventAlbums.length ? "" : `<p class="muted">${I18N.t("galleryEventsEmpty")}</p>`);
+}
+
+async function loadHubMonths(album) {
+  const data = await api(`/api/galleries/${encodeURIComponent(album.id)}`);
+  return data.months || [];
+}
+
+async function loadHubAlbumItems(album, month) {
+  if (album.kind === "date") {
+    const data = await api(`/api/dates/${encodeURIComponent(album.id)}/gallery`);
+    return data.gallery || [];
+  }
+  if (!month) return [];
+  const data = await api(`/api/galleries/${encodeURIComponent(album.id)}?year=${encodeURIComponent(month.year)}&month=${encodeURIComponent(month.month)}`);
+  return data.gallery || [];
+}
+
+function resetHubAlbum() {
+  hubAlbumId = "";
+  hubAlbumItems = [];
+  hubMonths = [];
+  hubMonth = null;
+}
+
+async function refreshOpenHubAlbum() {
+  const album = findHubAlbum(hubAlbumId);
+  if (!album) {
+    resetHubAlbum();
+    return;
+  }
+  if (album.kind === "live" || album.kind === "general") {
+    hubMonths = await loadHubMonths(album);
+    if (hubMonth) {
+      const still = hubMonths.some((folder) => folder.year === hubMonth.year && folder.month === hubMonth.month);
+      if (!still) {
+        hubMonth = null;
+        hubAlbumItems = [];
+      } else {
+        hubAlbumItems = await loadHubAlbumItems(album, hubMonth);
+      }
+    }
+    return;
+  }
+  hubAlbumItems = await loadHubAlbumItems(album);
+}
+
+async function loadGalleryHub() {
+  const data = await api("/api/galleries");
+  hubAlbums = data.albums || [];
+  if (hubAlbumId) await refreshOpenHubAlbum();
+  renderGalleryHub();
+}
+
+async function openHubAlbum(albumId) {
+  const album = findHubAlbum(albumId);
+  if (!album) return;
+  showError(document.getElementById("hub-gallery-error"), "");
+  try {
+    hubAlbumId = album.id;
+    hubMonth = null;
+    hubAlbumItems = [];
+    hubMonths = [];
+    if (album.kind === "live" || album.kind === "general") hubMonths = await loadHubMonths(album);
+    else hubAlbumItems = await loadHubAlbumItems(album);
+    renderGalleryHub();
+  } catch (err) {
+    resetHubAlbum();
+    alert(err.message);
+  }
+}
+
+async function openHubMonth(year, month) {
+  const album = findHubAlbum(hubAlbumId);
+  if (!album) return;
+  showError(document.getElementById("hub-gallery-error"), "");
+  try {
+    hubMonth = { year, month };
+    hubAlbumItems = await loadHubAlbumItems(album, hubMonth);
+    renderGalleryHub();
+  } catch (err) {
+    hubMonth = null;
+    hubAlbumItems = [];
+    alert(err.message);
+  }
+}
+
+function closeHubAlbum() {
+  closeHubGalleryView();
+  if (hubMonth) {
+    hubMonth = null;
+    hubAlbumItems = [];
+    renderGalleryHub();
+    return;
+  }
+  resetHubAlbum();
+  renderGalleryHub();
+}
+
+function openHubGalleryItem(albumId, itemId) {
+  const found = findHubItem(albumId, itemId);
+  const dialog = document.getElementById("hub-gallery-view");
+  const media = document.getElementById("hub-gallery-view-media");
+  if (!found || !dialog || !media) return;
+  const url = hubItemURL(found.album, found.item);
+  document.getElementById("hub-gallery-view-album").textContent = hubAlbumTitle(found.album);
+  document.getElementById("hub-gallery-view-name").textContent = found.item.name || (found.item.kind === "video" ? I18N.t("galleryTakeVideo") : I18N.t("galleryTakePhoto"));
+  document.getElementById("hub-gallery-view-meta").textContent = found.item.nickname || "";
+  media.innerHTML = found.item.kind === "video"
+    ? `<video class="gallery-media" controls autoplay playsinline src="${url}"></video>`
+    : `<img class="gallery-media" src="${url}" alt="" />`;
+  if (!dialog.open) dialog.showModal();
+}
+
+function closeHubGalleryView() {
+  const dialog = document.getElementById("hub-gallery-view");
+  const media = document.getElementById("hub-gallery-view-media");
+  if (media) media.innerHTML = "";
+  if (dialog?.open) dialog.close();
+}
+
+function setHubGalleryBusy(on) {
+  ["hub-gallery-photo-btn", "hub-gallery-video-btn", "hub-gallery-upload-btn"].forEach((id) => {
+    const btn = document.getElementById(id);
+    if (btn) btn.disabled = on;
+  });
+}
+
+function setHubGalleryProgress(on, name, loaded, total) {
+  const box = document.getElementById("hub-gallery-progress");
+  const nameEl = document.getElementById("hub-gallery-progress-name");
+  const pctEl = document.getElementById("hub-gallery-progress-pct");
+  const bar = document.getElementById("hub-gallery-progress-bar");
+  if (!box) return;
+  box.hidden = !on;
+  if (!on) {
+    if (bar) bar.value = 0;
+    if (nameEl) nameEl.textContent = "";
+    if (pctEl) pctEl.textContent = "";
+    return;
+  }
+  const pct = total > 0 ? Math.min(100, Math.round((loaded / total) * 100)) : 0;
+  if (nameEl) nameEl.textContent = name || I18N.t("galleryUploading");
+  if (pctEl) pctEl.textContent = `${pct}%`;
+  if (bar) bar.value = pct;
+}
+
+async function uploadHubFiles(kind, files) {
+  const errEl = document.getElementById("hub-gallery-error");
+  showError(errEl, "");
+  if (!files.length) return;
+  const target = hubUploadTarget(kind);
+  const url = target.type === "date"
+    ? `/api/dates/${encodeURIComponent(target.id)}/gallery`
+    : `/api/galleries/${encodeURIComponent(target.id)}`;
+  setHubGalleryBusy(true);
+  try {
+    const errors = await uploadGalleryFiles(
+      url,
+      files,
+      (name, loaded, total) => setHubGalleryProgress(true, name, loaded, total),
+    );
+    await loadGalleryHub();
+    if (typeof loadDates === "function") await loadDates();
+    if (target.type === "album" && !hubMonth && hubAlbumId === target.id) {
+      const now = new Date();
+      const folder = hubMonths.find((item) => item.year === now.getUTCFullYear() && item.month === now.getUTCMonth() + 1);
+      if (folder) await openHubMonth(folder.year, folder.month);
+    }
+    if (errors.length) showError(errEl, errors.join("\n"));
+  } catch (err) {
+    showError(errEl, err.message);
+  } finally {
+    setHubGalleryProgress(false);
+    setHubGalleryBusy(false);
+  }
+}
+
 const PROMO_SECTIONS = [
   { id: "ticket", title: "promoTickets", empty: "promoEmptyTickets" },
   { id: "flyer", title: "promoFlyer", empty: "promoEmptyFlyer" },
@@ -1484,6 +1812,7 @@ function setMenuOpen(open) {
 
 const TAB_PANES = {
   home: "tab-home",
+  gallery: "gallery-hub",
   directory: "directory-dialog",
   archive: "archive-dialog",
   propose: "propose-dialog",
@@ -1542,6 +1871,10 @@ function showTab(tab) {
   if (!TAB_PANES[tab]) tab = "home";
   if (appTab === "chat" && tab !== "chat") leaveChatPane();
   if (appTab === "archive" && tab !== "archive") leaveArchivePane();
+  if (appTab === "gallery" && tab !== "gallery") {
+    closeHubGalleryView();
+    resetHubAlbum();
+  }
   Object.entries(TAB_PANES).forEach(([name, id]) => {
     const el = document.getElementById(id);
     if (el) el.hidden = name !== tab;
@@ -1567,6 +1900,12 @@ async function activateTab(tab) {
         : primaryChatRoom();
       if (room) await openChat(room);
       else showTab("chat");
+      return;
+    }
+    if (tab === "gallery") {
+      showError(document.getElementById("hub-gallery-error"), "");
+      await loadGalleryHub();
+      showTab("gallery");
       return;
     }
     if (tab === "directory") {
@@ -2105,6 +2444,76 @@ document.getElementById("gallery-file").addEventListener("change", async (e) => 
     addBtn.disabled = false;
     e.target.value = "";
   }
+});
+
+document.getElementById("gallery-hub-close").addEventListener("click", () => {
+  closeHubGalleryView();
+  showTab("home");
+});
+document.getElementById("gallery-hub-close-bottom").addEventListener("click", () => {
+  closeHubGalleryView();
+  showTab("home");
+});
+document.getElementById("hub-gallery-photo-btn").addEventListener("click", () => {
+  const input = document.getElementById("hub-gallery-photo");
+  input.value = "";
+  input.click();
+});
+document.getElementById("hub-gallery-video-btn").addEventListener("click", () => {
+  const input = document.getElementById("hub-gallery-video");
+  input.value = "";
+  input.click();
+});
+document.getElementById("hub-gallery-upload-btn").addEventListener("click", () => {
+  const input = document.getElementById("hub-gallery-upload");
+  input.value = "";
+  input.click();
+});
+document.getElementById("hub-gallery-photo").addEventListener("change", async (e) => {
+  const files = [...(e.target.files || [])];
+  e.target.value = "";
+  await uploadHubFiles("photo", files);
+});
+document.getElementById("hub-gallery-video").addEventListener("change", async (e) => {
+  const files = [...(e.target.files || [])];
+  e.target.value = "";
+  await uploadHubFiles("video", files);
+});
+document.getElementById("hub-gallery-upload").addEventListener("change", async (e) => {
+  const files = [...(e.target.files || [])];
+  e.target.value = "";
+  const eventOpen = hubOpenAlbum()?.kind === "date";
+  const accepted = eventOpen ? files : files.filter((file) => !isGalleryVideo(file));
+  const skipped = files.length - accepted.length;
+  await uploadHubFiles("upload", accepted);
+  if (skipped) {
+    showError(document.getElementById("hub-gallery-error"), I18N.t("errFileType"));
+  }
+});
+document.getElementById("hub-gallery-back").addEventListener("click", () => {
+  closeHubAlbum();
+});
+document.getElementById("hub-gallery-list").addEventListener("click", (e) => {
+  const itemBtn = e.target.closest("[data-hub-item]");
+  if (itemBtn) {
+    openHubGalleryItem(itemBtn.dataset.hubAlbum, itemBtn.dataset.hubItem);
+    return;
+  }
+  const monthBtn = e.target.closest("[data-hub-month]");
+  if (monthBtn) {
+    const [year, month] = monthBtn.dataset.hubMonth.split("-").map(Number);
+    if (year && month) openHubMonth(year, month);
+    return;
+  }
+  const openBtn = e.target.closest("[data-hub-open]");
+  if (openBtn) openHubAlbum(openBtn.dataset.hubOpen);
+});
+document.getElementById("hub-gallery-view-close").addEventListener("click", () => {
+  closeHubGalleryView();
+});
+document.getElementById("hub-gallery-view").addEventListener("close", () => {
+  const media = document.getElementById("hub-gallery-view-media");
+  if (media) media.innerHTML = "";
 });
 
 function memberColor(id) {
@@ -3565,6 +3974,7 @@ function connectWS() {
         if (paneVisible("proposals-dialog")) loadProposals().catch(() => {});
         if (paneVisible("directory-dialog")) loadDirectory().catch(() => {});
         if (paneVisible("archive-dialog")) loadArchive().catch(() => {});
+        if (paneVisible("gallery-hub")) loadGalleryHub().catch(() => {});
         if (document.getElementById("gallery-dialog").open && galleryDateId) openGallery(galleryDateId).catch(() => {});
         if (document.getElementById("promo-dialog")?.open && promoDateId) openPromo(promoDateId).catch(() => {});
       }
@@ -3617,6 +4027,7 @@ I18N.onChange(() => {
     if (paneVisible("proposals-dialog")) renderProposalList();
     if (paneVisible("directory-dialog")) renderDirectory();
     if (paneVisible("archive-dialog")) renderArchive();
+    if (paneVisible("gallery-hub")) renderGalleryHub();
     if (document.getElementById("gallery-dialog").open) {
       paintGallerySize();
       renderGallery();

@@ -137,11 +137,14 @@
         <button type="button" class="btn ghost header-tool on" data-tab="home" role="tab" aria-selected="true" data-i18n-aria="dates" aria-label="Termine" data-tip="Termine">
           <span class="header-tool-icon home" aria-hidden="true"></span>
         </button>
-        <button type="button" class="btn ghost header-tool" data-tab="directory" role="tab" aria-selected="false" data-i18n-aria="addressBook" aria-label="Adressbuch" data-tip="Adressbuch">
-          <span class="header-tool-icon book" aria-hidden="true"></span>
-        </button>
         <button type="button" class="btn ghost header-tool" data-tab="archive" role="tab" aria-selected="false" data-i18n-aria="tabArchive" aria-label="Notenarchiv" data-tip="Notenarchiv">
           <span class="header-tool-icon notes" aria-hidden="true"></span>
+        </button>
+        <button type="button" class="btn ghost header-tool" data-tab="gallery" role="tab" aria-selected="false" data-i18n-aria="tabGallery" aria-label="Galerie" data-tip="Galerie">
+          <span class="header-tool-icon gallery" aria-hidden="true"></span>
+        </button>
+        <button type="button" class="btn ghost header-tool" data-tab="directory" role="tab" aria-selected="false" data-i18n-aria="addressBook" aria-label="Adressbuch" data-tip="Adressbuch">
+          <span class="header-tool-icon book" aria-hidden="true"></span>
         </button>
         <button type="button" class="btn ghost header-tool" data-tab="propose" role="tab" aria-selected="false" data-i18n-aria="proposeSong" aria-label="Song vorschlagen" data-tip="Song vorschlagen">
           <span class="header-tool-icon propose" aria-hidden="true"></span>
@@ -178,13 +181,17 @@
         <span class="header-tool-icon home" aria-hidden="true"></span>
         <span data-i18n="dates">Termine</span>
       </button>
-      <button type="button" id="btn-directory" class="btn book" data-tab="directory">
-        <span class="header-tool-icon book" aria-hidden="true"></span>
-        <span data-i18n="addressBook">Adressbuch</span>
-      </button>
       <button type="button" id="btn-archive" class="btn notes" data-tab="archive">
         <span class="header-tool-icon notes" aria-hidden="true"></span>
         <span data-i18n="tabArchive">Notenarchiv</span>
+      </button>
+      <button type="button" id="btn-gallery" class="btn" data-tab="gallery">
+        <span class="header-tool-icon gallery" aria-hidden="true"></span>
+        <span data-i18n="tabGallery">Galerie</span>
+      </button>
+      <button type="button" id="btn-directory" class="btn book" data-tab="directory">
+        <span class="header-tool-icon book" aria-hidden="true"></span>
+        <span data-i18n="addressBook">Adressbuch</span>
       </button>
       <button type="button" id="btn-propose" class="btn song" data-tab="propose">
         <span class="header-tool-icon propose" aria-hidden="true"></span>
@@ -424,6 +431,51 @@
     <input id="archive-member-file" type="file" hidden />
     <button type="button" id="archive-close-bottom" class="btn ghost chat-close-bottom" data-i18n="close">Schließen</button>
   </section>
+  <section id="gallery-hub" class="app-pane directory-dialog app-dialog" hidden>
+    <div class="dialog-head">
+      <div>
+        <p class="brand" data-i18n="tabGallery">Galerie</p>
+        <h2 id="gallery-hub-title" data-i18n="galleryHubTitle">Alle Galerien</h2>
+      </div>
+      <div class="dialog-head-actions">
+        <button type="button" id="hub-gallery-back" class="btn ghost" hidden data-i18n="galleryBack">Zurück</button>
+        <button type="button" id="gallery-hub-close" class="btn ghost" data-i18n="close">Schließen</button>
+      </div>
+    </div>
+    <div class="app-dialog-body hub-gallery-body">
+      <p class="muted" data-i18n="galleryHubLede">Jedes Album zeigt ein Titelbild. Tippe, um die Galerie zu öffnen.</p>
+      <div class="hub-gallery-actions">
+        <button type="button" id="hub-gallery-photo-btn" class="btn" data-i18n="galleryTakePhoto">Bild</button>
+        <button type="button" id="hub-gallery-video-btn" class="btn" data-i18n="galleryTakeVideo">Video</button>
+        <button type="button" id="hub-gallery-upload-btn" class="btn ghost" data-i18n="galleryUploadGeneral">Hochladen</button>
+      </div>
+      <p id="hub-gallery-hint" class="muted gallery-limit" data-i18n="galleryHubHint">Kamera-Bild und -Video landen in Live. Extra Fotos gehen nach Allgemein.</p>
+      <input id="hub-gallery-photo" type="file" accept="image/*" capture="environment" hidden />
+      <input id="hub-gallery-video" type="file" accept="video/*" capture="environment" hidden />
+      <input id="hub-gallery-upload" type="file" accept="image/*" multiple hidden />
+      <div id="hub-gallery-progress" class="gallery-progress" hidden>
+        <div class="gallery-progress-meta">
+          <span id="hub-gallery-progress-name" class="gallery-progress-name"></span>
+          <span id="hub-gallery-progress-pct">0%</span>
+        </div>
+        <progress id="hub-gallery-progress-bar" max="100" value="0"></progress>
+      </div>
+      <p id="hub-gallery-error" class="error" hidden></p>
+      <div id="hub-gallery-list" class="hub-gallery-list"></div>
+    </div>
+    <button type="button" id="gallery-hub-close-bottom" class="btn ghost chat-close-bottom" data-i18n="close">Schließen</button>
+  </section>
+  <dialog id="hub-gallery-view" class="dialog hub-gallery-view">
+    <div class="dialog-head">
+      <div>
+        <p class="brand" id="hub-gallery-view-album">Galerie</p>
+        <h2 id="hub-gallery-view-name">Foto</h2>
+      </div>
+      <button type="button" id="hub-gallery-view-close" class="btn ghost" data-i18n="close">Schließen</button>
+    </div>
+    <div id="hub-gallery-view-media" class="hub-gallery-view-media"></div>
+    <p id="hub-gallery-view-meta" class="meta"></p>
+  </dialog>
   <dialog id="gallery-dialog" class="dialog gallery-dialog">
     <div class="dialog-head">
       <div class="win-dots" role="group">

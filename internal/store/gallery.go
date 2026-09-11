@@ -22,7 +22,8 @@ const (
 
 type GalleryItem struct {
 	ID        string `json:"id"`
-	DateID    string `json:"dateId"`
+	DateID    string `json:"dateId,omitempty"`
+	Album     string `json:"album,omitempty"`
 	UserID    string `json:"userId,omitempty"`
 	Nickname  string `json:"nickname"`
 	Kind      string `json:"kind"`

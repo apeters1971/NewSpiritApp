@@ -1282,6 +1282,97 @@ func TestGallery(t *testing.T) {
 	}
 }
 
+func TestGalleryHub(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "gallery-hub.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	ada, err := st.CreateUser("Ada", "ada@example.com", "secret1", RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	band, err := st.CreateUser("Cara", "cara@example.com", "secret1", RoleBand, "Drums")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	start := time.Date(2026, 9, 20, 18, 0, 0, 0, time.UTC)
+	d, err := st.CreateDate("Sunday practice", CategoryRehearsal, start, nil, "Hall", "", "", []string{RoleChoir}, Bring{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	img := image.NewRGBA(image.Rect(0, 0, 8, 8))
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.AddGalleryItem(d.ID, ada.ID, "rehearsal.jpg", buf.Bytes()); err != nil {
+		t.Fatal(err)
+	}
+
+	live, err := st.AddAlbumItem(AlbumLive, ada.ID, "live.jpg", buf.Bytes())
+	if err != nil || live.Album != AlbumLive || live.Kind != GalleryKindPhoto {
+		t.Fatalf("live %+v %v", live, err)
+	}
+	general, err := st.AddAlbumItem(AlbumGeneral, ada.ID, "general.jpg", buf.Bytes())
+	if err != nil || general.Album != AlbumGeneral {
+		t.Fatalf("general %+v %v", general, err)
+	}
+	if _, err := st.AddAlbumItem(AlbumGeneral, ada.ID, "clip.mp4", []byte("fake-mp4-bytes")); err == nil {
+		t.Fatal("expected video rejected in general")
+	}
+	if _, err := st.AddAlbumItem("unknown", ada.ID, "live.jpg", buf.Bytes()); err == nil {
+		t.Fatal("expected unknown album rejected")
+	}
+
+	adaHub, err := st.ListGalleryHub(ada)
+	if err != nil || len(adaHub) != 3 {
+		t.Fatalf("ada hub %d %v", len(adaHub), err)
+	}
+	if adaHub[0].Kind != AlbumLive || adaHub[1].Kind != AlbumGeneral || adaHub[2].Kind != AlbumKindDate {
+		t.Fatalf("ada kinds %+v", []string{adaHub[0].Kind, adaHub[1].Kind, adaHub[2].Kind})
+	}
+	if adaHub[2].ID != d.ID || adaHub[2].Count != 1 || adaHub[2].Cover == nil {
+		t.Fatalf("ada date album %+v", adaHub[2])
+	}
+	if adaHub[0].Count != 1 || adaHub[0].Cover == nil || adaHub[0].Cover.ID != live.ID {
+		t.Fatalf("ada live %+v", adaHub[0])
+	}
+	if adaHub[1].Count != 1 || adaHub[1].Cover == nil || adaHub[1].Cover.ID != general.ID {
+		t.Fatalf("ada general %+v", adaHub[1])
+	}
+
+	bandHub, err := st.ListGalleryHub(band)
+	if err != nil || len(bandHub) != 2 {
+		t.Fatalf("band hub %d %v", len(bandHub), err)
+	}
+	if bandHub[0].Kind != AlbumLive || bandHub[1].Kind != AlbumGeneral {
+		t.Fatalf("band kinds %+v", []string{bandHub[0].Kind, bandHub[1].Kind})
+	}
+	if _, path, err := st.AlbumFilePath(AlbumLive, live.ID); err != nil || path == "" {
+		t.Fatalf("live file %q %v", path, err)
+	}
+
+	created, err := time.Parse(time.RFC3339Nano, live.CreatedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	months, err := st.ListAlbumMonths(AlbumLive)
+	if err != nil || len(months) != 1 || months[0].Year != created.Year() || months[0].Month != int(created.Month()) || months[0].Count != 1 || months[0].Cover == nil {
+		t.Fatalf("live months %+v %v", months, err)
+	}
+	monthItems, err := st.ListAlbumMonth(AlbumLive, created.Year(), int(created.Month()))
+	if err != nil || len(monthItems) != 1 || monthItems[0].ID != live.ID {
+		t.Fatalf("live month %+v %v", monthItems, err)
+	}
+	if _, err := st.ListAlbumMonth(AlbumLive, 2026, 13); err == nil {
+		t.Fatal("expected invalid month")
+	}
+}
+
 func TestPromo(t *testing.T) {
 	st, err := Open(filepath.Join(t.TempDir(), "promo.db"))
 	if err != nil {
