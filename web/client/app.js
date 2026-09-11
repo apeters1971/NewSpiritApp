@@ -2783,12 +2783,31 @@ function paintIncomingCall() {
   }
 }
 
+function paintCallSize() {
+  const btn = document.getElementById("call-size");
+  const stage = document.getElementById("call-stage");
+  if (!btn || !stage) return;
+  const video = !!(callSession?.kind === "video" && !stage.hidden);
+  btn.hidden = !video;
+  const full = stage.classList.contains("full");
+  btn.textContent = I18N.t(full ? "callReduce" : "callExpand");
+  btn.setAttribute("aria-pressed", full ? "true" : "false");
+}
+
+function setCallFull(full) {
+  document.getElementById("chat-dialog")?.classList.toggle("call-full", full);
+  document.getElementById("call-stage")?.classList.toggle("full", full);
+  paintCallSize();
+}
+
 function showCallStage() {
   const stage = document.getElementById("call-stage");
   if (!stage) return;
   stage.hidden = false;
   stage.classList.toggle("audio", callSession?.kind !== "video");
+  if (callSession?.kind !== "video") setCallFull(false);
   paintChatCallActions();
+  paintCallSize();
 }
 
 function hideCallStage() {
@@ -2797,6 +2816,7 @@ function hideCallStage() {
     stage.hidden = true;
     stage.classList.remove("audio");
   }
+  setCallFull(false);
   const remote = document.getElementById("call-remote");
   const local = document.getElementById("call-local");
   if (remote) remote.srcObject = null;
@@ -3059,6 +3079,10 @@ document.getElementById("chat-call-video")?.addEventListener("click", () => star
 document.getElementById("call-accept")?.addEventListener("click", () => acceptCall());
 document.getElementById("call-decline")?.addEventListener("click", () => declineCall());
 document.getElementById("call-hangup")?.addEventListener("click", () => hangupCall(true));
+document.getElementById("call-size")?.addEventListener("click", () => {
+  const stage = document.getElementById("call-stage");
+  setCallFull(!stage?.classList.contains("full"));
+});
 document.getElementById("call-incoming")?.addEventListener("cancel", (e) => {
   e.preventDefault();
   declineCall();
@@ -3524,6 +3548,7 @@ I18N.onChange(() => {
     paintNoticesButton();
     paintStreamButtons();
     paintChatCallActions();
+    paintCallSize();
     if (document.getElementById("call-incoming")?.open) paintIncomingCall();
     if (callSession && document.getElementById("call-stage") && !document.getElementById("call-stage").hidden) {
       const key = callSession.state === "out" ? "callCalling" : callSession.state === "up" ? "callActive" : "callConnecting";

@@ -5,6 +5,7 @@
       items: {
         de: [
           "Bei Konzerten gibt es VVK/Werbung direkt nach der Galerie: Ticket-Links, Flyer, Plakate und ein Hinweis der Verwaltung. Mitglieder sehen und öffnen sie nur.",
+          "Im Videoanruf kann man das Bild vergrößern — am Desktop füllt es dann das Chat-Fenster.",
           "Im privaten Chat gibt es Anruf und Videoanruf. Die andere Person nimmt an oder lehnt ab — Ton und Bild laufen in beide Richtungen.",
           "Ein Name in der Online-Liste öffnet einen kurzen privaten Chat — auf beiden Seiten. Beim Schließen ist alles weg.",
           "Neben DE/EN steht, wie viele online sind. Darüber liegen die Namen.",
@@ -14,6 +15,7 @@
         ],
         en: [
           "Concerts have Tickets / promo right after the gallery: ticket links, flyers, posters, and a note from the controller. Members can only view and open them.",
+          "A video call can be enlarged so the picture fills the chat window on a desktop.",
           "Private chats have audio and video call buttons. The other person accepts or declines, then both sides hear and see each other.",
           "A name in the online list opens a short private chat for both of you. Closing it wipes the messages.",
           "Next to DE/EN, a count shows who is online. Hover it for names.",

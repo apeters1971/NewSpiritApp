@@ -1083,6 +1083,34 @@ body.menu-open::before {
   gap: 0.75rem;
 }
 .call-bar #call-status { margin: 0; }
+.call-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: 0 0 auto;
+}
+.chat-dialog.call-full .call-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  border-bottom: 0;
+}
+.chat-dialog.call-full .call-videos,
+.chat-dialog.call-full .call-videos video {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  height: 100%;
+}
+.chat-dialog.call-full .call-videos video { object-fit: contain; }
+.chat-dialog.call-full #call-local {
+  max-width: 12rem;
+  max-height: 9rem;
+}
+.chat-dialog.call-full .chat-list,
+.chat-dialog.call-full #chat-form,
+.chat-dialog.call-full #chat-close-bottom {
+  display: none;
+}
 .call-hangup {
   background: var(--danger);
   border-color: var(--danger);
