@@ -4,6 +4,7 @@
       date: "2026-09-11",
       items: {
         de: [
+          "In der Galerie hat jedes Bild und jeder Ordner eine Checkbox. Sind 1–64 Dateien gewählt, teilt Teilen sie — am Desktop heißt der Knopf Download.",
           "Die Icon-Leiste und das Menü beginnen mit Termine, Notenarchiv, Galerie, Adressbuch.",
           "Im Menü gibt es Galerie: Live, Allgemein und die Termine als Titelbilder. Live und Allgemein liegen in Monatsordnern (Monat/Jahr). Bild und Video gehen nach Live, Hochladen nach Allgemein — in einer Termin-Galerie alle drei in diesen Termin.",
           "Bei Konzerten gibt es VVK/Werbung direkt nach der Galerie: Ticket-Links, Flyer, Plakate und ein Hinweis der Verwaltung. Mitglieder sehen und öffnen sie nur.",
@@ -16,6 +17,7 @@
           "Neben DE/EN gibt es ein Hell/Dunkel-Symbol. Dark bleibt Standard; Hell merkt sich das Gerät.",
         ],
         en: [
+          "Gallery pictures and folders have a checkbox. With 1–64 files selected, Share sends them to other apps. On a desktop browser the button says Download.",
           "The icon bar and menu start with Dates, Music Archive, Gallery, Address book.",
           "The menu has Gallery: Live, General, and the events as cover pictures. Live and General use month/year folders. Picture and Video go into Live, Upload into General — unless you opened an event gallery, then all three go there.",
           "Concerts have Tickets / promo right after the gallery: ticket links, flyers, posters, and a note from the controller. Members can only view and open them.",

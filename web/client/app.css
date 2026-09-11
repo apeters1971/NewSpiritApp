@@ -2458,6 +2458,27 @@ p.notes { margin: 0.55rem 0 0; color: var(--muted); white-space: pre-wrap; }
   grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
   gap: 0.75rem;
 }
+.hub-gallery-pick { position: relative; min-width: 0; }
+.hub-gallery-pick .hub-gallery-cover,
+.hub-gallery-pick .hub-gallery-card { width: 100%; }
+.hub-gallery-check {
+  position: absolute;
+  top: 0.35rem;
+  left: 0.35rem;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 0.25rem;
+  background: rgba(0, 0, 0, 0.45);
+}
+.hub-gallery-check input {
+  width: 1.1rem;
+  height: 1.1rem;
+  margin: 0;
+  accent-color: var(--accent);
+}
 .hub-gallery-cover {
   display: grid;
   gap: 0.5rem;
