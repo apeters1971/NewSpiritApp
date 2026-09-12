@@ -172,15 +172,46 @@ function voteLabel(choice) {
   return I18N.vote(choice || "unknown");
 }
 
+function voteMark(choice) {
+  if (choice === "yes") return `<span class="vote-mark yes" aria-hidden="true"></span>`;
+  if (choice === "maybe") return `<span class="vote-mark maybe" aria-hidden="true"></span>`;
+  if (choice === "no") return `<span class="vote-mark no" aria-hidden="true"></span>`;
+  return "";
+}
+
+function voteChoiceHTML(choice) {
+  return `${escapeHtml(voteLabel(choice))}${voteMark(choice)}`;
+}
+
 function firstVoteChanged(entry) {
   return entry.initialChoice && entry.initialChoice !== entry.choice;
+}
+
+const rosterOpen = new Set();
+
+function renderVoteTable(date, tableHTML) {
+  if (!tableHTML) return "";
+  const open = rosterOpen.has(date.id) ? " open" : "";
+  return `<details class="fold fold-roster"${open} data-roster="${date.id}">
+    <summary class="fold-head"><span class="brand">${escapeHtml(I18N.t("votes"))}</span></summary>
+    <div class="fold-body">${tableHTML}</div>
+  </details>`;
+}
+
+function bindRosterFolds() {
+  datesEl?.querySelectorAll("details[data-roster]").forEach((el) => {
+    el.addEventListener("toggle", () => {
+      if (el.open) rosterOpen.add(el.dataset.roster);
+      else rosterOpen.delete(el.dataset.roster);
+    });
+  });
 }
 
 function renderRoster(date) {
   const rows = date.roster.map((entry) => {
     const vote = firstVoteChanged(entry)
-      ? `<span class="badge ${entry.choice}">${voteLabel(entry.choice)}</span> <span class="changed">${I18N.t("firstVote")} ${voteLabel(entry.initialChoice)}</span>`
-      : `<span class="badge ${entry.choice}">${voteLabel(entry.choice)}</span>`;
+      ? `<span class="badge ${entry.choice}">${voteChoiceHTML(entry.choice)}</span> <span class="changed">${I18N.t("firstVote")} ${voteChoiceHTML(entry.initialChoice)}</span>`
+      : `<span class="badge ${entry.choice}">${voteChoiceHTML(entry.choice)}</span>`;
     return `<tr>
       <td>${escapeHtml(entry.nickname)}</td>
       <td>${escapeHtml(I18N.role(entry.role))}</td>
@@ -188,10 +219,10 @@ function renderRoster(date) {
       <td>${vote}</td>
     </tr>`;
   }).join("");
-  return `<table class="roster">
+  return renderVoteTable(date, `<table class="roster">
     <thead><tr><th>${I18N.t("name")}</th><th>${I18N.t("role")}</th><th>${I18N.t("subrole")}</th><th>${I18N.t("vote")}</th></tr></thead>
     <tbody>${rows || `<tr><td colspan="4" class="muted">${I18N.t("noPeopleRoles")}</td></tr>`}</tbody>
-  </table>`;
+  </table>`);
 }
 
 function choirVoiceYes(date) {
@@ -210,14 +241,21 @@ function choirVoiceYes(date) {
   return counts;
 }
 
+const MOOD_SCALE = [
+  { emoji: "😄", key: "moodGreat" },
+  { emoji: "🙂", key: "moodOk" },
+  { emoji: "😟", key: "moodWorry" },
+  { emoji: "😰", key: "moodLow" },
+];
+
 function participationMood(date) {
   if (!(date.roles || []).includes("choir")) return null;
   const counts = choirVoiceYes(date);
   const min = Math.min(...CHOIR_VOICES.map((v) => counts[v]));
-  if (min < 2) return { emoji: "😰", key: "moodLow" };
-  if (min === 2) return { emoji: "😟", key: "moodWorry" };
-  if (min === 3) return { emoji: "🙂", key: "moodOk" };
-  return { emoji: "😄", key: "moodGreat" };
+  if (min < 2) return MOOD_SCALE[3];
+  if (min === 2) return MOOD_SCALE[2];
+  if (min === 3) return MOOD_SCALE[1];
+  return MOOD_SCALE[0];
 }
 
 function moodHTML(date, extraClass = "") {
@@ -248,10 +286,10 @@ function renderPoll(date) {
   const options = date.options || [];
   const blocks = options.map((o) => {
     const mine = o.myInitial && o.myInitial !== o.myChoice
-      ? `<p class="changed">${I18N.t("yourFirstVote")}: ${voteLabel(o.myInitial)}</p>`
+      ? `<p class="changed">${I18N.t("yourFirstVote")}: ${voteChoiceHTML(o.myInitial)}</p>`
       : "";
     const buttons = canVote() ? CHOICES.map((c) => `
-      <button type="button" data-id="${date.id}" data-option="${o.id}" data-choice="${c}" class="${c}${o.myChoice === c ? " on" : ""}" ${locked ? "disabled" : ""}>${voteLabel(c)}</button>
+      <button type="button" data-id="${date.id}" data-option="${o.id}" data-choice="${c}" class="${c}${o.myChoice === c ? " on" : ""}" ${locked ? "disabled" : ""}>${voteChoiceHTML(c)}</button>
     `).join("") : "";
     const freeze = dateIsMine(date) && date.pollOpen
       ? `<button type="button" class="btn" data-planner-freeze="${date.id}" data-option="${o.id}">${I18N.t("freezePoll")}</button>`
@@ -271,28 +309,27 @@ function renderPoll(date) {
       const entry = (o.roster || []).find((e) => e.userId === p.userId);
       const choice = entry?.choice || "unknown";
       const changed = entry?.initialChoice && entry.initialChoice !== choice;
-      return `<td><span class="badge ${choice}">${voteLabel(choice)}</span>${changed ? ` <span class="changed">${I18N.t("firstVote")} ${voteLabel(entry.initialChoice)}</span>` : ""}</td>`;
+      return `<td><span class="badge ${choice}">${voteChoiceHTML(choice)}</span>${changed ? ` <span class="changed">${I18N.t("firstVote")} ${voteChoiceHTML(entry.initialChoice)}</span>` : ""}</td>`;
     }).join("");
     return `<tr><td>${escapeHtml(p.nickname)}</td>${cells}</tr>`;
   }).join("");
   return `${blocks}
-    <table class="roster poll-table">
+    ${renderVoteTable(date, `<table class="roster poll-table">
       <thead>${head}</thead>
       <tbody>${body || `<tr><td colspan="${options.length + 1}" class="muted">${I18N.t("noPeopleRoles")}</td></tr>`}</tbody>
-    </table>`;
+    </table>`)}`;
 }
 
 function renderDate(date) {
   const locked = date.status === "cancelled";
   const isPoll = (date.options || []).length >= 2;
   const buttons = canVote() ? CHOICES.map((c) => `
-    <button type="button" data-id="${date.id}" data-choice="${c}" class="${c}${date.myChoice === c ? " on" : ""}" ${locked ? "disabled" : ""}>${voteLabel(c)}</button>
+    <button type="button" data-id="${date.id}" data-choice="${c}" class="${c}${date.myChoice === c ? " on" : ""}" ${locked ? "disabled" : ""}>${voteChoiceHTML(c)}</button>
   `).join("") : "";
   const mine = canVote() && date.myInitial && date.myInitial !== date.myChoice
-    ? `<p class="changed">${I18N.t("yourFirstVote")}: ${voteLabel(date.myInitial)}</p>`
+    ? `<p class="changed">${I18N.t("yourFirstVote")}: ${voteChoiceHTML(date.myInitial)}</p>`
     : "";
   const notes = date.notes ? `<p class="notes">${escapeHtml(date.notes)}</p>` : "";
-  const commentCount = (date.comments || []).length;
   const when = pollOpen(date)
     ? I18N.t("severalTimes") + (date.location ? " · " + date.location : "")
     : formatRange(date);
@@ -300,6 +337,7 @@ function renderDate(date) {
     ? `<span class="badge voting">${I18N.t("poll")}</span>`
     : date.frozenOptionId ? `<span class="badge accepted">${I18N.t("chosenTime")}</span>` : "";
   return `<article class="card${needsVote(date) ? " needs-vote" : ""}">
+    ${renderDateTools(date)}
     <div class="card-head">
       <div>
         <p class="brand">${escapeHtml(I18N.category(date.category))} · ${date.roles.map((r) => I18N.role(r)).join(" · ")}</p>
@@ -318,17 +356,60 @@ function renderDate(date) {
     ${isPoll ? renderPoll(date) : ""}
     ${pollOpen(date) || !buttons ? "" : `<div class="vote-row">${buttons}</div>${mine}`}
     ${renderPlannerActions(date)}
-    <div class="card-actions">
-      <button type="button" class="btn ghost" data-comments="${date.id}">${I18N.t("comments")}${commentCount ? ` (${commentCount})` : ""}</button>
-      ${date.schedule ? `<button type="button" class="btn ghost" data-schedule="${date.id}">${I18N.t("schedule")}</button>` : ""}
-      <button type="button" class="btn ghost" data-titles="${date.id}">${I18N.t("titles")}${(date.titles || []).length ? ` (${date.titles.length})` : ""}</button>
-      ${date.chatOpen ? `<button type="button" class="btn ghost" data-event-chat="${date.id}">${I18N.t("eventChat")}</button>` : ""}
-      <button type="button" class="btn ghost" data-gallery="${date.id}">${I18N.t("gallery")}${date.galleryCount ? ` (${date.galleryCount})` : ""}</button>
-      ${dateShowsPromo(date) ? `<button type="button" class="btn ghost" data-promo="${date.id}">${I18N.t("promo")}${date.promoCount ? ` (${date.promoCount})` : ""}</button>` : ""}
-    </div>
     ${pollOpen(date) ? "" : renderCounts(date)}
     ${pollOpen(date) ? "" : renderRoster(date)}
   </article>`;
+}
+
+function dateToolCount(n) {
+  return n ? `<span class="date-tool-count">${n}</span>` : "";
+}
+
+function dateToolBtn(attr, id, tip, iconClass, count) {
+  const label = escapeHtml(tip);
+  return `<button type="button" class="btn ghost header-tool date-tool" ${attr}="${id}" data-tip="${label}" aria-label="${label}">
+    <span class="header-tool-icon ${iconClass}"></span>
+    ${dateToolCount(count)}
+  </button>`;
+}
+
+function dateMenuItem(attr, id, label, count) {
+  const extra = count ? ` (${count})` : "";
+  return `<button type="button" class="btn ghost" ${attr}="${id}" role="menuitem">${escapeHtml(label)}${extra}</button>`;
+}
+
+function renderDateTools(date) {
+  const commentCount = (date.comments || []).length;
+  const titleCount = (date.titles || []).length;
+  const icons = [
+    dateToolBtn("data-comments", date.id, I18N.t("comments"), "comments", commentCount),
+    dateToolBtn("data-titles", date.id, I18N.t("titles"), "notes", titleCount),
+    dateToolBtn("data-gallery", date.id, I18N.t("gallery"), "gallery", date.galleryCount),
+  ].join("");
+  const chat = date.chatOpen
+    ? dateToolBtn("data-event-chat", date.id, I18N.t("eventChat"), "chat", 0)
+    : "";
+  const menuItems = [
+    dateMenuItem("data-comments", date.id, I18N.t("comments"), commentCount),
+    date.schedule ? dateMenuItem("data-schedule", date.id, I18N.t("schedule")) : "",
+    dateMenuItem("data-titles", date.id, I18N.t("titles"), titleCount),
+    date.chatOpen ? dateMenuItem("data-event-chat", date.id, I18N.t("eventChat")) : "",
+    dateMenuItem("data-gallery", date.id, I18N.t("gallery"), date.galleryCount),
+    dateShowsPromo(date) ? dateMenuItem("data-promo", date.id, I18N.t("promo"), date.promoCount) : "",
+  ].join("");
+  const menuLabel = escapeHtml(I18N.t("menu"));
+  return `<div class="card-tools">
+    <div class="card-tools-icons">${icons}</div>
+    <div class="card-tools-end">
+      ${chat}
+      <div class="date-menu">
+        <button type="button" class="btn ghost header-tool date-menu-btn" data-date-menu aria-expanded="false" aria-label="${menuLabel}" data-tip="${menuLabel}">
+          <span class="date-menu-dots" aria-hidden="true"></span>
+        </button>
+        <div class="avatar-menu date-menu-list" hidden role="menu">${menuItems}</div>
+      </div>
+    </div>
+  </div>`;
 }
 
 function dateShowsPromo(d) {
@@ -401,13 +482,24 @@ function renderPlannerTag(date) {
 function renderPlannerActions(date) {
   if (!isPlanner() || !dateIsMine(date)) return "";
   const finalize = date.status === "voting" && !date.pollOpen
-    ? `<button type="button" class="btn" data-planner-status="accepted" data-id="${date.id}">${I18N.t("accept")}</button>
-       <button type="button" class="btn ghost danger" data-planner-status="cancelled" data-id="${date.id}">${I18N.t("cancelDate")}</button>`
+    ? `<button type="button" class="planner-act ok" data-planner-status="accepted" data-id="${date.id}">
+         <span class="planner-act-icon accept" aria-hidden="true"></span>${I18N.t("accept")}
+       </button>
+       <button type="button" class="planner-act warn" data-planner-status="cancelled" data-id="${date.id}">
+         <span class="planner-act-icon cancel" aria-hidden="true"></span>${I18N.t("cancelDate")}
+       </button>`
     : "";
   return `<div class="planner-actions">
-    ${date.pollOpen ? `<p class="muted">${I18N.t("freezeHint")}</p>` : ""}
-    ${finalize}
-    <button type="button" class="btn ghost danger" data-planner-delete="${date.id}">${I18N.t("delete")}</button>
+    <div class="planner-actions-row">
+      <p class="planner-actions-label">${I18N.t("planner")}</p>
+      <div class="planner-actions-btns">
+        ${finalize}
+        <button type="button" class="planner-act danger" data-planner-delete="${date.id}">
+          <span class="planner-act-icon trash" aria-hidden="true"></span>${I18N.t("delete")}
+        </button>
+      </div>
+    </div>
+    ${date.pollOpen ? `<p class="muted planner-actions-hint">${I18N.t("freezeHint")}</p>` : ""}
   </div>`;
 }
 
@@ -955,7 +1047,7 @@ function renderOverview() {
       ? ""
       : pollOpen(d)
         ? `<span class="badge voting">${escapeHtml(overviewPollVote(d))}</span>`
-        : `<span class="badge ${d.myChoice}">${voteLabel(d.myChoice)}</span>`;
+        : `<span class="badge ${d.myChoice}">${voteChoiceHTML(d.myChoice)}</span>`;
     const pending = needsVote(d);
     const current = d.id === focusedDateId ? " current" : "";
     return `<button type="button" class="overview-item${pending ? " needs-vote" : ""}${current}" data-jump="${d.id}"${pending ? ` title="${escapeHtml(I18N.t("voteNeeded"))}"` : ""}">
@@ -1054,6 +1146,7 @@ function renderDates() {
   const i = focusedDateIndex();
   const d = dates[i];
   datesEl.innerHTML = renderDate(d);
+  bindRosterFolds();
   if (nav) nav.hidden = false;
   if (titleEl) titleEl.textContent = d.title || "";
   if (labelEl) labelEl.textContent = `${i + 1} / ${dates.length}`;
@@ -1318,7 +1411,7 @@ function showTitlesList() {
           </div>
         </button>
         <button type="button" class="title-ohschreck${on ? " on" : ""}" data-ohschreck="${escapeHtml(item.id)}" aria-pressed="${on}" aria-label="${escapeHtml(I18N.t("ohSchreck"))}">
-          <span aria-hidden="true">😱</span> ${n}
+          <span aria-hidden="true">🚨</span> ${n}
         </button>
       </div>`;
     }).join("")
@@ -2469,12 +2562,22 @@ async function signOut() {
 document.getElementById("btn-logout").addEventListener("click", signOut);
 document.getElementById("btn-logout-menu").addEventListener("click", signOut);
 
+function closeDateMenus() {
+  document.querySelectorAll(".date-menu-list").forEach((el) => {
+    el.hidden = true;
+  });
+  document.querySelectorAll("[data-date-menu]").forEach((btn) => {
+    btn.setAttribute("aria-expanded", "false");
+  });
+}
+
 function setMenuOpen(open) {
   const nav = document.getElementById("top-actions");
   const btn = document.getElementById("btn-menu");
   if (open) {
     setAvatarMenuOpen(false);
     setStreamSourceOpen(false);
+    closeDateMenus();
   }
   nav.classList.toggle("open", open);
   document.body.classList.toggle("menu-open", open);
@@ -2628,6 +2731,7 @@ function setAvatarMenuOpen(open) {
   if (open) {
     setMenuOpen(false);
     setStreamSourceOpen(false);
+    closeDateMenus();
   }
   menu.hidden = !open;
   btn.setAttribute("aria-expanded", open ? "true" : "false");
@@ -2640,6 +2744,7 @@ function setStreamSourceOpen(open) {
   if (open) {
     setMenuOpen(false);
     setAvatarMenuOpen(false);
+    closeDateMenus();
   }
   menu.hidden = !open;
   btn.setAttribute("aria-expanded", open ? "true" : "false");
@@ -2750,6 +2855,7 @@ document.addEventListener("pointerdown", (e) => {
   if (!document.getElementById("stream-source-menu")?.hidden && !e.target.closest("#stream-source")) {
     setStreamSourceOpen(false);
   }
+  if (!e.target.closest(".date-menu")) closeDateMenus();
 });
 
 async function saveMyChannel(n, comment, v48) {
@@ -2906,6 +3012,19 @@ document.getElementById("next-up").addEventListener("click", async (e) => {
 });
 
 datesEl.addEventListener("click", async (e) => {
+  const menuBtn = e.target.closest("[data-date-menu]");
+  if (menuBtn) {
+    const wrap = menuBtn.closest(".date-menu");
+    const menu = wrap?.querySelector(".date-menu-list");
+    const willOpen = !!menu?.hidden;
+    closeDateMenus();
+    if (willOpen && menu) {
+      menu.hidden = false;
+      menuBtn.setAttribute("aria-expanded", "true");
+    }
+    return;
+  }
+  if (e.target.closest(".date-menu-list button")) closeDateMenus();
   const freezeBtn = e.target.closest("button[data-planner-freeze]");
   if (freezeBtn) {
     try {

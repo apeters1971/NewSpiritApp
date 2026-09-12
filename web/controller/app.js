@@ -196,6 +196,17 @@ function voteLabel(choice) {
   return I18N.vote(choice || "unknown");
 }
 
+function voteMark(choice) {
+  if (choice === "yes") return `<span class="vote-mark yes" aria-hidden="true"></span>`;
+  if (choice === "maybe") return `<span class="vote-mark maybe" aria-hidden="true"></span>`;
+  if (choice === "no") return `<span class="vote-mark no" aria-hidden="true"></span>`;
+  return "";
+}
+
+function voteChoiceHTML(choice) {
+  return `${escapeHtml(voteLabel(choice))}${voteMark(choice)}`;
+}
+
 function formatWhen(iso) {
   if (!iso) return "";
   return new Date(iso).toLocaleString(I18N.locale(), {
@@ -367,14 +378,21 @@ function choirVoiceYes(date) {
   return counts;
 }
 
+const MOOD_SCALE = [
+  { emoji: "😄", key: "moodGreat" },
+  { emoji: "🙂", key: "moodOk" },
+  { emoji: "😟", key: "moodWorry" },
+  { emoji: "😰", key: "moodLow" },
+];
+
 function participationMood(date) {
   if (!(date.roles || []).includes("choir")) return null;
   const counts = choirVoiceYes(date);
   const min = Math.min(...CHOIR_VOICES.map((v) => counts[v]));
-  if (min < 2) return { emoji: "😰", key: "moodLow" };
-  if (min === 2) return { emoji: "😟", key: "moodWorry" };
-  if (min === 3) return { emoji: "🙂", key: "moodOk" };
-  return { emoji: "😄", key: "moodGreat" };
+  if (min < 2) return MOOD_SCALE[3];
+  if (min === 2) return MOOD_SCALE[2];
+  if (min === 3) return MOOD_SCALE[1];
+  return MOOD_SCALE[0];
 }
 
 function moodHTML(date) {
@@ -425,8 +443,8 @@ function renderDateDetail() {
   const rows = (d.roster || []).map((e) => {
     const changed = e.initialChoice && e.initialChoice !== e.choice;
     const vote = changed
-      ? `<span class="badge ${e.choice}">${voteLabel(e.choice)}</span> <span class="changed">${I18N.t("firstVote")} ${voteLabel(e.initialChoice)}</span>`
-      : `<span class="badge ${e.choice}">${voteLabel(e.choice)}</span>`;
+      ? `<span class="badge ${e.choice}">${voteChoiceHTML(e.choice)}</span> <span class="changed">${I18N.t("firstVote")} ${voteChoiceHTML(e.initialChoice)}</span>`
+      : `<span class="badge ${e.choice}">${voteChoiceHTML(e.choice)}</span>`;
     const mark = e.attendance === "absent"
       ? ` <span class="badge no">${I18N.t("absent")}</span>`
       : e.attendance === "excused"
@@ -1063,7 +1081,7 @@ function renderDateTitles() {
         <div>
           <strong>${escapeHtml(title)}</strong>
           ${composer ? `<span>${escapeHtml(composer)}</span>` : ""}
-          <p class="title-ohschreck-count" title="${escapeHtml(I18N.t("ohSchreck"))}">😱 ${shockN}</p>
+          <p class="title-ohschreck-count" title="${escapeHtml(I18N.t("ohSchreck"))}">🚨 ${shockN}</p>
         </div>
         <div class="title-pick-actions">
           <button type="button" class="btn ghost" data-move="-1" ${i === 0 ? "disabled" : ""}>↑</button>

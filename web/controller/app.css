@@ -922,7 +922,8 @@ tbody tr:hover, tbody tr.active, .date-item.active { background: rgba(61, 214, 1
 }
 
 .badge {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   padding: 0.1rem 0.4rem;
   border-radius: 3px;
   font-size: 0.72rem;
@@ -930,6 +931,35 @@ tbody tr:hover, tbody tr.active, .date-item.active { background: rgba(61, 214, 1
   letter-spacing: 0.04em;
   font-weight: 650;
 }
+.vote-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 1.05em;
+  height: 1.05em;
+  margin-left: 0.35em;
+  flex: 0 0 auto;
+  font-size: 0.82em;
+  font-weight: 800;
+  line-height: 1;
+}
+.vote-mark.yes {
+  color: #14301c;
+  background: var(--ok);
+  border-radius: 0.2em;
+}
+.vote-mark.yes::before { content: "✓"; }
+.vote-mark.maybe {
+  color: var(--warn);
+  border: 1.5px solid var(--warn);
+  border-radius: 50%;
+}
+.vote-mark.maybe::before { content: "?"; }
+.vote-mark.no {
+  color: #3a1014;
+  background: var(--danger);
+  border-radius: 0.2em;
+}
+.vote-mark.no::before { content: "✕"; }
 .badge.voting { background: rgba(61, 214, 198, 0.16); color: var(--accent); }
 .badge.accepted { background: rgba(127, 217, 154, 0.16); color: var(--ok); }
 .badge.cancelled { background: rgba(240, 113, 120, 0.16); color: var(--danger); }
