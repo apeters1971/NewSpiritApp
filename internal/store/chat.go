@@ -177,9 +177,12 @@ func EventChatClosesAt(d Date) time.Time {
 }
 
 func EventChatIsOpen(d Date, at time.Time) bool {
+	if d.Status == StatusCancelled {
+		return false
+	}
 	closes := EventChatClosesAt(d)
 	if closes.IsZero() {
-		return false
+		return d.Status == StatusVoting || d.Status == StatusAccepted
 	}
 	return at.UTC().Before(closes)
 }

@@ -20,6 +20,7 @@ const (
 	VoteMaybe       = "maybe"
 	VoteNo          = "no"
 	VoteUnknown     = "unknown"
+	VoteSetByAdmin  = "admin"
 )
 
 var Roles = []string{RoleChoir, RoleChorleiter, RoleBand, RoleOrchestra, RoleTechnician, RoleEhemalige}
@@ -133,6 +134,10 @@ func ValidSubrole(role, subrole string) bool {
 
 func ValidStatus(status string) bool {
 	return status == StatusVoting || status == StatusAccepted || status == StatusCancelled
+}
+
+func VoteIsProxy(userID, setBy string) bool {
+	return setBy != "" && setBy != userID
 }
 
 func ValidChoice(choice string) bool {

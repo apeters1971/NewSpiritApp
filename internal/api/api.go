@@ -137,6 +137,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/controller/dates/{id}", s.handleDeleteDate)
 	mux.HandleFunc("POST /api/controller/dates/{id}/status", s.handleDateStatus)
 	mux.HandleFunc("POST /api/controller/dates/{id}/attendance", s.handleControllerAttendance)
+	mux.HandleFunc("POST /api/controller/dates/{id}/vote", s.handleControllerVote)
 	mux.HandleFunc("POST /api/controller/dates/{id}/freeze", s.handleFreezePoll)
 	mux.HandleFunc("GET /api/controller/dates/{id}/gallery", s.handleControllerGalleryList)
 	mux.HandleFunc("POST /api/controller/dates/{id}/gallery", s.handleControllerGalleryUpload)
@@ -726,13 +727,20 @@ func (s *Server) handleVote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
+		UserID string `json:"userId"`
 		Choice string `json:"choice"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	if err := s.Store.SetVote(user.ID, r.PathValue("id"), body.Choice); err != nil {
+	target := strings.TrimSpace(body.UserID)
+	if target != "" && target != user.ID {
+		err = s.Store.SetVoteFor(user.ID, target, r.PathValue("id"), body.Choice)
+	} else {
+		err = s.Store.SetVote(user.ID, r.PathValue("id"), body.Choice)
+	}
+	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
@@ -752,6 +760,7 @@ func (s *Server) handlePollVote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
+		UserID   string `json:"userId"`
 		OptionID string `json:"optionId"`
 		Choice   string `json:"choice"`
 	}
@@ -759,7 +768,13 @@ func (s *Server) handlePollVote(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	if err := s.Store.SetPollVote(user.ID, r.PathValue("id"), body.OptionID, body.Choice); err != nil {
+	target := strings.TrimSpace(body.UserID)
+	if target != "" && target != user.ID {
+		err = s.Store.SetPollVoteFor(user.ID, target, r.PathValue("id"), body.OptionID, body.Choice)
+	} else {
+		err = s.Store.SetPollVote(user.ID, r.PathValue("id"), body.OptionID, body.Choice)
+	}
+	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
@@ -1782,6 +1797,38 @@ func (s *Server) handleDateStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := s.Store.SetDateStatus(r.PathValue("id"), body.Status); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	view, err := s.Store.DateView(r.PathValue("id"), nil)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"date": view})
+}
+
+func (s *Server) handleControllerVote(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	var body struct {
+		UserID   string `json:"userId"`
+		OptionID string `json:"optionId"`
+		Choice   string `json:"choice"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	var err error
+	if strings.TrimSpace(body.OptionID) != "" {
+		err = s.Store.SetAdminPollVote(body.UserID, r.PathValue("id"), body.OptionID, body.Choice)
+	} else {
+		err = s.Store.SetAdminVote(body.UserID, r.PathValue("id"), body.Choice)
+	}
+	if err != nil {
 		writeStoreError(w, err)
 		return
 	}

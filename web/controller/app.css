@@ -8,6 +8,7 @@
   --warn: #f0a35e;
   --danger: #f07178;
   --ok: #7fd99a;
+  --proxy: #4ea3ff;
   --font: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
 }
 
@@ -960,6 +961,11 @@ tbody tr:hover, tbody tr.active, .date-item.active { background: rgba(61, 214, 1
   border-radius: 0.2em;
 }
 .vote-mark.no::before { content: "✕"; }
+.vote-mark.unknown {
+  border: 1.5px solid var(--muted);
+  border-radius: 0.2em;
+  background: transparent;
+}
 .badge.voting { background: rgba(61, 214, 198, 0.16); color: var(--accent); }
 .badge.accepted { background: rgba(127, 217, 154, 0.16); color: var(--ok); }
 .badge.cancelled { background: rgba(240, 113, 120, 0.16); color: var(--danger); }
@@ -967,6 +973,54 @@ tbody tr:hover, tbody tr.active, .date-item.active { background: rgba(61, 214, 1
 .badge.maybe { background: rgba(240, 163, 94, 0.18); color: var(--warn); }
 .badge.no { background: rgba(240, 113, 120, 0.16); color: var(--danger); }
 .badge.unknown { background: rgba(255,255,255,0.06); color: var(--muted); }
+.badge.proxy,
+.badge.yes.proxy,
+.badge.maybe.proxy,
+.badge.no.proxy,
+.badge.unknown.proxy {
+  background: rgba(78, 163, 255, 0.18);
+  color: var(--proxy);
+}
+.vote-row.vote-row-proxy {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin: 0.15rem 0;
+}
+.vote-row.vote-row-proxy .vote-set-btn {
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+}
+.vote-row.vote-row-proxy .vote-mark { margin-left: 0; }
+.vote-row.vote-row-proxy .vote-set-btn.on.yes { border-color: var(--ok); color: var(--ok); }
+.vote-row.vote-row-proxy .vote-set-btn.on.maybe { border-color: var(--warn); color: var(--warn); }
+.vote-row.vote-row-proxy .vote-set-btn.on.no { border-color: var(--danger); color: var(--danger); }
+.vote-row.vote-row-proxy .vote-set-btn.on.unknown { border-color: var(--muted); color: var(--muted); }
+.vote-row.vote-row-proxy .vote-set-btn.on.proxy,
+.vote-row.vote-row-proxy .vote-set-btn.on.proxy.yes,
+.vote-row.vote-row-proxy .vote-set-btn.on.proxy.maybe,
+.vote-row.vote-row-proxy .vote-set-btn.on.proxy.no,
+.vote-row.vote-row-proxy .vote-set-btn.on.proxy.unknown {
+  background: rgba(78, 163, 255, 0.18);
+  border-color: var(--proxy);
+  color: var(--proxy);
+}
+.poll-roster {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin: 0.55rem 0;
+}
+.poll-roster-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
 .attendance-actions {
   display: flex;
   flex-wrap: wrap;

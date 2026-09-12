@@ -176,11 +176,50 @@ function voteMark(choice) {
   if (choice === "yes") return `<span class="vote-mark yes" aria-hidden="true"></span>`;
   if (choice === "maybe") return `<span class="vote-mark maybe" aria-hidden="true"></span>`;
   if (choice === "no") return `<span class="vote-mark no" aria-hidden="true"></span>`;
-  return "";
+  return `<span class="vote-mark unknown" aria-hidden="true"></span>`;
 }
 
 function voteChoiceHTML(choice) {
   return `${escapeHtml(voteLabel(choice))}${voteMark(choice)}`;
+}
+
+function voteBadgeHTML(choice, proxy) {
+  const tip = proxy ? ` title="${escapeHtml(I18N.t("proxyVote"))}"` : "";
+  return `<span class="badge ${choice}${proxy ? " proxy" : ""}"${tip}>${voteChoiceHTML(choice)}</span>`;
+}
+
+function voteOnClass(current, choice, proxy) {
+  if (current !== choice) return "";
+  return proxy ? " on proxy" : " on";
+}
+
+function canSetVoteFor(date) {
+  return isPlanner() && date?.status !== "cancelled";
+}
+
+function renderVoteButtons(date, entry, optionId) {
+  const opt = optionId ? ` data-option="${optionId}"` : "";
+  const user = entry?.userId ? ` data-user="${entry.userId}"` : "";
+  const current = entry ? (entry.choice || "unknown") : date.myChoice;
+  const proxy = !!(entry ? entry.proxy : date.myProxy);
+  const locked = date.status === "cancelled";
+  const iconOnly = !!entry;
+  return CHOICES.map((c) => `
+    <button type="button" data-id="${date.id}" data-choice="${c}"${user}${opt} class="${c}${voteOnClass(current, c, proxy)}" ${locked ? "disabled" : ""} aria-label="${escapeHtml(voteLabel(c))}">${iconOnly ? voteMark(c) : voteChoiceHTML(c)}</button>
+  `).join("");
+}
+
+function renderVoteCell(date, entry, optionId) {
+  const changed = firstVoteChanged(entry)
+    ? ` <span class="changed">${I18N.t("firstVote")} ${voteChoiceHTML(entry.initialChoice)}</span>`
+    : "";
+  if (!canSetVoteFor(date) || date.status === "cancelled") {
+    return `${voteBadgeHTML(entry.choice, entry.proxy)}${changed}`;
+  }
+  if (optionId ? !pollOpen(date) : pollOpen(date)) {
+    return `${voteBadgeHTML(entry.choice, entry.proxy)}${changed}`;
+  }
+  return `<div class="vote-row vote-row-proxy">${renderVoteButtons(date, entry, optionId)}</div>${changed}`;
 }
 
 function firstVoteChanged(entry) {
@@ -221,14 +260,11 @@ function bindDateFolds() {
 
 function renderRoster(date) {
   const rows = date.roster.map((entry) => {
-    const vote = firstVoteChanged(entry)
-      ? `<span class="badge ${entry.choice}">${voteChoiceHTML(entry.choice)}</span> <span class="changed">${I18N.t("firstVote")} ${voteChoiceHTML(entry.initialChoice)}</span>`
-      : `<span class="badge ${entry.choice}">${voteChoiceHTML(entry.choice)}</span>`;
     return `<tr>
       <td>${escapeHtml(entry.nickname)}</td>
       <td>${escapeHtml(I18N.role(entry.role))}</td>
       <td>${escapeHtml(I18N.subrole(entry.subrole))}</td>
-      <td>${vote}</td>
+      <td>${renderVoteCell(date, entry)}</td>
     </tr>`;
   }).join("");
   return renderVoteTable(date, `<table class="roster">
@@ -301,7 +337,7 @@ function renderPoll(date) {
       ? `<p class="changed">${I18N.t("yourFirstVote")}: ${voteChoiceHTML(o.myInitial)}</p>`
       : "";
     const buttons = canVote() ? CHOICES.map((c) => `
-      <button type="button" data-id="${date.id}" data-option="${o.id}" data-choice="${c}" class="${c}${o.myChoice === c ? " on" : ""}" ${locked ? "disabled" : ""}>${voteChoiceHTML(c)}</button>
+      <button type="button" data-id="${date.id}" data-option="${o.id}" data-choice="${c}" class="${c}${voteOnClass(o.myChoice, c, o.myProxy)}" ${locked ? "disabled" : ""}>${voteChoiceHTML(c)}</button>
     `).join("") : "";
     const freeze = dateIsMine(date) && date.pollOpen
       ? `<button type="button" class="btn" data-planner-freeze="${date.id}" data-option="${o.id}">${I18N.t("freezePoll")}</button>`
@@ -330,10 +366,8 @@ function renderPollTable(date) {
   const head = `<tr><th>${I18N.t("name")}</th>${options.map((o) => `<th>${escapeHtml(formatOptionRange(o))}</th>`).join("")}</tr>`;
   const body = people.map((p) => {
     const cells = options.map((o) => {
-      const entry = (o.roster || []).find((e) => e.userId === p.userId);
-      const choice = entry?.choice || "unknown";
-      const changed = entry?.initialChoice && entry.initialChoice !== choice;
-      return `<td><span class="badge ${choice}">${voteChoiceHTML(choice)}</span>${changed ? ` <span class="changed">${I18N.t("firstVote")} ${voteChoiceHTML(entry.initialChoice)}</span>` : ""}</td>`;
+      const entry = (o.roster || []).find((e) => e.userId === p.userId) || { userId: p.userId, choice: "unknown" };
+      return `<td>${renderVoteCell(date, entry, o.id)}</td>`;
     }).join("");
     return `<tr><td>${escapeHtml(p.nickname)}</td>${cells}</tr>`;
   }).join("");
@@ -344,11 +378,8 @@ function renderPollTable(date) {
 }
 
 function renderDate(date) {
-  const locked = date.status === "cancelled";
   const isPoll = (date.options || []).length >= 2;
-  const buttons = canVote() ? CHOICES.map((c) => `
-    <button type="button" data-id="${date.id}" data-choice="${c}" class="${c}${date.myChoice === c ? " on" : ""}" ${locked ? "disabled" : ""}>${voteChoiceHTML(c)}</button>
-  `).join("") : "";
+  const buttons = canVote() ? renderVoteButtons(date) : "";
   const mine = canVote() && date.myInitial && date.myInitial !== date.myChoice
     ? `<p class="changed">${I18N.t("yourFirstVote")}: ${voteChoiceHTML(date.myInitial)}</p>`
     : "";
@@ -441,7 +472,7 @@ function renderCompactVote(date) {
   if (!canVote() || pollOpen(date)) return "";
   const locked = date.status === "cancelled";
   const buttons = ["yes", "maybe", "no"].map((c) => `
-    <button type="button" data-id="${date.id}" data-choice="${c}" class="${c}${date.myChoice === c ? " on" : ""}" ${locked ? "disabled" : ""}>${voteChoiceHTML(c)}</button>
+    <button type="button" data-id="${date.id}" data-choice="${c}" class="${c}${voteOnClass(date.myChoice, c, date.myProxy)}" ${locked ? "disabled" : ""}>${voteChoiceHTML(c)}</button>
   `).join("");
   return `<div class="vote-row vote-row-compact">${buttons}</div>`;
 }
@@ -3184,17 +3215,23 @@ datesEl.addEventListener("click", async (e) => {
     return;
   }
   const btn = e.target.closest("button[data-choice]");
-  if (!btn || btn.disabled || !canVote()) return;
+  if (!btn || btn.disabled) return;
+  const forOther = btn.dataset.user && btn.dataset.user !== me?.id;
+  if (!canVote() && !forOther) return;
+  if (forOther && !isPlanner()) return;
   try {
+    const payload = { choice: btn.dataset.choice };
+    if (btn.dataset.user) payload.userId = btn.dataset.user;
     if (btn.dataset.option) {
+      payload.optionId = btn.dataset.option;
       await api(`/api/dates/${btn.dataset.id}/poll`, {
         method: "POST",
-        body: JSON.stringify({ optionId: btn.dataset.option, choice: btn.dataset.choice }),
+        body: JSON.stringify(payload),
       });
     } else {
       await api(`/api/dates/${btn.dataset.id}/vote`, {
         method: "POST",
-        body: JSON.stringify({ choice: btn.dataset.choice }),
+        body: JSON.stringify(payload),
       });
     }
     await loadDates();

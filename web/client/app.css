@@ -12,6 +12,7 @@
   --warn: #f0a35e;
   --danger: #f07178;
   --ok: #7fd99a;
+  --proxy: #4ea3ff;
   --song: #c4a0ff;
   --surface: #0f151b;
   --chrome: #152028;
@@ -2577,10 +2578,45 @@ p.notes { margin: 0.45rem 0 0; color: var(--muted); white-space: pre-wrap; }
   border-radius: 0.2em;
 }
 .vote-mark.no::before { content: "✕"; }
+.vote-mark.unknown {
+  border: 1.5px solid var(--muted);
+  border-radius: 0.2em;
+  background: transparent;
+}
 .vote-row button.on.yes { background: rgba(127, 217, 154, 0.18); border-color: var(--ok); color: var(--ok); }
 .vote-row button.on.maybe { background: rgba(240, 163, 94, 0.18); border-color: var(--warn); color: var(--warn); }
 .vote-row button.on.no { background: rgba(240, 113, 120, 0.18); border-color: var(--danger); color: var(--danger); }
 .vote-row button.on.unknown { background: rgba(255,255,255,0.06); border-color: var(--muted); }
+.vote-row button.on.proxy,
+.vote-row button.on.proxy.yes,
+.vote-row button.on.proxy.maybe,
+.vote-row button.on.proxy.no,
+.vote-row button.on.proxy.unknown {
+  background: rgba(78, 163, 255, 0.18);
+  border-color: var(--proxy);
+  color: var(--proxy);
+}
+.badge.proxy,
+.badge.yes.proxy,
+.badge.maybe.proxy,
+.badge.no.proxy,
+.badge.unknown.proxy {
+  background: rgba(78, 163, 255, 0.18);
+  color: var(--proxy);
+}
+.vote-row.vote-row-proxy {
+  margin: 0.2rem 0;
+  padding: 0.25rem 0;
+  border: 0;
+  gap: 0.25rem;
+}
+.vote-row.vote-row-proxy button {
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  justify-content: center;
+}
+.vote-row.vote-row-proxy .vote-mark { margin-left: 0; }
 
 .counts {
   display: flex;

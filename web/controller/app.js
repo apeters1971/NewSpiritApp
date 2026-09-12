@@ -200,11 +200,32 @@ function voteMark(choice) {
   if (choice === "yes") return `<span class="vote-mark yes" aria-hidden="true"></span>`;
   if (choice === "maybe") return `<span class="vote-mark maybe" aria-hidden="true"></span>`;
   if (choice === "no") return `<span class="vote-mark no" aria-hidden="true"></span>`;
-  return "";
+  return `<span class="vote-mark unknown" aria-hidden="true"></span>`;
 }
 
 function voteChoiceHTML(choice) {
   return `${escapeHtml(voteLabel(choice))}${voteMark(choice)}`;
+}
+
+function voteBadgeHTML(choice, proxy) {
+  const tip = proxy ? ` title="${escapeHtml(I18N.t("proxyVote"))}"` : "";
+  return `<span class="badge ${choice}${proxy ? " proxy" : ""}"${tip}>${voteChoiceHTML(choice)}</span>`;
+}
+
+function voteOnClass(current, choice, proxy) {
+  if (current !== choice) return "";
+  return proxy ? " on proxy" : " on";
+}
+
+function renderVoteSet(date, entry, optionId) {
+  if (date.status === "cancelled") {
+    return voteBadgeHTML(entry.choice, entry.proxy);
+  }
+  const opt = optionId ? ` data-option="${optionId}"` : "";
+  const buttons = ["yes", "maybe", "no", "unknown"].map((c) => `
+    <button type="button" class="btn ghost vote-set-btn ${c}${voteOnClass(entry.choice, c, entry.proxy)}" data-set-vote="${entry.userId}" data-choice="${c}"${opt} aria-label="${escapeHtml(voteLabel(c))}">${voteMark(c)}</button>
+  `).join("");
+  return `<div class="vote-row vote-row-proxy">${buttons}</div>`;
 }
 
 function formatWhen(iso) {
@@ -442,9 +463,7 @@ function renderDateDetail() {
     </div>`).join("");
   const rows = (d.roster || []).map((e) => {
     const changed = e.initialChoice && e.initialChoice !== e.choice;
-    const vote = changed
-      ? `<span class="badge ${e.choice}">${voteChoiceHTML(e.choice)}</span> <span class="changed">${I18N.t("firstVote")} ${voteChoiceHTML(e.initialChoice)}</span>`
-      : `<span class="badge ${e.choice}">${voteChoiceHTML(e.choice)}</span>`;
+    const vote = `${renderVoteSet(d, e)}${changed ? ` <span class="changed">${I18N.t("firstVote")} ${voteChoiceHTML(e.initialChoice)}</span>` : ""}`;
     const mark = e.attendance === "absent"
       ? ` <span class="badge no">${I18N.t("absent")}</span>`
       : e.attendance === "excused"
@@ -467,7 +486,12 @@ function renderDateDetail() {
         <p><strong>${escapeHtml(formatRange(o.startsAt, o.endsAt))}</strong>
           ${o.frozen ? ` <span class="badge accepted">${I18N.t("chosenTime")}</span>` : ""}</p>
         <p class="muted">${I18N.t("yes")} ${o.yes} · ${I18N.t("maybe")} ${o.maybe} · ${I18N.t("no")} ${o.no} · ${I18N.t("unknown")} ${o.unknown}</p>
-        ${d.pollOpen ? `<button type="button" class="btn" data-freeze="${o.id}">${I18N.t("freezePoll")}</button>` : ""}
+        ${d.pollOpen ? `<div class="poll-roster">${(o.roster || []).map((e) => `
+          <div class="poll-roster-row">
+            <span>${escapeHtml(e.nickname)}</span>
+            ${renderVoteSet(d, e, o.id)}
+          </div>`).join("")}</div>
+          <button type="button" class="btn" data-freeze="${o.id}">${I18N.t("freezePoll")}</button>` : ""}
       </article>`).join("")}
   ` : "";
   const voteBlock = d.pollOpen ? "" : `
@@ -1471,6 +1495,23 @@ document.getElementById("date-detail").addEventListener("click", async (e) => {
       const data = await api(`/api/controller/dates/${selectedDate}/freeze`, {
         method: "POST",
         body: JSON.stringify({ optionId: freezeBtn.dataset.freeze }),
+      });
+      await loadState();
+      fillDateForm(data.date);
+    } catch (err) {
+      showError(dateError, err.message);
+    }
+    return;
+  }
+  const voteBtn = e.target.closest("[data-set-vote]");
+  if (voteBtn && selectedDate) {
+    showError(dateError, "");
+    try {
+      const payload = { userId: voteBtn.dataset.setVote, choice: voteBtn.dataset.choice };
+      if (voteBtn.dataset.option) payload.optionId = voteBtn.dataset.option;
+      const data = await api(`/api/controller/dates/${selectedDate}/vote`, {
+        method: "POST",
+        body: JSON.stringify(payload),
       });
       await loadState();
       fillDateForm(data.date);

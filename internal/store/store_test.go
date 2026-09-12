@@ -91,6 +91,84 @@ func TestVoteAndAccept(t *testing.T) {
 	}
 }
 
+func TestProxyVote(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "proxy-vote.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	ada, err := st.CreateUser("Ada", "ada@example.com", "secret1", RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ben, err := st.CreateUser("Ben", "ben@example.com", "secret1", RoleChoir, "Alt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.SetUserPlanner(ada.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	ada, err = st.UserByID(ada.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	start := time.Date(2026, 10, 4, 18, 0, 0, 0, time.UTC)
+	d, err := st.CreateMemberDate(ada, "Probe", CategoryRehearsal, start, nil, "", "", "", []string{RoleChoir}, Bring{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Status != StatusVoting || !EventChatIsOpen(d, time.Now()) {
+		t.Fatal("event chat should be open while the date is still voting")
+	}
+	if _, err := st.AddChatMessage(ben.ID, EventChatRoom(d.ID), "before accept"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetVoteFor(ada.ID, ben.ID, d.ID, VoteYes); err != nil {
+		t.Fatal(err)
+	}
+	view, err := st.DateView(d.ID, &ben)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.MyChoice != VoteYes || !view.MyProxy {
+		t.Fatalf("proxy vote %+v", view)
+	}
+	var proxy bool
+	for _, e := range view.Roster {
+		if e.UserID == ben.ID {
+			proxy = e.Proxy
+		}
+	}
+	if !proxy {
+		t.Fatal("ben should be marked proxy")
+	}
+	if err := st.SetVote(ben.ID, d.ID, VoteMaybe); err != nil {
+		t.Fatal(err)
+	}
+	view, err = st.DateView(d.ID, &ben)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.MyChoice != VoteMaybe || view.MyProxy {
+		t.Fatalf("own vote should clear proxy %+v", view)
+	}
+	if err := st.SetAdminVote(ben.ID, d.ID, VoteNo); err != nil {
+		t.Fatal(err)
+	}
+	view, err = st.DateView(d.ID, &ben)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.MyChoice != VoteNo || !view.MyProxy {
+		t.Fatalf("admin vote %+v", view)
+	}
+	if err := st.SetVoteFor(ben.ID, ada.ID, d.ID, VoteYes); err == nil {
+		t.Fatal("non-planner must not set another vote")
+	}
+}
+
 func TestPollFreeze(t *testing.T) {
 	st, err := Open(filepath.Join(t.TempDir(), "poll.db"))
 	if err != nil {

@@ -20,6 +20,7 @@ type PollOption struct {
 	Frozen    bool           `json:"frozen"`
 	MyChoice  string         `json:"myChoice"`
 	MyInitial *string        `json:"myInitial,omitempty"`
+	MyProxy   bool           `json:"myProxy,omitempty"`
 	Yes       int            `json:"yes"`
 	Maybe     int            `json:"maybe"`
 	No        int            `json:"no"`
@@ -31,6 +32,7 @@ type pollVoteRow struct {
 	UserID        string
 	Choice        string
 	InitialChoice string
+	SetBy         string
 }
 
 func resolveSchedule(starts time.Time, ends *time.Time, options []PollOptionInput) (time.Time, *time.Time, []PollOptionInput, error) {
@@ -178,7 +180,7 @@ func (s *Store) pollVotesForOptions(optionIDs []string) (map[string]map[string]p
 		args[i] = id
 	}
 	rows, err := s.db.Query(`
-SELECT option_id, user_id, choice, initial_choice
+SELECT option_id, user_id, choice, initial_choice, set_by
 FROM poll_votes
 WHERE option_id IN (`+placeholders+`)`, args...)
 	if err != nil {
@@ -187,13 +189,16 @@ WHERE option_id IN (`+placeholders+`)`, args...)
 	defer rows.Close()
 	for rows.Next() {
 		var optionID string
-		var initial sql.NullString
+		var initial, setBy sql.NullString
 		var row pollVoteRow
-		if err := rows.Scan(&optionID, &row.UserID, &row.Choice, &initial); err != nil {
+		if err := rows.Scan(&optionID, &row.UserID, &row.Choice, &initial, &setBy); err != nil {
 			return nil, err
 		}
 		if initial.Valid {
 			row.InitialChoice = initial.String
+		}
+		if setBy.Valid {
+			row.SetBy = setBy.String
 		}
 		if out[optionID] == nil {
 			out[optionID] = map[string]pollVoteRow{}
@@ -217,12 +222,14 @@ func attachPoll(options []PollOption, frozenID string, roster []RosterEntry, vot
 			entry := person
 			entry.Choice = VoteUnknown
 			entry.InitialChoice = nil
+			entry.Proxy = false
 			if v, ok := optVotes[person.UserID]; ok {
 				entry.Choice = v.Choice
 				if v.InitialChoice != "" {
 					init := v.InitialChoice
 					entry.InitialChoice = &init
 				}
+				entry.Proxy = VoteIsProxy(person.UserID, v.SetBy)
 			}
 			switch entry.Choice {
 			case VoteYes:
@@ -238,6 +245,7 @@ func attachPoll(options []PollOption, frozenID string, roster []RosterEntry, vot
 			if viewer != nil && person.UserID == viewer.ID {
 				opt.MyChoice = entry.Choice
 				opt.MyInitial = entry.InitialChoice
+				opt.MyProxy = entry.Proxy
 			}
 		}
 	}
@@ -245,6 +253,32 @@ func attachPoll(options []PollOption, frozenID string, roster []RosterEntry, vot
 }
 
 func (s *Store) SetPollVote(userID, dateID, optionID, choice string) error {
+	return s.setPollVote(userID, userID, dateID, optionID, choice)
+}
+
+func (s *Store) SetPollVoteFor(actorID, userID, dateID, optionID, choice string) error {
+	if actorID == "" || actorID == userID {
+		return s.setPollVote(userID, userID, dateID, optionID, choice)
+	}
+	actor, err := s.UserByID(actorID)
+	if err != nil {
+		return err
+	}
+	d, err := s.dateRow(dateID)
+	if err != nil {
+		return err
+	}
+	if !canPlannerSetVote(actor, d) {
+		return fmt.Errorf("%w: only a planner can set another vote", ErrForbidden)
+	}
+	return s.setPollVote(actor.ID, userID, dateID, optionID, choice)
+}
+
+func (s *Store) SetAdminPollVote(userID, dateID, optionID, choice string) error {
+	return s.setPollVote(VoteSetByAdmin, userID, dateID, optionID, choice)
+}
+
+func (s *Store) setPollVote(setBy, userID, dateID, optionID, choice string) error {
 	if !ValidChoice(choice) {
 		return fmt.Errorf("invalid vote")
 	}
@@ -275,10 +309,13 @@ func (s *Store) SetPollVote(userID, dateID, optionID, choice string) error {
 	if !RoleCanVote(u.Role) || !slicesContains(d.Roles, u.Role) {
 		return fmt.Errorf("%w: this date is not for your role", ErrForbidden)
 	}
+	if setBy == "" {
+		setBy = userID
+	}
 	_, err = s.db.Exec(`
-INSERT INTO poll_votes(user_id, option_id, choice, initial_choice, updated_at) VALUES(?,?,?,?,?)
-ON CONFLICT(user_id, option_id) DO UPDATE SET choice=excluded.choice, updated_at=excluded.updated_at`,
-		userID, optionID, choice, choice, fmtTime(now()),
+INSERT INTO poll_votes(user_id, option_id, choice, initial_choice, set_by, updated_at) VALUES(?,?,?,?,?,?)
+ON CONFLICT(user_id, option_id) DO UPDATE SET choice=excluded.choice, set_by=excluded.set_by, updated_at=excluded.updated_at`,
+		userID, optionID, choice, choice, setBy, fmtTime(now()),
 	)
 	return err
 }
@@ -319,18 +356,18 @@ func (s *Store) FreezePoll(dateID, optionID string) (Date, error) {
 	); err != nil {
 		return Date{}, err
 	}
-	rows, err := tx.Query(`SELECT user_id, choice, initial_choice, updated_at FROM poll_votes WHERE option_id=?`, chosen.ID)
+	rows, err := tx.Query(`SELECT user_id, choice, initial_choice, set_by, updated_at FROM poll_votes WHERE option_id=?`, chosen.ID)
 	if err != nil {
 		return Date{}, err
 	}
 	type seed struct {
-		userID, choice, initial, updated string
+		userID, choice, initial, setBy, updated string
 	}
 	var seeds []seed
 	for rows.Next() {
 		var item seed
-		var initial sql.NullString
-		if err := rows.Scan(&item.userID, &item.choice, &initial, &item.updated); err != nil {
+		var initial, setBy sql.NullString
+		if err := rows.Scan(&item.userID, &item.choice, &initial, &setBy, &item.updated); err != nil {
 			rows.Close()
 			return Date{}, err
 		}
@@ -338,6 +375,11 @@ func (s *Store) FreezePoll(dateID, optionID string) (Date, error) {
 			item.initial = initial.String
 		} else {
 			item.initial = item.choice
+		}
+		if setBy.Valid {
+			item.setBy = setBy.String
+		} else {
+			item.setBy = item.userID
 		}
 		seeds = append(seeds, item)
 	}
@@ -347,9 +389,9 @@ func (s *Store) FreezePoll(dateID, optionID string) (Date, error) {
 	}
 	for _, item := range seeds {
 		if _, err := tx.Exec(`
-INSERT INTO votes(user_id, date_id, choice, initial_choice, updated_at) VALUES(?,?,?,?,?)
-ON CONFLICT(user_id, date_id) DO UPDATE SET choice=excluded.choice, updated_at=excluded.updated_at`,
-			item.userID, dateID, item.choice, item.initial, item.updated,
+INSERT INTO votes(user_id, date_id, choice, initial_choice, set_by, updated_at) VALUES(?,?,?,?,?,?)
+ON CONFLICT(user_id, date_id) DO UPDATE SET choice=excluded.choice, set_by=excluded.set_by, updated_at=excluded.updated_at`,
+			item.userID, dateID, item.choice, item.initial, item.setBy, item.updated,
 		); err != nil {
 			return Date{}, err
 		}

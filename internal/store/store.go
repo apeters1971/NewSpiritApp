@@ -101,6 +101,7 @@ type RosterEntry struct {
 	Subrole       string  `json:"subrole"`
 	Choice        string  `json:"choice"`
 	InitialChoice *string `json:"initialChoice,omitempty"`
+	Proxy         bool    `json:"proxy,omitempty"`
 	Attendance    string  `json:"attendance,omitempty"`
 }
 
@@ -134,6 +135,7 @@ type DateView struct {
 	Date
 	MyChoice      string         `json:"myChoice"`
 	MyInitial     *string        `json:"myInitial,omitempty"`
+	MyProxy       bool           `json:"myProxy,omitempty"`
 	Roster        []RosterEntry  `json:"roster"`
 	SubroleCounts []SubroleCount `json:"subroleCounts"`
 	Comments      []Comment      `json:"comments"`
@@ -210,6 +212,7 @@ CREATE TABLE IF NOT EXISTS votes (
   date_id TEXT NOT NULL REFERENCES dates(id) ON DELETE CASCADE,
   choice TEXT NOT NULL,
   initial_choice TEXT,
+  set_by TEXT NOT NULL DEFAULT '',
   updated_at TEXT NOT NULL,
   PRIMARY KEY (user_id, date_id)
 );
@@ -236,6 +239,7 @@ CREATE TABLE IF NOT EXISTS poll_votes (
   option_id TEXT NOT NULL REFERENCES poll_options(id) ON DELETE CASCADE,
   choice TEXT NOT NULL,
   initial_choice TEXT,
+  set_by TEXT NOT NULL DEFAULT '',
   updated_at TEXT NOT NULL,
   PRIMARY KEY (user_id, option_id)
 );
@@ -333,7 +337,16 @@ CREATE TABLE IF NOT EXISTS settings (
 	if err := s.migrateChatReads(); err != nil {
 		return err
 	}
+	if err := s.migrateVoteSetBy(); err != nil {
+		return err
+	}
 	return s.migrateChatVoice()
+}
+
+func (s *Store) migrateVoteSetBy() error {
+	_, _ = s.db.Exec(`ALTER TABLE votes ADD COLUMN set_by TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE poll_votes ADD COLUMN set_by TEXT NOT NULL DEFAULT ''`)
+	return nil
 }
 
 func (s *Store) allowAdminChatMessages() error {
@@ -1064,6 +1077,39 @@ func (s *Store) SetDateStatus(id, status string) (Date, error) {
 }
 
 func (s *Store) SetVote(userID, dateID, choice string) error {
+	return s.setVote(userID, userID, dateID, choice)
+}
+
+func (s *Store) SetVoteFor(actorID, userID, dateID, choice string) error {
+	if actorID == "" || actorID == userID {
+		return s.setVote(userID, userID, dateID, choice)
+	}
+	actor, err := s.UserByID(actorID)
+	if err != nil {
+		return err
+	}
+	d, err := s.dateRow(dateID)
+	if err != nil {
+		return err
+	}
+	if !canPlannerSetVote(actor, d) {
+		return fmt.Errorf("%w: only a planner can set another vote", ErrForbidden)
+	}
+	return s.setVote(actor.ID, userID, dateID, choice)
+}
+
+func (s *Store) SetAdminVote(userID, dateID, choice string) error {
+	return s.setVote(VoteSetByAdmin, userID, dateID, choice)
+}
+
+func canPlannerSetVote(actor User, d Date) bool {
+	if !actor.Planner {
+		return false
+	}
+	return d.CreatedBy == actor.ID || RoleSeesDate(actor.Role, d.Roles)
+}
+
+func (s *Store) setVote(setBy, userID, dateID, choice string) error {
 	if !ValidChoice(choice) {
 		return fmt.Errorf("invalid vote")
 	}
@@ -1084,10 +1130,13 @@ func (s *Store) SetVote(userID, dateID, choice string) error {
 	if !RoleCanVote(u.Role) || !slicesContains(d.Roles, u.Role) {
 		return fmt.Errorf("%w: this date is not for your role", ErrForbidden)
 	}
+	if setBy == "" {
+		setBy = userID
+	}
 	_, err = s.db.Exec(`
-INSERT INTO votes(user_id, date_id, choice, initial_choice, updated_at) VALUES(?,?,?,?,?)
-ON CONFLICT(user_id, date_id) DO UPDATE SET choice=excluded.choice, updated_at=excluded.updated_at`,
-		userID, dateID, choice, choice, fmtTime(now()),
+INSERT INTO votes(user_id, date_id, choice, initial_choice, set_by, updated_at) VALUES(?,?,?,?,?,?)
+ON CONFLICT(user_id, date_id) DO UPDATE SET choice=excluded.choice, set_by=excluded.set_by, updated_at=excluded.updated_at`,
+		userID, dateID, choice, choice, setBy, fmtTime(now()),
 	)
 	if err != nil {
 		return err
@@ -1283,6 +1332,7 @@ func (s *Store) attachView(d Date, viewer *User, comments []Comment, titles []Ar
 			if entry.UserID == viewer.ID {
 				view.MyChoice = entry.Choice
 				view.MyInitial = entry.InitialChoice
+				view.MyProxy = entry.Proxy
 				break
 			}
 		}
@@ -1413,7 +1463,7 @@ func (s *Store) roster(d Date) ([]RosterEntry, error) {
 		args = append(args, role)
 	}
 	rows, err := s.db.Query(`
-SELECT u.id, u.nickname, u.email, u.role, u.subrole, v.choice, v.initial_choice, a.kind
+SELECT u.id, u.nickname, u.email, u.role, u.subrole, v.choice, v.initial_choice, v.set_by, a.kind
 FROM users u
 LEFT JOIN votes v ON v.user_id = u.id AND v.date_id = ?
 LEFT JOIN date_absences a ON a.user_id = u.id AND a.date_id = ?
@@ -1426,8 +1476,8 @@ ORDER BY u.role, u.subrole, u.nickname COLLATE NOCASE`, args...)
 	out := []RosterEntry{}
 	for rows.Next() {
 		var e RosterEntry
-		var choice, initial, kind sql.NullString
-		if err := rows.Scan(&e.UserID, &e.Nickname, &e.Email, &e.Role, &e.Subrole, &choice, &initial, &kind); err != nil {
+		var choice, initial, setBy, kind sql.NullString
+		if err := rows.Scan(&e.UserID, &e.Nickname, &e.Email, &e.Role, &e.Subrole, &choice, &initial, &setBy, &kind); err != nil {
 			return nil, err
 		}
 		e.Attendance = scanAttendance(kind)
@@ -1438,6 +1488,9 @@ ORDER BY u.role, u.subrole, u.nickname COLLATE NOCASE`, args...)
 		if initial.Valid && initial.String != "" {
 			s := initial.String
 			e.InitialChoice = &s
+		}
+		if VoteIsProxy(e.UserID, setBy.String) {
+			e.Proxy = true
 		}
 		out = append(out, e)
 	}
