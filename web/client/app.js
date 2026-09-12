@@ -525,6 +525,73 @@ function isDMRoom(room) {
   return typeof room === "string" && room.startsWith("dm:");
 }
 
+const DM_STORE_KEY = "spirit-dm";
+const DM_STORE_MAX = 400;
+
+function dmStoreKey() {
+  return me?.id ? `${DM_STORE_KEY}:${me.id}` : "";
+}
+
+function loadDMStore() {
+  const key = dmStoreKey();
+  if (!key) return {};
+  try {
+    const data = JSON.parse(localStorage.getItem(key) || "{}");
+    return data && typeof data === "object" && !Array.isArray(data) ? data : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveDMStore(data) {
+  const key = dmStoreKey();
+  if (!key) return;
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+  } catch {}
+}
+
+function mergeDMMessages(...lists) {
+  const byId = new Map();
+  for (const list of lists) {
+    for (const m of list || []) {
+      if (!m?.id) continue;
+      byId.set(m.id, { ...(byId.get(m.id) || {}), ...m });
+    }
+  }
+  return [...byId.values()].sort((a, b) => {
+    const ta = new Date(a.createdAt).getTime();
+    const tb = new Date(b.createdAt).getTime();
+    if (ta !== tb) return ta - tb;
+    return String(a.id).localeCompare(String(b.id));
+  }).slice(-DM_STORE_MAX);
+}
+
+function rememberedDM(room) {
+  if (!isDMRoom(room)) return { messages: [], peer: null };
+  const entry = loadDMStore()[room];
+  return {
+    messages: Array.isArray(entry?.messages) ? entry.messages : [],
+    peer: entry?.peer && entry.peer.id ? entry.peer : null,
+  };
+}
+
+function rememberDMMessages(room, messages, peer) {
+  if (!isDMRoom(room) || !me) return;
+  const store = loadDMStore();
+  const prev = store[room] || {};
+  const nextPeer = peer?.id
+    ? { id: peer.id, nickname: peer.nickname || prev.peer?.nickname || "" }
+    : (prev.peer || null);
+  store[room] = { peer: nextPeer, messages: mergeDMMessages(prev.messages, messages) };
+  saveDMStore(store);
+}
+
+function persistOpenDM() {
+  if (!isDMRoom(chatRoom)) return;
+  rememberDMMessages(chatRoom, chatMessages, chatPeer);
+}
+
 function dmPeerId(room) {
   if (!isDMRoom(room) || !me) return "";
   const rest = room.slice(3);
@@ -3325,6 +3392,7 @@ function chatBadge(n) {
 function noteChatMessage(m) {
   if (!m?.room) return;
   if (isDMRoom(m.room)) {
+    rememberDMMessages(m.room, [m], m.userId && m.userId !== me?.id ? { id: m.userId, nickname: m.nickname || "" } : null);
     notifyChatMessage(m);
     return;
   }
@@ -3563,6 +3631,7 @@ function applyReactions(messageId, reactions) {
 function appendChat(msg) {
   if (!msg?.id || chatMessages.some((m) => m.id === msg.id)) return;
   chatMessages.push(msg);
+  persistOpenDM();
   renderChat();
 }
 
@@ -3575,6 +3644,7 @@ function upsertChat(msg) {
   }
   const list = chatListEl();
   chatMessages[i] = { ...chatMessages[i], ...msg };
+  persistOpenDM();
   renderChat(list?.scrollTop);
 }
 
@@ -3583,6 +3653,7 @@ function removeChat(id) {
   if (next.length === chatMessages.length) return;
   const list = chatListEl();
   chatMessages = next;
+  persistOpenDM();
   renderChat(list?.scrollTop);
 }
 
@@ -3835,9 +3906,13 @@ function toggleChatVoice(id) {
 }
 
 function showEphemeralChat(room, peer, messages) {
+  const local = rememberedDM(room);
   chatRoom = room;
-  chatPeer = peer && peer.id ? { id: peer.id, nickname: peer.nickname || "" } : chatPeer;
-  chatMessages = Array.isArray(messages) ? messages.slice() : [];
+  chatPeer = peer && peer.id
+    ? { id: peer.id, nickname: peer.nickname || local.peer?.nickname || "" }
+    : (local.peer || chatPeer);
+  chatMessages = mergeDMMessages(local.messages, messages);
+  rememberDMMessages(room, chatMessages, chatPeer);
   renderChatTabs();
   document.getElementById("chat-title").textContent = chatTitle(room, chatPeer?.nickname);
   discardVoiceRecord();

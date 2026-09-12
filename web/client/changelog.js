@@ -4,6 +4,7 @@
       date: "2026-09-12",
       items: {
         de: [
+          "Der 1:1-Chat bleibt auf diesem Gerät, wenn du ihn schließt oder die App neu öffnest. Er wird nicht auf den Server gelegt.",
           "Im Lauftext wechselt die normale Meldung mit einem Hinweis, wenn du bei kommenden Terminen noch nicht abgestimmt hast.",
           "Beim Anlegen eines Termins wählst du Datum und Uhrzeit getrennt. Die Uhrzeit ist eine Liste in Viertelstunden. Nach dem Beginn wird das Ende mit demselben Tag plus drei Stunden vorausgefüllt.",
           "Die Verwaltung kann jemanden als Planer markieren. Planer legen Termine und Umfragen in der App an und können nur selbst erstellte annehmen, absagen oder löschen. Selbst angelegte Termine zeigen Foto und Namen des Planers.",
@@ -19,6 +20,7 @@
           "Bei Songvorschlägen gibt es Daumen hoch, Neutral und Daumen runter. Noch einmal tippen nimmt die Stimme zurück.",
         ],
         en: [
+          "A private chat stays on this device when you close it or reopen the app. It is not stored on the server.",
           "The news ticker alternates the official message with a reminder when you still have upcoming dates to vote on.",
           "When creating a date, pick the calendar day and the time separately. Time is a quarter-hour list. After you set the start, the end is filled with the same day plus three hours.",
           "Controllers can mark someone as a planner. Planners create dates and polls in the member app and can only accept, decline, or delete ones they created. Planner-created dates show the planner's photo and name.",
