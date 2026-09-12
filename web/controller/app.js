@@ -414,6 +414,9 @@ function renderDateDetail() {
   }
   fin.hidden = d.status !== "voting";
   document.getElementById("btn-accept").hidden = !!d.pollOpen;
+  const pie = (d.roles || []).includes("choir") && typeof VoicePie !== "undefined"
+    ? VoicePie.html(choirVoiceYes(d), Object.fromEntries(CHOIR_VOICES.map((v) => [v, I18N.subrole(v)])))
+    : "";
   const counts = (d.subroleCounts || []).map((c) => `
     <div class="count">
       <strong>${escapeHtml(I18N.role(c.role))} · ${escapeHtml(I18N.subrole(c.subrole))}</strong>
@@ -451,7 +454,7 @@ function renderDateDetail() {
   ` : "";
   const voteBlock = d.pollOpen ? "" : `
     <h3>${I18N.t("votes")}</h3>
-    <div class="counts">${counts}</div>
+    <div class="counts">${pie}${counts}</div>
     <table>
       <thead><tr><th>${I18N.t("name")}</th><th>${I18N.t("subrole")}</th><th>${I18N.t("vote")}</th><th>${I18N.t("attendance")}</th></tr></thead>
       <tbody>${rows || `<tr><td colspan="4" class="muted">${I18N.t("noPeopleRoles")}</td></tr>`}</tbody>

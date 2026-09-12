@@ -4,6 +4,7 @@
       date: "2026-09-12",
       items: {
         de: [
+          "Neben den Stimmen-Kärtchen am Termin zeigt ein kleines Kreisdiagramm die Ja-Verteilung im Chor: Sopran, Alt, Tenor/Bass.",
           "Der 1:1-Chat bleibt auf diesem Gerät, wenn du ihn schließt oder die App neu öffnest. Er wird nicht auf den Server gelegt.",
           "Im Lauftext wechselt die normale Meldung mit einem Hinweis, wenn du bei kommenden Terminen noch nicht abgestimmt hast.",
           "Beim Anlegen eines Termins wählst du Datum und Uhrzeit getrennt. Die Uhrzeit ist eine Liste in Viertelstunden. Nach dem Beginn wird das Ende mit demselben Tag plus drei Stunden vorausgefüllt.",
@@ -20,6 +21,7 @@
           "Bei Songvorschlägen gibt es Daumen hoch, Neutral und Daumen runter. Noch einmal tippen nimmt die Stimme zurück.",
         ],
         en: [
+          "Next to the voice cards on a date, a small pie chart shows the choir yes-split: soprano, alto, tenor/bass.",
           "A private chat stays on this device when you close it or reopen the app. It is not stored on the server.",
           "The news ticker alternates the official message with a reminder when you still have upcoming dates to vote on.",
           "When creating a date, pick the calendar day and the time separately. Time is a quarter-hour list. After you set the start, the end is filled with the same day plus three hours.",

@@ -2199,9 +2199,34 @@ p.notes { margin: 0.55rem 0 0; color: var(--muted); white-space: pre-wrap; }
 .counts {
   display: flex;
   flex-wrap: wrap;
+  align-items: stretch;
   gap: 0.45rem;
   margin-bottom: 0.85rem;
 }
+.voice-pie {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.12rem;
+  min-width: 3.6rem;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid var(--line);
+  background: var(--card);
+}
+.voice-pie svg { display: block; }
+.voice-pie-empty {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 2;
+}
+.voice-pie-nums {
+  margin: 0;
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+.voice-pie-dot { color: var(--muted); margin: 0 0.12rem; }
 .count {
   border: 1px solid var(--line);
   background: var(--card);

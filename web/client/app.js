@@ -228,9 +228,15 @@ function moodHTML(date, extraClass = "") {
   return `<span class="mood ${extraClass}" title="${escapeHtml(detail)}" aria-label="${escapeHtml(I18N.t(mood.key))}">${mood.emoji}</span>`;
 }
 
+function voicePieHTML(date) {
+  if (!(date.roles || []).includes("choir") || typeof VoicePie === "undefined") return "";
+  const labels = Object.fromEntries(CHOIR_VOICES.map((v) => [v, I18N.subrole(v)]));
+  return VoicePie.html(choirVoiceYes(date), labels);
+}
+
 function renderCounts(date) {
   if (!date.subroleCounts?.length) return "";
-  return `<div class="counts">${date.subroleCounts.map((c) => `
+  return `<div class="counts">${voicePieHTML(date)}${date.subroleCounts.map((c) => `
     <div class="count">
       <strong>${escapeHtml(I18N.role(c.role))} · ${escapeHtml(I18N.subrole(c.subrole))}</strong>
       <span>${I18N.t("yes")} ${c.yes} · ${I18N.t("maybe")} ${c.maybe} · ${I18N.t("no")} ${c.no} · ${I18N.t("unknown")} ${c.unknown}</span>
