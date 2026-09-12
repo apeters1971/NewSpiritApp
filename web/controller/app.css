@@ -1340,6 +1340,11 @@ tbody tr:hover, tbody tr.active, .date-item.active { background: rgba(61, 214, 1
 }
 .title-pick strong { display: block; font-size: 0.92rem; }
 .title-pick span { color: var(--muted); font-size: 0.78rem; }
+.title-ohschreck-count {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
 .title-pick-actions { display: flex; flex-wrap: wrap; gap: 0.3rem; }
 .title-soloists { border-top: 1px solid var(--line); padding-top: 0.35rem; }
 .title-soloists summary {

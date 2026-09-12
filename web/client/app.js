@@ -1305,15 +1305,22 @@ function showTitlesList() {
   list.innerHTML = items.length
     ? items.map((item, i) => {
       const soloists = (item.soloists || []).map((s) => s.nickname).filter(Boolean).join(", ");
+      const on = !!item.myOhSchreck;
+      const n = item.ohSchreck || 0;
       return `
-      <button type="button" class="title-item" data-title="${item.id}">
-        <span class="title-num">${i + 1}</span>
-        <div class="title-item-text">
-          <strong>${escapeHtml(item.title)}</strong>
-          ${item.composer ? `<p>${escapeHtml(item.composer)}</p>` : ""}
-          ${soloists ? `<p class="title-soloists">${escapeHtml(I18N.t("soloists"))}: ${escapeHtml(soloists)}</p>` : ""}
-        </div>
-      </button>`;
+      <div class="title-item">
+        <button type="button" class="title-item-open" data-title="${item.id}">
+          <span class="title-num">${i + 1}</span>
+          <div class="title-item-text">
+            <strong>${escapeHtml(item.title)}</strong>
+            ${item.composer ? `<p>${escapeHtml(item.composer)}</p>` : ""}
+            ${soloists ? `<p class="title-soloists">${escapeHtml(I18N.t("soloists"))}: ${escapeHtml(soloists)}</p>` : ""}
+          </div>
+        </button>
+        <button type="button" class="title-ohschreck${on ? " on" : ""}" data-ohschreck="${escapeHtml(item.id)}" aria-pressed="${on}" aria-label="${escapeHtml(I18N.t("ohSchreck"))}">
+          <span aria-hidden="true">😱</span> ${n}
+        </button>
+      </div>`;
     }).join("")
     : `<p class="muted">${I18N.t("noTitles")}</p>`;
 }
@@ -5112,7 +5119,34 @@ document.getElementById("titles-dialog").addEventListener("close", () => {
   document.getElementById("title-detail").innerHTML = "";
 });
 
+async function toggleTitleOhSchreck(itemId) {
+  if (!titlesDateId || !itemId) return;
+  const data = await api(`/api/dates/${encodeURIComponent(titlesDateId)}/titles/${encodeURIComponent(itemId)}/ohschreck`, {
+    method: "POST",
+  });
+  const next = data.title;
+  if (!next?.id) {
+    await loadDates();
+    showTitlesList();
+    return;
+  }
+  dates = dates.map((d) => {
+    if (d.id !== titlesDateId) return d;
+    return { ...d, titles: (d.titles || []).map((t) => (t.id === next.id ? { ...t, ...next } : t)) };
+  });
+  showTitlesList();
+}
+
 document.getElementById("titles-list").addEventListener("click", async (e) => {
+  const shock = e.target.closest("[data-ohschreck]");
+  if (shock) {
+    try {
+      await toggleTitleOhSchreck(shock.dataset.ohschreck);
+    } catch (err) {
+      alert(err.message);
+    }
+    return;
+  }
   const btn = e.target.closest("[data-title]");
   if (!btn) return;
   await openTitleDetail(btn.dataset.title);

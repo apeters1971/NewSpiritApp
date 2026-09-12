@@ -48,9 +48,11 @@ type ArchiveItem struct {
 	Composer  string            `json:"composer,omitempty"`
 	Status    string            `json:"status"`
 	CreatedBy string            `json:"createdBy,omitempty"`
-	Files     []ArchiveFileMeta `json:"files"`
-	Soloists  []OnlinePerson    `json:"soloists,omitempty"`
-	CreatedAt time.Time         `json:"createdAt"`
+	Files        []ArchiveFileMeta `json:"files"`
+	Soloists     []OnlinePerson    `json:"soloists,omitempty"`
+	OhSchreck    int               `json:"ohSchreck"`
+	MyOhSchreck  bool              `json:"myOhSchreck"`
+	CreatedAt    time.Time         `json:"createdAt"`
 }
 
 type DateTitleInput struct {
@@ -118,7 +120,23 @@ CREATE INDEX IF NOT EXISTS idx_date_titles_date ON date_titles(date_id, sort_ord
 	_, _ = s.db.Exec(`ALTER TABLE archive_files ADD COLUMN status TEXT NOT NULL DEFAULT 'accepted'`)
 	_, _ = s.db.Exec(`ALTER TABLE archive_files ADD COLUMN created_by TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE archive_files ADD COLUMN url TEXT NOT NULL DEFAULT ''`)
-	return s.migrateTitleSoloists()
+	if err := s.migrateTitleSoloists(); err != nil {
+		return err
+	}
+	return s.migrateTitleOhSchreck()
+}
+
+func (s *Store) migrateTitleOhSchreck() error {
+	_, err := s.db.Exec(`
+CREATE TABLE IF NOT EXISTS date_title_ohschreck (
+  date_id TEXT NOT NULL REFERENCES dates(id) ON DELETE CASCADE,
+  item_id TEXT NOT NULL REFERENCES archive_items(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY (date_id, item_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_title_ohschreck_date ON date_title_ohschreck(date_id, item_id);
+`)
+	return err
 }
 
 func (s *Store) migrateTitleSoloists() error {
@@ -658,6 +676,11 @@ func (s *Store) SetDateTitleInputs(dateID string, titles []DateTitleInput) error
 			}
 		}
 	}
+	if _, err := tx.Exec(`
+DELETE FROM date_title_ohschreck
+WHERE date_id=? AND item_id NOT IN (SELECT item_id FROM date_titles WHERE date_id=?)`, dateID, dateID); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
@@ -716,7 +739,7 @@ ORDER BY soli DESC, u.nickname COLLATE NOCASE`,
 	return out, rows.Err()
 }
 
-func (s *Store) titlesForDates(ids []string) (map[string][]ArchiveItem, error) {
+func (s *Store) titlesForDates(ids []string, viewerID string) (map[string][]ArchiveItem, error) {
 	out := map[string][]ArchiveItem{}
 	if len(ids) == 0 {
 		return out, nil
@@ -779,6 +802,9 @@ ORDER BY t.sort_order, a.title COLLATE NOCASE`, args...)
 	if err := s.attachTitleSoloists(out); err != nil {
 		return nil, err
 	}
+	if err := s.attachTitleOhSchreck(out, viewerID); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
@@ -829,6 +855,122 @@ ORDER BY u.nickname COLLATE NOCASE`, args...)
 		titlesByDate[dateID] = titles
 	}
 	return nil
+}
+
+func (s *Store) attachTitleOhSchreck(titlesByDate map[string][]ArchiveItem, viewerID string) error {
+	dateIDs := make([]string, 0, len(titlesByDate))
+	for id := range titlesByDate {
+		dateIDs = append(dateIDs, id)
+	}
+	if len(dateIDs) == 0 {
+		return nil
+	}
+	placeholders := strings.Repeat("?,", len(dateIDs))
+	placeholders = placeholders[:len(placeholders)-1]
+	args := make([]any, len(dateIDs))
+	for i, id := range dateIDs {
+		args[i] = id
+	}
+	rows, err := s.db.Query(`
+SELECT date_id, item_id, COUNT(*)
+FROM date_title_ohschreck
+WHERE date_id IN (`+placeholders+`)
+GROUP BY date_id, item_id`, args...)
+	if err != nil {
+		return err
+	}
+	counts := map[string]int{}
+	for rows.Next() {
+		var dateID, itemID string
+		var n int
+		if err := rows.Scan(&dateID, &itemID, &n); err != nil {
+			rows.Close()
+			return err
+		}
+		counts[dateID+"\x00"+itemID] = n
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	mine := map[string]bool{}
+	if strings.TrimSpace(viewerID) != "" {
+		mineRows, err := s.db.Query(`
+SELECT date_id, item_id
+FROM date_title_ohschreck
+WHERE user_id=? AND date_id IN (`+placeholders+`)`, append([]any{viewerID}, args...)...)
+		if err != nil {
+			return err
+		}
+		for mineRows.Next() {
+			var dateID, itemID string
+			if err := mineRows.Scan(&dateID, &itemID); err != nil {
+				mineRows.Close()
+				return err
+			}
+			mine[dateID+"\x00"+itemID] = true
+		}
+		err = mineRows.Err()
+		mineRows.Close()
+		if err != nil {
+			return err
+		}
+	}
+	for dateID, titles := range titlesByDate {
+		for i := range titles {
+			key := dateID + "\x00" + titles[i].ID
+			titles[i].OhSchreck = counts[key]
+			titles[i].MyOhSchreck = mine[key]
+		}
+		titlesByDate[dateID] = titles
+	}
+	return nil
+}
+
+func (s *Store) ToggleTitleOhSchreck(userID, dateID, itemID string) (ArchiveItem, error) {
+	u, err := s.UserByID(userID)
+	if err != nil {
+		return ArchiveItem{}, err
+	}
+	d, err := s.dateRow(dateID)
+	if err != nil {
+		return ArchiveItem{}, err
+	}
+	if !RoleSeesDate(u.Role, d.Roles) {
+		return ArchiveItem{}, fmt.Errorf("%w: this date is not for your role", ErrForbidden)
+	}
+	var n int
+	if err := s.db.QueryRow(`SELECT COUNT(1) FROM date_titles WHERE date_id=? AND item_id=?`, dateID, itemID).Scan(&n); err != nil {
+		return ArchiveItem{}, err
+	}
+	if n == 0 {
+		return ArchiveItem{}, ErrNotFound
+	}
+	var exists int
+	if err := s.db.QueryRow(`
+SELECT COUNT(1) FROM date_title_ohschreck WHERE date_id=? AND item_id=? AND user_id=?`, dateID, itemID, userID).Scan(&exists); err != nil {
+		return ArchiveItem{}, err
+	}
+	if exists > 0 {
+		if _, err := s.db.Exec(`DELETE FROM date_title_ohschreck WHERE date_id=? AND item_id=? AND user_id=?`, dateID, itemID, userID); err != nil {
+			return ArchiveItem{}, err
+		}
+	} else {
+		if _, err := s.db.Exec(`INSERT INTO date_title_ohschreck(date_id, item_id, user_id) VALUES(?,?,?)`, dateID, itemID, userID); err != nil {
+			return ArchiveItem{}, err
+		}
+	}
+	titles, err := s.titlesForDates([]string{dateID}, userID)
+	if err != nil {
+		return ArchiveItem{}, err
+	}
+	for _, item := range titles[dateID] {
+		if item.ID == itemID {
+			return item, nil
+		}
+	}
+	return ArchiveItem{}, ErrNotFound
 }
 
 func (s *Store) archiveItemRow(id string) (ArchiveItem, error) {

@@ -2440,19 +2440,47 @@ p.notes { margin: 0.55rem 0 0; color: var(--muted); white-space: pre-wrap; }
 .title-item {
   display: flex;
   justify-content: space-between;
-  align-items: start;
-  gap: 0.75rem;
+  align-items: stretch;
+  gap: 0.5rem;
   width: 100%;
   margin: 0;
-  padding: 0.7rem 0.8rem;
+  padding: 0.35rem 0.4rem 0.35rem 0.55rem;
   border: 1px solid var(--line);
   background: var(--card);
+  color: inherit;
+}
+.title-item-open {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 0.75rem;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0.35rem 0.4rem;
+  border: 0;
+  background: transparent;
   color: inherit;
   font: inherit;
   text-align: left;
   cursor: pointer;
 }
-.title-item:hover { background: rgba(var(--accent-rgb), 0.08); }
+.title-item-open:hover { background: rgba(var(--accent-rgb), 0.08); }
+.title-ohschreck {
+  align-self: center;
+  flex: 0 0 auto;
+  min-height: 2.1rem;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.title-ohschreck.on {
+  border-color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.14);
+}
 .title-num {
   flex: 0 0 2.1rem;
   color: var(--muted);

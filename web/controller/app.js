@@ -1039,12 +1039,15 @@ function renderDateTitles() {
   if (copyBtn) copyBtn.disabled = dateTitleIDs.length === 0;
   const choir = choirMembers();
   const openID = box.querySelector("details[open]")?.closest("[data-title]")?.dataset.title;
+  const dateTitles = (state.dates.find((d) => d.id === selectedDate)?.titles || []);
   box.innerHTML = dateTitleIDs.map((id, i) => {
     const item = archiveByID(id);
     const title = item?.title || id;
     const composer = item?.composer || "";
     const selected = new Set(dateTitleSoloists[id] || []);
     const names = soloistNamesFor(id);
+    const shock = dateTitles.find((t) => t.id === id);
+    const shockN = shock?.ohSchreck || 0;
     const summary = names.length
       ? `${I18N.t("soloists")}: ${names.join(", ")}`
       : I18N.t("soloists");
@@ -1060,6 +1063,7 @@ function renderDateTitles() {
         <div>
           <strong>${escapeHtml(title)}</strong>
           ${composer ? `<span>${escapeHtml(composer)}</span>` : ""}
+          <p class="title-ohschreck-count" title="${escapeHtml(I18N.t("ohSchreck"))}">😱 ${shockN}</p>
         </div>
         <div class="title-pick-actions">
           <button type="button" class="btn ghost" data-move="-1" ${i === 0 ? "disabled" : ""}>↑</button>

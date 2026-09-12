@@ -178,3 +178,59 @@ func TestPlannerMemberDateAPI(t *testing.T) {
 		t.Fatalf("delete own %d", status)
 	}
 }
+
+func TestTitleOhSchreckAPI(t *testing.T) {
+	ts, st := plannerTestServer(t)
+	ada, err := st.CreateUser("Ada", "ada@example.com", "secret1", store.RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ben, err := st.CreateUser("Ben", "ben@example.com", "secret1", store.RoleChoir, "Alt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.ChangeOwnPassword(ada.ID, "secret2"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.ChangeOwnPassword(ben.ID, "secret2"); err != nil {
+		t.Fatal(err)
+	}
+	song, err := st.CreateArchiveItem("Oh Happy Day", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := st.CreateDate("Show", store.CategoryConcert, time.Now().UTC().Add(24*time.Hour), nil, "", "", "", []string{store.RoleChoir}, store.Bring{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetDateTitles(d.ID, []string{song.ID}); err != nil {
+		t.Fatal(err)
+	}
+	adaC := memberClient(t, ts, "ada@example.com", "secret2")
+	benC := memberClient(t, ts, "ben@example.com", "secret2")
+	path := ts.URL + "/api/dates/" + d.ID + "/titles/" + song.ID + "/ohschreck"
+	status, first := doJSON(t, adaC, http.MethodPost, path, nil)
+	if status != http.StatusOK {
+		t.Fatalf("ada on %d %v", status, first)
+	}
+	title, _ := first["title"].(map[string]any)
+	if title["ohSchreck"] != float64(1) || title["myOhSchreck"] != true {
+		t.Fatalf("ada title %+v", title)
+	}
+	status, second := doJSON(t, benC, http.MethodPost, path, nil)
+	if status != http.StatusOK {
+		t.Fatalf("ben on %d %v", status, second)
+	}
+	title, _ = second["title"].(map[string]any)
+	if title["ohSchreck"] != float64(2) {
+		t.Fatalf("ben title %+v", title)
+	}
+	status, off := doJSON(t, adaC, http.MethodPost, path, nil)
+	if status != http.StatusOK {
+		t.Fatalf("ada off %d %v", status, off)
+	}
+	title, _ = off["title"].(map[string]any)
+	if title["ohSchreck"] != float64(1) || title["myOhSchreck"] != false {
+		t.Fatalf("ada off title %+v", title)
+	}
+}

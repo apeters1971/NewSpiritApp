@@ -84,6 +84,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/dates/{id}/vote", s.handleVote)
 	mux.HandleFunc("POST /api/dates/{id}/poll", s.handlePollVote)
 	mux.HandleFunc("POST /api/dates/{id}/comments", s.handleAddComment)
+	mux.HandleFunc("POST /api/dates/{id}/titles/{itemId}/ohschreck", s.handleTitleOhSchreck)
 	mux.HandleFunc("GET /api/dates/{id}/gallery", s.handleGalleryList)
 	mux.HandleFunc("POST /api/dates/{id}/gallery", s.handleGalleryUpload)
 	mux.HandleFunc("GET /api/dates/{id}/gallery/{fileId}", s.handleGalleryFile)
@@ -795,6 +796,21 @@ func (s *Server) handleAddComment(w http.ResponseWriter, r *http.Request) {
 	}
 	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
 	writeJSON(w, http.StatusCreated, map[string]any{"date": view})
+}
+
+func (s *Server) handleTitleOhSchreck(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	item, err := s.Store.ToggleTitleOhSchreck(user.ID, r.PathValue("id"), r.PathValue("itemId"))
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"title": item})
 }
 
 func (s *Server) publishChat(room string, env hub.Envelope) {

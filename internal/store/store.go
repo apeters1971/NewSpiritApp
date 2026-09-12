@@ -1174,7 +1174,11 @@ func (s *Store) DateView(id string, viewer *User) (DateView, error) {
 	if err != nil {
 		return DateView{}, err
 	}
-	titlesByDate, err := s.titlesForDates([]string{id})
+	viewerID := ""
+	if viewer != nil {
+		viewerID = viewer.ID
+	}
+	titlesByDate, err := s.titlesForDates([]string{id}, viewerID)
 	if err != nil {
 		return DateView{}, err
 	}
@@ -1211,7 +1215,11 @@ func (s *Store) ListDateViews(viewer *User) ([]DateView, error) {
 	if err != nil {
 		return nil, err
 	}
-	titlesByDate, err := s.titlesForDates(ids)
+	viewerID := ""
+	if viewer != nil {
+		viewerID = viewer.ID
+	}
+	titlesByDate, err := s.titlesForDates(ids, viewerID)
 	if err != nil {
 		return nil, err
 	}

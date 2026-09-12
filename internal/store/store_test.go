@@ -864,6 +864,61 @@ func TestDateTitleSoloists(t *testing.T) {
 	}
 }
 
+func TestTitleOhSchreck(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "ohschreck.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	ada, err := st.CreateUser("Ada", "ada@example.com", "secret1", RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ben, err := st.CreateUser("Ben", "ben@example.com", "secret1", RoleChoir, "Alt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cara, err := st.CreateUser("Cara", "cara@example.com", "secret1", RoleBand, "Guitar")
+	if err != nil {
+		t.Fatal(err)
+	}
+	song, err := st.CreateArchiveItem("Oh Happy Day", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := st.CreateDate("Show", CategoryConcert, time.Now().UTC().Add(24*time.Hour), nil, "", "", "", []string{RoleChoir}, Bring{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetDateTitles(d.ID, []string{song.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.ToggleTitleOhSchreck(cara.ID, d.ID, song.ID); err == nil {
+		t.Fatal("band should not react on choir date")
+	}
+	first, err := st.ToggleTitleOhSchreck(ada.ID, d.ID, song.ID)
+	if err != nil || first.OhSchreck != 1 || !first.MyOhSchreck {
+		t.Fatalf("ada on %+v %v", first, err)
+	}
+	second, err := st.ToggleTitleOhSchreck(ben.ID, d.ID, song.ID)
+	if err != nil || second.OhSchreck != 2 || !second.MyOhSchreck {
+		t.Fatalf("ben on %+v %v", second, err)
+	}
+	off, err := st.ToggleTitleOhSchreck(ada.ID, d.ID, song.ID)
+	if err != nil || off.OhSchreck != 1 || off.MyOhSchreck {
+		t.Fatalf("ada off %+v %v", off, err)
+	}
+	adaView, err := st.DateView(d.ID, &ada)
+	if err != nil || adaView.Titles[0].OhSchreck != 1 || adaView.Titles[0].MyOhSchreck {
+		t.Fatalf("ada view %+v %v", adaView.Titles, err)
+	}
+	benView, err := st.DateView(d.ID, &ben)
+	if err != nil || benView.Titles[0].OhSchreck != 1 || !benView.Titles[0].MyOhSchreck {
+		t.Fatalf("ben view %+v %v", benView.Titles, err)
+	}
+}
+
 func TestArchiveLinks(t *testing.T) {
 	st, err := Open(filepath.Join(t.TempDir(), "archive-links.db"))
 	if err != nil {
