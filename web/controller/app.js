@@ -1066,6 +1066,11 @@ function renderDateTitles() {
     const names = soloistNamesFor(id);
     const shock = dateTitles.find((t) => t.id === id);
     const shockN = shock?.ohSchreck || 0;
+    const shockTip = (() => {
+      const names = (shock?.ohSchreckBy || []).map((p) => p.nickname).filter(Boolean);
+      if (!names.length) return I18N.t("ohSchreck");
+      return `${I18N.t("ohSchreck")}: ${names.join(", ")}`;
+    })();
     const summary = names.length
       ? `${I18N.t("soloists")}: ${names.join(", ")}`
       : I18N.t("soloists");
@@ -1081,7 +1086,7 @@ function renderDateTitles() {
         <div>
           <strong>${escapeHtml(title)}</strong>
           ${composer ? `<span>${escapeHtml(composer)}</span>` : ""}
-          <p class="title-ohschreck-count" title="${escapeHtml(I18N.t("ohSchreck"))}">🚨 ${shockN}</p>
+          <p class="title-ohschreck-count" title="${escapeHtml(shockTip)}">🚨 ${shockN}</p>
         </div>
         <div class="title-pick-actions">
           <button type="button" class="btn ghost" data-move="-1" ${i === 0 ? "disabled" : ""}>↑</button>

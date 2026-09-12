@@ -902,8 +902,15 @@ func TestTitleOhSchreck(t *testing.T) {
 		t.Fatalf("ada on %+v %v", first, err)
 	}
 	second, err := st.ToggleTitleOhSchreck(ben.ID, d.ID, song.ID)
-	if err != nil || second.OhSchreck != 2 || !second.MyOhSchreck {
+	if err != nil || second.OhSchreck != 2 || !second.MyOhSchreck || len(second.OhSchreckBy) != 2 {
 		t.Fatalf("ben on %+v %v", second, err)
+	}
+	names := map[string]bool{}
+	for _, p := range second.OhSchreckBy {
+		names[p.Nickname] = true
+	}
+	if !names["Ada"] || !names["Ben"] {
+		t.Fatalf("oh schreck names %+v", second.OhSchreckBy)
 	}
 	off, err := st.ToggleTitleOhSchreck(ada.ID, d.ID, song.ID)
 	if err != nil || off.OhSchreck != 1 || off.MyOhSchreck {

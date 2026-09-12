@@ -302,6 +302,18 @@ function renderPoll(date) {
       <p class="muted">${I18N.t("yes")} ${o.yes} · ${I18N.t("maybe")} ${o.maybe} · ${I18N.t("no")} ${o.no} · ${I18N.t("unknown")} ${o.unknown}</p>
     </div>`;
   }).join("");
+  const hint = dateIsMine(date) && date.pollOpen
+    ? `<p class="muted planner-actions-hint">${I18N.t("freezeHint")}</p>`
+    : "";
+  return `<div class="vote-block">
+    <p class="vote-block-label">${I18N.t("yourVote")}</p>
+    ${blocks}
+    ${hint}
+  </div>`;
+}
+
+function renderPollTable(date) {
+  const options = date.options || [];
   const people = date.roster || [];
   const head = `<tr><th>${I18N.t("name")}</th>${options.map((o) => `<th>${escapeHtml(formatOptionRange(o))}</th>`).join("")}</tr>`;
   const body = people.map((p) => {
@@ -313,11 +325,10 @@ function renderPoll(date) {
     }).join("");
     return `<tr><td>${escapeHtml(p.nickname)}</td>${cells}</tr>`;
   }).join("");
-  return `${blocks}
-    ${renderVoteTable(date, `<table class="roster poll-table">
-      <thead>${head}</thead>
-      <tbody>${body || `<tr><td colspan="${options.length + 1}" class="muted">${I18N.t("noPeopleRoles")}</td></tr>`}</tbody>
-    </table>`)}`;
+  return renderVoteTable(date, `<table class="roster poll-table">
+    <thead>${head}</thead>
+    <tbody>${body || `<tr><td colspan="${options.length + 1}" class="muted">${I18N.t("noPeopleRoles")}</td></tr>`}</tbody>
+  </table>`);
 }
 
 function renderDate(date) {
@@ -336,14 +347,19 @@ function renderDate(date) {
   const extraBadge = pollOpen(date)
     ? `<span class="badge voting">${I18N.t("poll")}</span>`
     : date.frozenOptionId ? `<span class="badge accepted">${I18N.t("chosenTime")}</span>` : "";
+  const vote = pollOpen(date) || !buttons ? "" : `<div class="vote-block">
+      <p class="vote-block-label">${I18N.t("yourVote")}</p>
+      <div class="vote-row">${buttons}</div>
+      ${mine}
+    </div>`;
+  const table = isPoll ? renderPollTable(date) : pollOpen(date) ? "" : renderRoster(date);
   return `<article class="card${needsVote(date) ? " needs-vote" : ""}">
-    ${renderDateTools(date)}
     <div class="card-head">
       <div>
-        <p class="brand">${escapeHtml(I18N.category(date.category))} · ${date.roles.map((r) => I18N.role(r)).join(" · ")}</p>
         <h2 id="date-${date.id}">${escapeHtml(date.title)}</h2>
         ${renderPlannerTag(date)}
         <p class="when">${escapeHtml(when)}</p>
+        <p class="card-meta">${escapeHtml(I18N.category(date.category))} · ${date.roles.map((r) => I18N.role(r)).join(" · ")}</p>
         ${renderBring(date.bring)}
         ${notes}
       </div>
@@ -353,11 +369,10 @@ function renderDate(date) {
         ${moodHTML(date)}
       </div>
     </div>
-    ${isPoll ? renderPoll(date) : ""}
-    ${pollOpen(date) || !buttons ? "" : `<div class="vote-row">${buttons}</div>${mine}`}
-    ${renderPlannerActions(date)}
+    ${renderDateTools(date)}
+    ${isPoll ? renderPoll(date) : vote}
     ${pollOpen(date) ? "" : renderCounts(date)}
-    ${pollOpen(date) ? "" : renderRoster(date)}
+    ${table}
   </article>`;
 }
 
@@ -373,9 +388,47 @@ function dateToolBtn(attr, id, tip, iconClass, count) {
   </button>`;
 }
 
-function dateMenuItem(attr, id, label, count) {
+function dateMenuItem(attr, id, label, count, extraClass = "") {
   const extra = count ? ` (${count})` : "";
-  return `<button type="button" class="btn ghost" ${attr}="${id}" role="menuitem">${escapeHtml(label)}${extra}</button>`;
+  const cls = extraClass ? ` ${extraClass}` : "";
+  return `<button type="button" class="btn ghost${cls}" ${attr}="${id}" role="menuitem">${escapeHtml(label)}${extra}</button>`;
+}
+
+function plannerCanManage(date) {
+  return isPlanner() && dateIsMine(date);
+}
+
+function plannerCanFinalize(date) {
+  return plannerCanManage(date) && date.status === "voting" && !date.pollOpen;
+}
+
+function plannerToolBtn(attrs, tip, tone, iconClass) {
+  const label = escapeHtml(tip);
+  return `<button type="button" class="btn ghost header-tool date-tool planner-tool ${tone}" ${attrs} data-tip="${label}" aria-label="${label}">
+    <span class="planner-act-icon ${iconClass}" aria-hidden="true"></span>
+  </button>`;
+}
+
+function plannerIconGroup(date) {
+  if (!plannerCanManage(date)) return "";
+  const finalize = plannerCanFinalize(date)
+    ? `${plannerToolBtn(`data-planner-status="accepted" data-id="${date.id}"`, I18N.t("accept"), "ok", "accept")}
+       ${plannerToolBtn(`data-planner-status="cancelled" data-id="${date.id}"`, I18N.t("cancelDate"), "warn", "cancel")}`
+    : "";
+  return `<div class="card-tools-planner">
+    ${finalize}
+    ${plannerToolBtn(`data-planner-delete="${date.id}"`, I18N.t("delete"), "danger", "trash")}
+  </div>`;
+}
+
+function plannerMenuItems(date) {
+  if (!plannerCanManage(date)) return "";
+  const finalize = plannerCanFinalize(date)
+    ? `<button type="button" class="btn ghost date-menu-act ok" data-planner-status="accepted" data-id="${date.id}" role="menuitem">${I18N.t("accept")}</button>
+       <button type="button" class="btn ghost date-menu-act warn" data-planner-status="cancelled" data-id="${date.id}" role="menuitem">${I18N.t("cancelDate")}</button>`
+    : "";
+  return `${finalize}
+    <button type="button" class="btn ghost date-menu-act danger" data-planner-delete="${date.id}" role="menuitem">${I18N.t("delete")}</button>`;
 }
 
 function renderDateTools(date) {
@@ -391,16 +444,18 @@ function renderDateTools(date) {
     : "";
   const menuItems = [
     dateMenuItem("data-comments", date.id, I18N.t("comments"), commentCount),
-    date.schedule ? dateMenuItem("data-schedule", date.id, I18N.t("schedule")) : "",
     dateMenuItem("data-titles", date.id, I18N.t("titles"), titleCount),
     date.chatOpen ? dateMenuItem("data-event-chat", date.id, I18N.t("eventChat")) : "",
     dateMenuItem("data-gallery", date.id, I18N.t("gallery"), date.galleryCount),
+    date.schedule ? dateMenuItem("data-schedule", date.id, I18N.t("schedule")) : "",
     dateShowsPromo(date) ? dateMenuItem("data-promo", date.id, I18N.t("promo"), date.promoCount) : "",
+    plannerMenuItems(date),
   ].join("");
   const menuLabel = escapeHtml(I18N.t("menu"));
   return `<div class="card-tools">
     <div class="card-tools-icons">${icons}</div>
     <div class="card-tools-end">
+      ${plannerIconGroup(date)}
       ${chat}
       <div class="date-menu">
         <button type="button" class="btn ghost header-tool date-menu-btn" data-date-menu aria-expanded="false" aria-label="${menuLabel}" data-tip="${menuLabel}">
@@ -479,29 +534,6 @@ function renderPlannerTag(date) {
   </div>`;
 }
 
-function renderPlannerActions(date) {
-  if (!isPlanner() || !dateIsMine(date)) return "";
-  const finalize = date.status === "voting" && !date.pollOpen
-    ? `<button type="button" class="planner-act ok" data-planner-status="accepted" data-id="${date.id}">
-         <span class="planner-act-icon accept" aria-hidden="true"></span>${I18N.t("accept")}
-       </button>
-       <button type="button" class="planner-act warn" data-planner-status="cancelled" data-id="${date.id}">
-         <span class="planner-act-icon cancel" aria-hidden="true"></span>${I18N.t("cancelDate")}
-       </button>`
-    : "";
-  return `<div class="planner-actions">
-    <div class="planner-actions-row">
-      <p class="planner-actions-label">${I18N.t("planner")}</p>
-      <div class="planner-actions-btns">
-        ${finalize}
-        <button type="button" class="planner-act danger" data-planner-delete="${date.id}">
-          <span class="planner-act-icon trash" aria-hidden="true"></span>${I18N.t("delete")}
-        </button>
-      </div>
-    </div>
-    ${date.pollOpen ? `<p class="muted planner-actions-hint">${I18N.t("freezeHint")}</p>` : ""}
-  </div>`;
-}
 
 function toISO(local) {
   if (!local) return "";
@@ -1385,6 +1417,12 @@ function filePreviewHTML(id, file, label) {
   </div>`;
 }
 
+function ohSchreckTip(item) {
+  const names = (item?.ohSchreckBy || []).map((p) => p.nickname).filter(Boolean);
+  if (!names.length) return I18N.t("ohSchreck");
+  return `${I18N.t("ohSchreck")}: ${names.join(", ")}`;
+}
+
 function showTitlesList() {
   const date = dates.find((d) => d.id === titlesDateId);
   const list = document.getElementById("titles-list");
@@ -1400,6 +1438,7 @@ function showTitlesList() {
       const soloists = (item.soloists || []).map((s) => s.nickname).filter(Boolean).join(", ");
       const on = !!item.myOhSchreck;
       const n = item.ohSchreck || 0;
+      const tip = ohSchreckTip(item);
       return `
       <div class="title-item">
         <button type="button" class="title-item-open" data-title="${item.id}">
@@ -1410,7 +1449,7 @@ function showTitlesList() {
             ${soloists ? `<p class="title-soloists">${escapeHtml(I18N.t("soloists"))}: ${escapeHtml(soloists)}</p>` : ""}
           </div>
         </button>
-        <button type="button" class="title-ohschreck${on ? " on" : ""}" data-ohschreck="${escapeHtml(item.id)}" aria-pressed="${on}" aria-label="${escapeHtml(I18N.t("ohSchreck"))}">
+        <button type="button" class="title-ohschreck${on ? " on" : ""}" data-ohschreck="${escapeHtml(item.id)}" data-tip="${escapeHtml(tip)}" title="${escapeHtml(tip)}" aria-pressed="${on}" aria-label="${escapeHtml(tip)}">
           <span aria-hidden="true">🚨</span> ${n}
         </button>
       </div>`;
@@ -3040,26 +3079,15 @@ datesEl.addEventListener("click", async (e) => {
   }
   const statusBtn = e.target.closest("button[data-planner-status]");
   if (statusBtn) {
-    try {
-      await api(`/api/dates/${statusBtn.dataset.id}/status`, {
-        method: "POST",
-        body: JSON.stringify({ status: statusBtn.dataset.plannerStatus }),
-      });
-      await loadDates();
-    } catch (err) {
-      alert(err.message);
-    }
+    askDateAction({
+      kind: statusBtn.dataset.plannerStatus,
+      id: statusBtn.dataset.id,
+    });
     return;
   }
   const deleteBtn = e.target.closest("button[data-planner-delete]");
   if (deleteBtn) {
-    if (!confirm(I18N.t("confirmDeleteDate"))) return;
-    try {
-      await api(`/api/dates/${deleteBtn.dataset.plannerDelete}`, { method: "DELETE" });
-      await loadDates();
-    } catch (err) {
-      alert(err.message);
-    }
+    askDateAction({ kind: "delete", id: deleteBtn.dataset.plannerDelete });
     return;
   }
   const commentsBtn = e.target.closest("button[data-comments]");
@@ -3121,6 +3149,68 @@ datesEl.addEventListener("click", async (e) => {
 document.getElementById("btn-new-date")?.addEventListener("click", () => {
   if (!isPlanner()) return;
   openPlannerDialog();
+});
+
+let pendingDateAction = null;
+
+function askDateAction(action) {
+  if (!action?.id || !action.kind) return;
+  pendingDateAction = action;
+  const brand = document.getElementById("date-confirm-brand");
+  const title = document.getElementById("date-confirm-title");
+  const lede = document.getElementById("date-confirm-lede");
+  const ok = document.getElementById("date-confirm-ok");
+  const dialog = document.getElementById("date-confirm-dialog");
+  if (!dialog || !brand || !title || !lede || !ok) return;
+  if (action.kind === "accepted") {
+    brand.textContent = I18N.t("accept");
+    title.textContent = I18N.t("confirmAcceptDate");
+    ok.textContent = I18N.t("accept");
+    ok.className = "btn confirm-accept";
+  } else if (action.kind === "cancelled") {
+    brand.textContent = I18N.t("cancelDate");
+    title.textContent = I18N.t("confirmCancelDate");
+    ok.textContent = I18N.t("cancelDate");
+    ok.className = "btn confirm-cancel";
+  } else {
+    brand.textContent = I18N.t("delete");
+    title.textContent = I18N.t("confirmDeleteDate");
+    ok.textContent = I18N.t("delete");
+    ok.className = "btn confirm-delete";
+  }
+  lede.textContent = I18N.t("confirmDateUndo");
+  dialog.showModal();
+}
+
+async function confirmDateAction() {
+  const action = pendingDateAction;
+  pendingDateAction = null;
+  document.getElementById("date-confirm-dialog")?.close();
+  if (!action?.id) return;
+  try {
+    if (action.kind === "delete") {
+      await api(`/api/dates/${action.id}`, { method: "DELETE" });
+    } else {
+      await api(`/api/dates/${action.id}/status`, {
+        method: "POST",
+        body: JSON.stringify({ status: action.kind }),
+      });
+    }
+    await loadDates();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+document.getElementById("date-confirm-cancel")?.addEventListener("click", () => {
+  pendingDateAction = null;
+  document.getElementById("date-confirm-dialog")?.close();
+});
+document.getElementById("date-confirm-ok")?.addEventListener("click", () => {
+  confirmDateAction();
+});
+document.getElementById("date-confirm-dialog")?.addEventListener("close", () => {
+  pendingDateAction = null;
 });
 
 document.getElementById("planner-close")?.addEventListener("click", () => {

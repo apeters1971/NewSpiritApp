@@ -52,6 +52,7 @@ type ArchiveItem struct {
 	Soloists     []OnlinePerson    `json:"soloists,omitempty"`
 	OhSchreck    int               `json:"ohSchreck"`
 	MyOhSchreck  bool              `json:"myOhSchreck"`
+	OhSchreckBy  []OnlinePerson    `json:"ohSchreckBy,omitempty"`
 	CreatedAt    time.Time         `json:"createdAt"`
 }
 
@@ -872,56 +873,45 @@ func (s *Store) attachTitleOhSchreck(titlesByDate map[string][]ArchiveItem, view
 		args[i] = id
 	}
 	rows, err := s.db.Query(`
-SELECT date_id, item_id, COUNT(*)
-FROM date_title_ohschreck
-WHERE date_id IN (`+placeholders+`)
-GROUP BY date_id, item_id`, args...)
+SELECT o.date_id, o.item_id, u.id, u.nickname
+FROM date_title_ohschreck o
+JOIN users u ON u.id = o.user_id
+WHERE o.date_id IN (`+placeholders+`)
+ORDER BY u.nickname COLLATE NOCASE`, args...)
 	if err != nil {
 		return err
 	}
-	counts := map[string]int{}
+	defer rows.Close()
+	byKey := map[string][]OnlinePerson{}
 	for rows.Next() {
 		var dateID, itemID string
-		var n int
-		if err := rows.Scan(&dateID, &itemID, &n); err != nil {
-			rows.Close()
+		var person OnlinePerson
+		if err := rows.Scan(&dateID, &itemID, &person.ID, &person.Nickname); err != nil {
 			return err
 		}
-		counts[dateID+"\x00"+itemID] = n
+		key := dateID + "\x00" + itemID
+		byKey[key] = append(byKey[key], person)
 	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
+	if err := rows.Err(); err != nil {
 		return err
-	}
-	mine := map[string]bool{}
-	if strings.TrimSpace(viewerID) != "" {
-		mineRows, err := s.db.Query(`
-SELECT date_id, item_id
-FROM date_title_ohschreck
-WHERE user_id=? AND date_id IN (`+placeholders+`)`, append([]any{viewerID}, args...)...)
-		if err != nil {
-			return err
-		}
-		for mineRows.Next() {
-			var dateID, itemID string
-			if err := mineRows.Scan(&dateID, &itemID); err != nil {
-				mineRows.Close()
-				return err
-			}
-			mine[dateID+"\x00"+itemID] = true
-		}
-		err = mineRows.Err()
-		mineRows.Close()
-		if err != nil {
-			return err
-		}
 	}
 	for dateID, titles := range titlesByDate {
 		for i := range titles {
 			key := dateID + "\x00" + titles[i].ID
-			titles[i].OhSchreck = counts[key]
-			titles[i].MyOhSchreck = mine[key]
+			people := byKey[key]
+			if people == nil {
+				people = []OnlinePerson{}
+			}
+			titles[i].OhSchreckBy = people
+			titles[i].OhSchreck = len(people)
+			if viewerID != "" {
+				for _, p := range people {
+					if p.ID == viewerID {
+						titles[i].MyOhSchreck = true
+						break
+					}
+				}
+			}
 		}
 		titlesByDate[dateID] = titles
 	}
