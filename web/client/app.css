@@ -2327,7 +2327,8 @@ body.call-fs { overflow: hidden; }
   width: 0;
   height: 0;
 }
-.card-tools .header-tool::after {
+.card-tools .header-tool::after,
+.date-summary-actions .header-tool::after {
   content: attr(data-tip);
   position: absolute;
   top: calc(100% + 0.42rem);
@@ -2350,7 +2351,8 @@ body.call-fs { overflow: hidden; }
   pointer-events: none;
   transition: opacity 0.16s ease, transform 0.16s ease;
 }
-.card-tools .date-menu-btn::after {
+.card-tools .date-menu-btn::after,
+.date-summary-actions .date-menu-btn::after {
   left: auto;
   right: 0.1rem;
   transform: translateX(0) translateY(0.28rem) scale(0.96);
@@ -2361,14 +2363,94 @@ body.call-fs { overflow: hidden; }
 }
 @media (hover: hover) {
   .card-tools .header-tool:hover:not(:disabled)::after,
-  .card-tools .header-tool:focus-visible::after {
+  .card-tools .header-tool:focus-visible::after,
+  .date-summary-actions .header-tool:hover:not(:disabled)::after,
+  .date-summary-actions .header-tool:focus-visible::after {
     opacity: 1;
     transform: translateX(-50%) translateY(0) scale(1);
   }
   .card-tools .date-menu-btn:hover:not(:disabled)::after,
-  .card-tools .date-menu-btn:focus-visible::after {
+  .card-tools .date-menu-btn:focus-visible::after,
+  .date-summary-actions .date-menu-btn:hover:not(:disabled)::after,
+  .date-summary-actions .date-menu-btn:focus-visible::after {
     transform: translateX(0) translateY(0) scale(1);
   }
+}
+.fold-date {
+  margin: 0;
+  border: 0;
+  background: transparent;
+}
+.date-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.55rem 0.65rem;
+  padding: 0;
+  cursor: pointer;
+  list-style: none;
+}
+.date-summary::-webkit-details-marker,
+.date-summary::marker {
+  display: none;
+  content: none;
+}
+.date-summary-main {
+  flex: 1;
+  min-width: 0;
+  order: 1;
+}
+.date-summary .mood {
+  order: 2;
+  margin-top: 0.1rem;
+}
+.date-summary::after {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  flex: 0 0 auto;
+  order: 3;
+  margin-top: 0.45rem;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+}
+.fold-date[open] > .date-summary::after { transform: rotate(45deg); }
+.date-summary-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.45rem;
+  flex: 1 1 100%;
+  order: 4;
+  margin-top: 0.15rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--line);
+}
+.fold-date[open] > .date-summary .date-summary-actions { display: none; }
+.date-summary-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+}
+.vote-row.vote-row-compact {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  gap: 0.3rem;
+}
+.vote-row.vote-row-compact button {
+  padding: 0.32rem 0.5rem;
+  font-size: 0.82rem;
+}
+.date-summary-actions .date-menu-list { z-index: 34; }
+.date-body { padding-top: 0.75rem; }
+.date-extras { margin-bottom: 0.15rem; }
+.date-extras .badges {
+  justify-content: flex-start;
+  margin-top: 0.45rem;
 }
 .card-head {
   display: flex;

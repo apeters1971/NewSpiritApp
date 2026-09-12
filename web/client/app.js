@@ -188,6 +188,7 @@ function firstVoteChanged(entry) {
 }
 
 const rosterOpen = new Set();
+let datesCollapsed = true;
 
 function renderVoteTable(date, tableHTML) {
   if (!tableHTML) return "";
@@ -203,6 +204,17 @@ function bindRosterFolds() {
     el.addEventListener("toggle", () => {
       if (el.open) rosterOpen.add(el.dataset.roster);
       else rosterOpen.delete(el.dataset.roster);
+    });
+  });
+}
+
+function bindDateFolds() {
+  datesEl?.querySelectorAll("details[data-date-fold]").forEach((el) => {
+    el.addEventListener("toggle", () => {
+      datesCollapsed = !el.open;
+    });
+    el.querySelector(".date-summary-actions")?.addEventListener("click", (e) => {
+      e.preventDefault();
     });
   });
 }
@@ -353,26 +365,36 @@ function renderDate(date) {
       ${mine}
     </div>`;
   const table = isPoll ? renderPollTable(date) : pollOpen(date) ? "" : renderRoster(date);
+  const roles = (date.roles || []).map((r) => I18N.role(r)).join(" · ");
+  const open = datesCollapsed ? "" : " open";
   return `<article class="card${needsVote(date) ? " needs-vote" : ""}">
-    <div class="card-head">
-      <div>
-        <h2 id="date-${date.id}">${escapeHtml(date.title)}</h2>
-        ${renderPlannerTag(date)}
-        <p class="when">${escapeHtml(when)}</p>
-        <p class="card-meta">${escapeHtml(I18N.category(date.category))} · ${date.roles.map((r) => I18N.role(r)).join(" · ")}</p>
-        ${renderBring(date.bring)}
-        ${notes}
+    <details class="fold-date"${open} data-date-fold="${date.id}">
+      <summary class="date-summary">
+        <div class="date-summary-main">
+          <h2 id="date-${date.id}">${escapeHtml(date.title)}</h2>
+          <p class="when">${escapeHtml(when)}</p>
+          <p class="card-meta">${escapeHtml(I18N.category(date.category))}</p>
+        </div>
+        ${moodHTML(date, "date-summary-mood")}
+        ${renderDateSummaryActions(date)}
+      </summary>
+      <div class="date-body">
+        <div class="date-extras">
+          ${renderPlannerTag(date)}
+          ${roles ? `<p class="card-meta">${escapeHtml(roles)}</p>` : ""}
+          ${renderBring(date.bring)}
+          ${notes}
+          <div class="badges">
+            ${extraBadge}
+            <span class="badge ${date.status}">${I18N.status(date.status)}</span>
+          </div>
+        </div>
+        ${renderDateTools(date)}
+        ${isPoll ? renderPoll(date) : vote}
+        ${pollOpen(date) ? "" : renderCounts(date)}
+        ${table}
       </div>
-      <div class="badges">
-        ${extraBadge}
-        <span class="badge ${date.status}">${I18N.status(date.status)}</span>
-        ${moodHTML(date)}
-      </div>
-    </div>
-    ${renderDateTools(date)}
-    ${isPoll ? renderPoll(date) : vote}
-    ${pollOpen(date) ? "" : renderCounts(date)}
-    ${table}
+    </details>
   </article>`;
 }
 
@@ -392,6 +414,65 @@ function dateMenuItem(attr, id, label, count, extraClass = "") {
   const extra = count ? ` (${count})` : "";
   const cls = extraClass ? ` ${extraClass}` : "";
   return `<button type="button" class="btn ghost${cls}" ${attr}="${id}" role="menuitem">${escapeHtml(label)}${extra}</button>`;
+}
+
+function dateMenuHTML(date) {
+  const commentCount = (date.comments || []).length;
+  const titleCount = (date.titles || []).length;
+  const menuItems = [
+    dateMenuItem("data-comments", date.id, I18N.t("comments"), commentCount),
+    dateMenuItem("data-titles", date.id, I18N.t("titles"), titleCount),
+    date.chatOpen ? dateMenuItem("data-event-chat", date.id, I18N.t("eventChat")) : "",
+    dateMenuItem("data-gallery", date.id, I18N.t("gallery"), date.galleryCount),
+    date.schedule ? dateMenuItem("data-schedule", date.id, I18N.t("schedule")) : "",
+    dateShowsPromo(date) ? dateMenuItem("data-promo", date.id, I18N.t("promo"), date.promoCount) : "",
+    plannerMenuItems(date),
+  ].join("");
+  const menuLabel = escapeHtml(I18N.t("menu"));
+  return `<div class="date-menu">
+    <button type="button" class="btn ghost header-tool date-menu-btn" data-date-menu aria-expanded="false" aria-label="${menuLabel}" data-tip="${menuLabel}">
+      <span class="date-menu-dots" aria-hidden="true"></span>
+    </button>
+    <div class="avatar-menu date-menu-list" hidden role="menu">${menuItems}</div>
+  </div>`;
+}
+
+function renderCompactVote(date) {
+  if (!canVote() || pollOpen(date)) return "";
+  const locked = date.status === "cancelled";
+  const buttons = ["yes", "maybe", "no"].map((c) => `
+    <button type="button" data-id="${date.id}" data-choice="${c}" class="${c}${date.myChoice === c ? " on" : ""}" ${locked ? "disabled" : ""}>${voteChoiceHTML(c)}</button>
+  `).join("");
+  return `<div class="vote-row vote-row-compact">${buttons}</div>`;
+}
+
+function dateToolIcons(date) {
+  const commentCount = (date.comments || []).length;
+  const titleCount = (date.titles || []).length;
+  return [
+    dateToolBtn("data-comments", date.id, I18N.t("comments"), "comments", commentCount),
+    dateToolBtn("data-titles", date.id, I18N.t("titles"), "notes", titleCount),
+    dateToolBtn("data-gallery", date.id, I18N.t("gallery"), "gallery", date.galleryCount),
+  ].join("");
+}
+
+function dateChatTool(date) {
+  return date.chatOpen
+    ? dateToolBtn("data-event-chat", date.id, I18N.t("eventChat"), "chat", 0)
+    : "";
+}
+
+function renderDateSummaryActions(date) {
+  return `<div class="date-summary-actions">
+    <div class="date-summary-tools">
+      <div class="card-tools-icons">${dateToolIcons(date)}</div>
+      <div class="card-tools-end">
+        ${dateChatTool(date)}
+        ${dateMenuHTML(date)}
+      </div>
+    </div>
+    ${renderCompactVote(date)}
+  </div>`;
 }
 
 function plannerCanManage(date) {
@@ -432,37 +513,12 @@ function plannerMenuItems(date) {
 }
 
 function renderDateTools(date) {
-  const commentCount = (date.comments || []).length;
-  const titleCount = (date.titles || []).length;
-  const icons = [
-    dateToolBtn("data-comments", date.id, I18N.t("comments"), "comments", commentCount),
-    dateToolBtn("data-titles", date.id, I18N.t("titles"), "notes", titleCount),
-    dateToolBtn("data-gallery", date.id, I18N.t("gallery"), "gallery", date.galleryCount),
-  ].join("");
-  const chat = date.chatOpen
-    ? dateToolBtn("data-event-chat", date.id, I18N.t("eventChat"), "chat", 0)
-    : "";
-  const menuItems = [
-    dateMenuItem("data-comments", date.id, I18N.t("comments"), commentCount),
-    dateMenuItem("data-titles", date.id, I18N.t("titles"), titleCount),
-    date.chatOpen ? dateMenuItem("data-event-chat", date.id, I18N.t("eventChat")) : "",
-    dateMenuItem("data-gallery", date.id, I18N.t("gallery"), date.galleryCount),
-    date.schedule ? dateMenuItem("data-schedule", date.id, I18N.t("schedule")) : "",
-    dateShowsPromo(date) ? dateMenuItem("data-promo", date.id, I18N.t("promo"), date.promoCount) : "",
-    plannerMenuItems(date),
-  ].join("");
-  const menuLabel = escapeHtml(I18N.t("menu"));
   return `<div class="card-tools">
-    <div class="card-tools-icons">${icons}</div>
+    <div class="card-tools-icons">${dateToolIcons(date)}</div>
     <div class="card-tools-end">
       ${plannerIconGroup(date)}
-      ${chat}
-      <div class="date-menu">
-        <button type="button" class="btn ghost header-tool date-menu-btn" data-date-menu aria-expanded="false" aria-label="${menuLabel}" data-tip="${menuLabel}">
-          <span class="date-menu-dots" aria-hidden="true"></span>
-        </button>
-        <div class="avatar-menu date-menu-list" hidden role="menu">${menuItems}</div>
-      </div>
+      ${dateChatTool(date)}
+      ${dateMenuHTML(date)}
     </div>
   </div>`;
 }
@@ -1178,6 +1234,7 @@ function renderDates() {
   const i = focusedDateIndex();
   const d = dates[i];
   datesEl.innerHTML = renderDate(d);
+  bindDateFolds();
   bindRosterFolds();
   if (nav) nav.hidden = false;
   if (titleEl) titleEl.textContent = d.title || "";

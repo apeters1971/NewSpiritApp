@@ -4,6 +4,7 @@
       date: "2026-09-12",
       items: {
         de: [
+          "Termine starten zugeklappt. Ein Zugeklappt gilt für alle. Zu sehen bleiben Titel, Zeit, Art, das Stimmen-Gesicht, die Symbole, Ja/Vielleicht/Nein und das Menü.",
           "Annehmen, Absagen und Löschen eines Termins fragen zuerst nach, weil sich das nicht rückgängig machen lässt.",
           "Über der Alarmsirene auf der Titelliste stehen die Namen, die Oh Schreck getippt haben.",
           "Löschen eines Termins fragt zuerst: Willst du diesen Termin löschen?",
@@ -33,6 +34,7 @@
           "Bei Songvorschlägen gibt es Daumen hoch, Neutral und Daumen runter. Noch einmal tippen nimmt die Stimme zurück.",
         ],
         en: [
+          "Dates start folded. Folding one folds them all. You still see title, time, type, the vote face, the icons, Yes/Maybe/No, and the menu.",
           "Accept, decline, and delete on a date ask first, because those cannot be undone.",
           "Hovering the alarm on a title list shows who tapped Oh God!.",
           "Deleting a date first asks: You want to delete the event?",
