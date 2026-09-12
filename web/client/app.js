@@ -2045,6 +2045,7 @@ async function loadDates() {
   applyUnread(data.unread);
   renderChatTabs();
   render();
+  syncNewsTicker();
 }
 
 function showGate(which) {
@@ -2059,6 +2060,8 @@ let newsTickerPause = false;
 let newsTickerWait = 0;
 let newsTickerOfficial = "";
 let newsTickerRemindOnce = true;
+let newsTickerSlot = 0;
+let newsTickerSig = "";
 
 function stopNewsTicker(bar) {
   newsTickerRun += 1;
@@ -2081,17 +2084,31 @@ function newsTickerReminders() {
   return bits;
 }
 
+function pendingVoteDates() {
+  if (!canVote() || !me || me.mustChangePassword) return [];
+  return (dates || []).filter((d) => needsVote(d) && dateIsUpcoming(d));
+}
+
+function newsTickerVoteReminder() {
+  const pending = pendingVoteDates();
+  if (!pending.length) return "";
+  return I18N.t("feedNeedVote").replace("{titles}", pending.map((d) => d.title).filter(Boolean).join(", "));
+}
+
 function newsTickerStream() {
   const name = String(liveStream?.nickname || "").trim();
   if (!name) return "";
   return I18N.t("feedStreaming").replace("{name}", name);
 }
 
-function newsTickerText(official) {
+function newsTickerMessages(official) {
   if (official !== undefined) newsTickerOfficial = String(official || "").trim();
   const live = newsTickerStream();
-  if (live) return live;
-  return [...newsTickerReminders(), newsTickerOfficial].filter(Boolean).join("   ·   ");
+  if (live) return [live];
+  const remind = newsTickerReminders();
+  const vote = newsTickerVoteReminder();
+  if (remind.length) return [[...remind, newsTickerOfficial].filter(Boolean).join("   ·   ")];
+  return [newsTickerOfficial, vote].filter(Boolean);
 }
 
 function paintNewsTicker(text) {
@@ -2100,18 +2117,32 @@ function paintNewsTicker(text) {
   const el = bar.querySelector(".news-ticker-text");
   if (!el) return;
   const remind = newsTickerStream() ? [] : newsTickerReminders();
-  const clean = newsTickerText(text);
+  const msgs = newsTickerMessages(text);
+  newsTickerSig = msgs.join("\0");
   stopNewsTicker(bar);
   const runId = newsTickerRun;
-  if (!clean) {
+  if (!msgs.length) {
     el.textContent = "";
     bar.hidden = true;
+    newsTickerSlot = 0;
     return;
   }
-  el.textContent = clean;
+  if (newsTickerSlot >= msgs.length) newsTickerSlot = 0;
+  el.textContent = msgs[newsTickerSlot];
   bar.hidden = false;
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
     if (remind.length) newsTickerRemindOnce = false;
+    if (msgs.length > 1 || remind.length) {
+      newsTickerWait = window.setTimeout(() => {
+        if (remind.length) {
+          newsTickerRemindOnce = false;
+          newsTickerSlot = 0;
+        } else {
+          newsTickerSlot = (newsTickerSlot + 1) % msgs.length;
+        }
+        paintNewsTicker();
+      }, 8000);
+    }
     return;
   }
 
@@ -2129,13 +2160,25 @@ function paintNewsTicker(text) {
       if (runId !== newsTickerRun) return;
       if (remind.length) {
         newsTickerRemindOnce = false;
+        newsTickerSlot = 0;
         paintNewsTicker();
+        return;
+      }
+      if (msgs.length > 1) {
+        newsTickerSlot = (newsTickerSlot + 1) % msgs.length;
+        newsTickerWait = window.setTimeout(() => paintNewsTicker(), 2000);
         return;
       }
       newsTickerWait = window.setTimeout(cycle, 2000);
     }).catch(() => {});
   };
   requestAnimationFrame(cycle);
+}
+
+function syncNewsTicker() {
+  const next = newsTickerMessages().join("\0");
+  if (next === newsTickerSig) return;
+  paintNewsTicker();
 }
 
 (() => {
@@ -2195,6 +2238,7 @@ document.getElementById("online-chip-list")?.addEventListener("click", (e) => {
 
 async function enterApp() {
   newsTickerRemindOnce = true;
+  newsTickerSlot = 0;
   showGate("app");
   document.getElementById("who-name").textContent = me.nickname;
   document.getElementById("who-meta").textContent = `${I18N.role(me.role)} · ${I18N.subrole(me.subrole)} · ${me.email}`;
