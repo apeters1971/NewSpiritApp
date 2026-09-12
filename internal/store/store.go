@@ -45,6 +45,7 @@ type User struct {
 	Channels           []Channel  `json:"channels,omitempty"`
 	MustChangePassword bool       `json:"mustChangePassword,omitempty"`
 	Streamer           bool       `json:"streamer"`
+	Planner            bool       `json:"planner"`
 	CreatedAt          time.Time  `json:"createdAt"`
 	LastConnectedAt    *time.Time `json:"lastConnectedAt,omitempty"`
 }
@@ -82,6 +83,7 @@ type Date struct {
 	PollOpen       bool         `json:"pollOpen"`
 	Options        []PollOption `json:"options"`
 	CreatedAt      time.Time    `json:"createdAt"`
+	CreatedBy      string       `json:"createdBy,omitempty"`
 }
 
 type Bring struct {
@@ -121,6 +123,13 @@ type Comment struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+type DateCreator struct {
+	ID             string     `json:"id"`
+	Nickname       string     `json:"nickname"`
+	HasPhoto       bool       `json:"hasPhoto"`
+	PhotoUpdatedAt *time.Time `json:"photoUpdatedAt,omitempty"`
+}
+
 type DateView struct {
 	Date
 	MyChoice      string         `json:"myChoice"`
@@ -132,6 +141,8 @@ type DateView struct {
 	Titles        []ArchiveItem  `json:"titles"`
 	GalleryCount  int            `json:"galleryCount"`
 	PromoCount    int            `json:"promoCount"`
+	Mine          bool           `json:"mine,omitempty"`
+	Creator       *DateCreator   `json:"creator,omitempty"`
 }
 
 func Open(path string) (*Store, error) {
@@ -277,6 +288,8 @@ CREATE TABLE IF NOT EXISTS settings (
 	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN streamer INTEGER NOT NULL DEFAULT 0`)
 	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN last_connected_at TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN member_since TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN planner INTEGER NOT NULL DEFAULT 0`)
+	_, _ = s.db.Exec(`ALTER TABLE dates ADD COLUMN created_by TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`
 CREATE TABLE IF NOT EXISTS chat_reactions (
   message_id TEXT NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
@@ -516,6 +529,16 @@ func (s *Store) SetUserStreamer(id string, on bool) (User, error) {
 	return s.UserByID(id)
 }
 
+func (s *Store) SetUserPlanner(id string, on bool) (User, error) {
+	if _, err := s.UserByID(id); err != nil {
+		return User{}, err
+	}
+	if _, err := s.db.Exec(`UPDATE users SET planner=? WHERE id=?`, boolInt(on), id); err != nil {
+		return User{}, err
+	}
+	return s.UserByID(id)
+}
+
 func (s *Store) ChangeOwnPassword(id, password string) (User, error) {
 	if len(password) < 6 {
 		return User{}, fmt.Errorf("password must be at least 6 characters")
@@ -675,7 +698,7 @@ func (s *Store) TouchLastConnected(id string) error {
 }
 
 func (s *Store) ListUsers() ([]User, error) {
-	rows, err := s.db.Query(`SELECT id, nickname, email, role, subrole, address, phone, alt_email, birthday, member_since, must_change_password, streamer, created_at, last_connected_at FROM users ORDER BY nickname COLLATE NOCASE`)
+	rows, err := s.db.Query(`SELECT id, nickname, email, role, subrole, address, phone, alt_email, birthday, member_since, must_change_password, streamer, planner, created_at, last_connected_at FROM users ORDER BY nickname COLLATE NOCASE`)
 	if err != nil {
 		return nil, err
 	}
@@ -735,7 +758,7 @@ func (s *Store) ListDirectory() ([]DirectoryEntry, error) {
 }
 
 func (s *Store) UserByID(id string) (User, error) {
-	u, err := scanUserRow(s.db.QueryRow(`SELECT id, nickname, email, role, subrole, address, phone, alt_email, birthday, member_since, must_change_password, streamer, created_at, last_connected_at FROM users WHERE id=?`, id))
+	u, err := scanUserRow(s.db.QueryRow(`SELECT id, nickname, email, role, subrole, address, phone, alt_email, birthday, member_since, must_change_password, streamer, planner, created_at, last_connected_at FROM users WHERE id=?`, id))
 	if err != nil {
 		return User{}, err
 	}
@@ -755,11 +778,11 @@ func (s *Store) Login(email, password string) (User, string, error) {
 	}
 	var u User
 	var hash, created string
-	var mustChange, streamer int
+	var mustChange, streamer, planner int
 	err := s.db.QueryRow(
-		`SELECT id, nickname, email, password_hash, role, subrole, address, phone, alt_email, birthday, member_since, must_change_password, streamer, created_at FROM users WHERE email=?`,
+		`SELECT id, nickname, email, password_hash, role, subrole, address, phone, alt_email, birthday, member_since, must_change_password, streamer, planner, created_at FROM users WHERE email=?`,
 		email,
-	).Scan(&u.ID, &u.Nickname, &u.Email, &hash, &u.Role, &u.Subrole, &u.Address, &u.Phone, &u.AltEmail, &u.Birthday, &u.MemberSince, &mustChange, &streamer, &created)
+	).Scan(&u.ID, &u.Nickname, &u.Email, &hash, &u.Role, &u.Subrole, &u.Address, &u.Phone, &u.AltEmail, &u.Birthday, &u.MemberSince, &mustChange, &streamer, &planner, &created)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, "", ErrUnauthorized
 	}
@@ -772,6 +795,7 @@ func (s *Store) Login(email, password string) (User, string, error) {
 	u.CreatedAt = parseTime(created)
 	u.MustChangePassword = mustChange != 0
 	u.Streamer = streamer != 0
+	u.Planner = planner != 0
 	sid := newID()
 	if _, err := s.db.Exec(`INSERT INTO sessions(id, user_id, created_at) VALUES(?,?,?)`, sid, u.ID, fmtTime(now())); err != nil {
 		return User{}, "", err
@@ -790,7 +814,7 @@ func (s *Store) UserBySession(sessionID string) (User, error) {
 		return User{}, ErrUnauthorized
 	}
 	u, err := scanUserRow(s.db.QueryRow(`
-SELECT u.id, u.nickname, u.email, u.role, u.subrole, u.address, u.phone, u.alt_email, u.birthday, u.member_since, u.must_change_password, u.streamer, u.created_at, u.last_connected_at
+SELECT u.id, u.nickname, u.email, u.role, u.subrole, u.address, u.phone, u.alt_email, u.birthday, u.member_since, u.must_change_password, u.streamer, u.planner, u.created_at, u.last_connected_at
 FROM sessions s
 JOIN users u ON u.id = s.user_id
 WHERE s.id=? AND s.revoked_at IS NULL`, sessionID))
@@ -849,6 +873,21 @@ func prepareDateSchedule(text string) (string, error) {
 }
 
 func (s *Store) CreateDate(title, category string, startsAt time.Time, endsAt *time.Time, location, notes, schedule string, roles []string, bring Bring, options []PollOptionInput) (Date, error) {
+	return s.createDate("", title, category, startsAt, endsAt, location, notes, schedule, roles, bring, options)
+}
+
+func (s *Store) CreateMemberDate(user User, title, category string, startsAt time.Time, endsAt *time.Time, location, notes, schedule string, roles []string, bring Bring, options []PollOptionInput) (Date, error) {
+	if !user.Planner {
+		return Date{}, fmt.Errorf("%w: only planners can manage dates", ErrForbidden)
+	}
+	roles, err := PlannerCreateRoles(user, roles)
+	if err != nil {
+		return Date{}, err
+	}
+	return s.createDate(user.ID, title, category, startsAt, endsAt, location, notes, schedule, roles, bring, options)
+}
+
+func (s *Store) createDate(createdBy, title, category string, startsAt time.Time, endsAt *time.Time, location, notes, schedule string, roles []string, bring Bring, options []PollOptionInput) (Date, error) {
 	title = NormalizeName(title)
 	if title == "" {
 		return Date{}, fmt.Errorf("title is required")
@@ -887,6 +926,7 @@ func (s *Store) CreateDate(title, category string, startsAt time.Time, endsAt *t
 		Bring:     bring,
 		Options:   []PollOption{},
 		CreatedAt: now(),
+		CreatedBy: createdBy,
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -898,8 +938,8 @@ func (s *Store) CreateDate(title, category string, startsAt time.Time, endsAt *t
 		ends = fmtTime(*d.EndsAt)
 	}
 	if _, err := tx.Exec(
-		`INSERT INTO dates(id, title, category, starts_at, ends_at, location, notes, schedule, status, bring_mic, bring_cable, bring_stand, bring_dress, frozen_option_id, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		d.ID, d.Title, d.Category, fmtTime(d.StartsAt), ends, d.Location, d.Notes, d.Schedule, d.Status, boolInt(d.Bring.Mic), boolInt(d.Bring.Cable), boolInt(d.Bring.Stand), d.Bring.Dress, "", fmtTime(d.CreatedAt),
+		`INSERT INTO dates(id, title, category, starts_at, ends_at, location, notes, schedule, status, bring_mic, bring_cable, bring_stand, bring_dress, frozen_option_id, created_by, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		d.ID, d.Title, d.Category, fmtTime(d.StartsAt), ends, d.Location, d.Notes, d.Schedule, d.Status, boolInt(d.Bring.Mic), boolInt(d.Bring.Cable), boolInt(d.Bring.Stand), d.Bring.Dress, "", d.CreatedBy, fmtTime(d.CreatedAt),
 	); err != nil {
 		return Date{}, err
 	}
@@ -1230,6 +1270,7 @@ func (s *Store) attachView(d Date, viewer *User, comments []Comment, titles []Ar
 		Titles:        titles,
 	}
 	if viewer != nil {
+		view.Mine = d.CreatedBy != "" && d.CreatedBy == viewer.ID
 		for _, entry := range roster {
 			if entry.UserID == viewer.ID {
 				view.MyChoice = entry.Choice
@@ -1238,11 +1279,35 @@ func (s *Store) attachView(d Date, viewer *User, comments []Comment, titles []Ar
 			}
 		}
 	}
+	creator, err := s.dateCreator(d.CreatedBy)
+	if err != nil {
+		return DateView{}, err
+	}
+	view.Creator = creator
 	return view, nil
 }
 
+func (s *Store) dateCreator(userID string) (*DateCreator, error) {
+	if userID == "" {
+		return nil, nil
+	}
+	u, err := s.UserByID(userID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &DateCreator{
+		ID:             u.ID,
+		Nickname:       u.Nickname,
+		HasPhoto:       u.HasPhoto,
+		PhotoUpdatedAt: u.PhotoUpdatedAt,
+	}, nil
+}
+
 func (s *Store) listDates() ([]Date, error) {
-	rows, err := s.db.Query(`SELECT id, title, category, starts_at, ends_at, location, notes, schedule, status, bring_mic, bring_cable, bring_stand, bring_dress, frozen_option_id, created_at FROM dates ORDER BY starts_at`)
+	rows, err := s.db.Query(`SELECT id, title, category, starts_at, ends_at, location, notes, schedule, status, bring_mic, bring_cable, bring_stand, bring_dress, frozen_option_id, created_by, created_at FROM dates ORDER BY starts_at`)
 	if err != nil {
 		return nil, err
 	}
@@ -1268,7 +1333,7 @@ func (s *Store) listDates() ([]Date, error) {
 
 func (s *Store) dateRow(id string) (Date, error) {
 	d, err := scanDateRow(s.db.QueryRow(
-		`SELECT id, title, category, starts_at, ends_at, location, notes, schedule, status, bring_mic, bring_cable, bring_stand, bring_dress, frozen_option_id, created_at FROM dates WHERE id=?`, id,
+		`SELECT id, title, category, starts_at, ends_at, location, notes, schedule, status, bring_mic, bring_cable, bring_stand, bring_dress, frozen_option_id, created_by, created_at FROM dates WHERE id=?`, id,
 	))
 	if err != nil {
 		return Date{}, err
@@ -1422,8 +1487,8 @@ type rowScanner interface {
 func scanUser(rs rowScanner) (User, error) {
 	var u User
 	var created, lastConnected string
-	var mustChange, streamer int
-	if err := rs.Scan(&u.ID, &u.Nickname, &u.Email, &u.Role, &u.Subrole, &u.Address, &u.Phone, &u.AltEmail, &u.Birthday, &u.MemberSince, &mustChange, &streamer, &created, &lastConnected); err != nil {
+	var mustChange, streamer, planner int
+	if err := rs.Scan(&u.ID, &u.Nickname, &u.Email, &u.Role, &u.Subrole, &u.Address, &u.Phone, &u.AltEmail, &u.Birthday, &u.MemberSince, &mustChange, &streamer, &planner, &created, &lastConnected); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return User{}, ErrNotFound
 		}
@@ -1433,6 +1498,7 @@ func scanUser(rs rowScanner) (User, error) {
 	u.LastConnectedAt = parseTimePtr(sql.NullString{String: lastConnected, Valid: lastConnected != ""})
 	u.MustChangePassword = mustChange != 0
 	u.Streamer = streamer != 0
+	u.Planner = planner != 0
 	return u, nil
 }
 
@@ -1443,7 +1509,7 @@ func scanDate(rs rowScanner) (Date, error) {
 	var starts, created string
 	var ends sql.NullString
 	var mic, cable, stand int
-	if err := rs.Scan(&d.ID, &d.Title, &d.Category, &starts, &ends, &d.Location, &d.Notes, &d.Schedule, &d.Status, &mic, &cable, &stand, &d.Bring.Dress, &d.FrozenOptionID, &created); err != nil {
+	if err := rs.Scan(&d.ID, &d.Title, &d.Category, &starts, &ends, &d.Location, &d.Notes, &d.Schedule, &d.Status, &mic, &cable, &stand, &d.Bring.Dress, &d.FrozenOptionID, &d.CreatedBy, &created); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Date{}, ErrNotFound
 		}

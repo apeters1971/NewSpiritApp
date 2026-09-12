@@ -17,6 +17,7 @@ let dateTitleSoloists = {};
 let dateFormClean = "";
 let pollRows = [];
 let pollFrozen = false;
+let dateAutoEnd = "";
 let pendingPhoto = null;
 let pendingPhotoURL = "";
 let pendingInfo = { address: "", phone: "", birthday: "", altEmail: "", memberSince: "" };
@@ -138,12 +139,39 @@ function readBringForm() {
   };
 }
 
+function dateStartLocal() {
+  return When.readPair(document.getElementById("date-start-date"), document.getElementById("date-start-time"));
+}
+
+function dateEndLocal() {
+  const endDate = document.getElementById("date-end-date");
+  const endTime = document.getElementById("date-end-time");
+  const date = endDate?.value || document.getElementById("date-start-date")?.value || "";
+  return When.joinWhen(date, endTime?.value);
+}
+
+function setDateWhen(startLocal, endLocal) {
+  When.setPair(document.getElementById("date-start-date"), document.getElementById("date-start-time"), startLocal);
+  When.setPair(document.getElementById("date-end-date"), document.getElementById("date-end-time"), endLocal);
+}
+
+function presetDateEnd() {
+  const start = dateStartLocal();
+  if (!start) return;
+  const current = dateEndLocal();
+  if (current && current !== dateAutoEnd) return;
+  const next = When.addHours(start, 3);
+  if (!next) return;
+  dateAutoEnd = next;
+  When.setPair(document.getElementById("date-end-date"), document.getElementById("date-end-time"), next);
+}
+
 function dateFormSnapshot() {
   return JSON.stringify({
     title: document.getElementById("date-title").value,
     category: document.getElementById("date-category").value,
-    start: document.getElementById("date-start").value,
-    end: document.getElementById("date-end").value,
+    start: dateStartLocal(),
+    end: dateEndLocal(),
     location: document.getElementById("date-location").value,
     notes: document.getElementById("date-notes").value,
     schedule: document.getElementById("date-schedule").value,
@@ -185,12 +213,10 @@ function renderPollRows() {
   const box = document.getElementById("poll-options");
   box.innerHTML = pollRows.map((row, i) => `
     <div class="poll-row">
-      <label>${I18N.t("optionStart")}
-        <input type="datetime-local" data-poll="${i}" data-field="start" value="${row.startsAt}" ${pollFrozen ? "disabled" : ""} />
-      </label>
-      <label>${I18N.t("optionEnd")}
-        <input type="datetime-local" data-poll="${i}" data-field="end" value="${row.endsAt}" ${pollFrozen ? "disabled" : ""} />
-      </label>
+      <p class="label">${I18N.t("optionStart")}</p>
+      ${When.rowHTML(row.startsAt, `data-poll="${i}" data-field="start-date"${pollFrozen ? " disabled" : ""}`, `data-poll="${i}" data-field="start-time" data-i18n-aria="whenTime" aria-label="${escapeHtml(I18N.t("whenTime"))}"${pollFrozen ? " disabled" : ""}`)}
+      <p class="label">${I18N.t("optionEnd")}</p>
+      ${When.rowHTML(row.endsAt, `data-poll="${i}" data-field="end-date"${pollFrozen ? " disabled" : ""}`, `data-poll="${i}" data-field="end-time" data-i18n-aria="whenTime" aria-label="${escapeHtml(I18N.t("whenTime"))}"${pollFrozen ? " disabled" : ""}`)}
       <button type="button" class="btn ghost" data-remove-poll="${i}" ${pollFrozen ? "disabled" : ""}>${I18N.t("removePollOption")}</button>
     </div>`).join("");
   syncPollMode();
@@ -198,17 +224,21 @@ function renderPollRows() {
 }
 
 function syncPollMode() {
-  const filled = [...document.querySelectorAll("#poll-options [data-field=start]")].filter((el) => el.value).length;
+  const filled = [...document.querySelectorAll(".poll-row")].filter((row) => (
+    When.joinWhen(row.querySelector("[data-field=start-date]")?.value, row.querySelector("[data-field=start-time]")?.value)
+  )).length;
   const pollMode = filled >= 2 && !pollFrozen;
   document.getElementById("date-start-wrap").hidden = pollMode;
   document.getElementById("date-end-wrap").hidden = pollMode;
-  document.getElementById("date-start").required = false;
+  document.getElementById("date-start-date").required = false;
+  document.getElementById("date-start-time").required = false;
 }
 
 function readPollRows() {
   return [...document.querySelectorAll(".poll-row")].map((row, i) => {
-    const start = row.querySelector("[data-field=start]")?.value || "";
-    const end = row.querySelector("[data-field=end]")?.value || "";
+    const start = When.joinWhen(row.querySelector("[data-field=start-date]")?.value, row.querySelector("[data-field=start-time]")?.value);
+    const endDate = row.querySelector("[data-field=end-date]")?.value || row.querySelector("[data-field=start-date]")?.value || "";
+    const end = When.joinWhen(endDate, row.querySelector("[data-field=end-time]")?.value);
     return {
       id: pollRows[i]?.id || "",
       startsAt: start ? toISO(start) : "",
@@ -223,6 +253,7 @@ function setPollRows(options = [], frozen = false) {
     id: o.id || "",
     startsAt: toLocalInput(o.startsAt),
     endsAt: toLocalInput(o.endsAt),
+    autoEnd: "",
   }));
   renderPollRows();
 }
@@ -280,6 +311,7 @@ function renderPeople() {
       <td>${escapeHtml(I18N.role(u.role))}</td>
       <td>${escapeHtml(I18N.subrole(u.subrole))}</td>
       <td>${u.streamer ? escapeHtml(I18N.t("streamer")) : "—"}</td>
+      <td>${u.planner ? escapeHtml(I18N.t("planner")) : "—"}</td>
       <td>${u.lastConnectedAt ? escapeHtml(formatWhen(u.lastConnectedAt)) : escapeHtml(I18N.t("lastConnectedNever"))}</td>
     </tr>
   `).join("");
@@ -362,6 +394,7 @@ function renderDates() {
       <span class="badge ${d.status}">${I18N.status(d.status)}</span>
       ${d.pollOpen ? `<span class="badge voting">${I18N.t("pollOpen")}</span>` : d.frozenOptionId ? `<span class="badge accepted">${I18N.t("pollFrozen")}</span>` : ""}
       <h3>${escapeHtml(d.title)}</h3>
+      ${d.creator?.id ? `<p class="planner-tag">${Photo.html(d.creator, "sm")}<span><span class="planner-tag-label">${escapeHtml(I18N.t("planner"))}</span> <strong>${escapeHtml(d.creator.nickname)}</strong></span></p>` : ""}
       <p>${escapeHtml(I18N.category(d.category))}${bringList(d.bring).length ? " · " + escapeHtml(bringList(d.bring).join(", ")) : ""}</p>
       <p>${escapeHtml(d.pollOpen ? I18N.t("severalTimes") : formatWhen(d.startsAt))}${d.location ? " · " + escapeHtml(d.location) : ""}</p>
       <p>${d.roles.map((r) => I18N.role(r)).join(" · ")}</p>
@@ -456,6 +489,7 @@ function resetUserForm() {
   if (catalog.roles[0]) document.getElementById("user-role").value = catalog.roles[0].id;
   fillSubroles();
   document.getElementById("user-streamer").checked = false;
+  document.getElementById("user-planner").checked = false;
   renderPeople();
   paintPersonPhoto();
   paintUserChannels();
@@ -477,6 +511,7 @@ function fillUserForm(u) {
   fillSubroles();
   document.getElementById("user-subrole").value = u.subrole;
   document.getElementById("user-streamer").checked = !!u.streamer;
+  document.getElementById("user-planner").checked = !!u.planner;
   document.getElementById("btn-user-delete").disabled = false;
   renderPeople();
   paintPersonPhoto();
@@ -489,8 +524,8 @@ function resetDateForm() {
   document.getElementById("date-id").value = "";
   document.getElementById("date-title").value = "";
   document.getElementById("date-category").value = "event";
-  document.getElementById("date-start").value = "";
-  document.getElementById("date-end").value = "";
+  dateAutoEnd = "";
+  setDateWhen("", "");
   document.getElementById("date-location").value = "";
   document.getElementById("date-notes").value = "";
   document.getElementById("date-schedule").value = "";
@@ -515,8 +550,8 @@ function fillDateForm(d) {
   document.getElementById("date-id").value = d.id;
   document.getElementById("date-title").value = d.title;
   document.getElementById("date-category").value = d.category || "event";
-  document.getElementById("date-start").value = toLocalInput(d.startsAt);
-  document.getElementById("date-end").value = toLocalInput(d.endsAt);
+  dateAutoEnd = "";
+  setDateWhen(toLocalInput(d.startsAt), toLocalInput(d.endsAt));
   document.getElementById("date-location").value = d.location || "";
   document.getElementById("date-notes").value = d.notes || "";
   document.getElementById("date-schedule").value = d.schedule || "";
@@ -1243,6 +1278,7 @@ document.getElementById("people-form").addEventListener("submit", async (e) => {
     role: document.getElementById("user-role").value,
     subrole: document.getElementById("user-subrole").value,
     streamer: document.getElementById("user-streamer").checked,
+    planner: document.getElementById("user-planner").checked,
   };
   try {
     const data = id
@@ -1288,6 +1324,11 @@ document.getElementById("date-list").addEventListener("click", (e) => {
 
 document.getElementById("btn-date-new").addEventListener("click", resetDateForm);
 
+document.getElementById("date-start-date")?.addEventListener("change", presetDateEnd);
+document.getElementById("date-start-time")?.addEventListener("change", presetDateEnd);
+When.fillTimeSelect(document.getElementById("date-start-time"), "");
+When.fillTimeSelect(document.getElementById("date-end-time"), "");
+
 document.getElementById("date-form").addEventListener("input", paintDateSave);
 document.getElementById("date-form").addEventListener("change", paintDateSave);
 
@@ -1299,8 +1340,8 @@ document.getElementById("date-form").addEventListener("submit", async (e) => {
   const body = {
     title: document.getElementById("date-title").value,
     category: document.getElementById("date-category").value,
-    startsAt: toISO(document.getElementById("date-start").value),
-    endsAt: toISO(document.getElementById("date-end").value),
+    startsAt: toISO(dateStartLocal()),
+    endsAt: toISO(dateEndLocal()),
     location: document.getElementById("date-location").value,
     notes: document.getElementById("date-notes").value,
     schedule: document.getElementById("date-schedule").value,
@@ -1353,21 +1394,36 @@ document.getElementById("btn-cancel").addEventListener("click", () => setStatus(
 
 document.getElementById("btn-add-poll").addEventListener("click", () => {
   if (pollFrozen) return;
-  pollRows.push({ id: "", startsAt: "", endsAt: "" });
+  pollRows.push({ id: "", startsAt: "", endsAt: "", autoEnd: "" });
   renderPollRows();
   paintDateSave();
 });
 
+function syncControllerPollRow(input) {
+  const row = pollRows[Number(input?.dataset.poll)];
+  const box = input?.closest(".poll-row");
+  if (!row || !box) return;
+  const start = When.joinWhen(box.querySelector("[data-field=start-date]")?.value, box.querySelector("[data-field=start-time]")?.value);
+  const endDate = box.querySelector("[data-field=end-date]")?.value || box.querySelector("[data-field=start-date]")?.value || "";
+  let end = When.joinWhen(endDate, box.querySelector("[data-field=end-time]")?.value);
+  const startChanged = input.dataset.field === "start-date" || input.dataset.field === "start-time";
+  if (start && startChanged && (!end || end === row.autoEnd)) {
+    end = When.addHours(start, 3);
+    row.autoEnd = end;
+    When.setPair(box.querySelector("[data-field=end-date]"), box.querySelector("[data-field=end-time]"), end);
+  }
+  row.startsAt = start;
+  row.endsAt = end;
+  syncPollMode();
+}
+
 document.getElementById("poll-options").addEventListener("input", (e) => {
-  const input = e.target.closest("input[data-poll]");
-  if (!input) return;
-  const row = pollRows[Number(input.dataset.poll)];
-  if (!row) return;
-  if (input.dataset.field === "start") row.startsAt = input.value;
-  if (input.dataset.field === "end") row.endsAt = input.value;
+  syncControllerPollRow(e.target.closest("[data-poll]"));
+});
+document.getElementById("poll-options").addEventListener("change", (e) => {
+  syncControllerPollRow(e.target.closest("[data-poll]"));
   syncPollMode();
 });
-document.getElementById("poll-options").addEventListener("change", () => syncPollMode());
 
 document.getElementById("poll-options").addEventListener("click", (e) => {
   const btn = e.target.closest("[data-remove-poll]");
@@ -2884,7 +2940,7 @@ document.getElementById("date-titles-copy").addEventListener("click", async () =
   const date = {
     title: document.getElementById("date-title").value,
     location: document.getElementById("date-location").value,
-    startsAt: toISO(document.getElementById("date-start").value),
+    startsAt: toISO(dateStartLocal()),
   };
   try {
     await copyText(titlesClipboardText(date, titles));

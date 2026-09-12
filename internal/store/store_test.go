@@ -1011,6 +1011,184 @@ func TestUserStreamer(t *testing.T) {
 	}
 }
 
+func TestUserPlanner(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "planner.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	ada, err := st.CreateUser("Ada", "ada@example.com", "secret1", RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ada.Planner {
+		t.Fatal("new user should not plan")
+	}
+	ada, err = st.SetUserPlanner(ada.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ada.Planner {
+		t.Fatal("planner not set")
+	}
+	got, err := st.UserByID(ada.ID)
+	if err != nil || !got.Planner {
+		t.Fatalf("by id %+v %v", got, err)
+	}
+	users, err := st.ListUsers()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(users) != 1 || !users[0].Planner {
+		t.Fatalf("list %+v", users)
+	}
+	logged, sid, err := st.Login("ada@example.com", "secret1")
+	if err != nil || !logged.Planner {
+		t.Fatalf("login %+v %v", logged, err)
+	}
+	sess, err := st.UserBySession(sid)
+	if err != nil || !sess.Planner {
+		t.Fatalf("session %+v %v", sess, err)
+	}
+	ada, err = st.SetUserPlanner(ada.ID, false)
+	if err != nil || ada.Planner {
+		t.Fatalf("clear %+v %v", ada, err)
+	}
+}
+
+func TestPlannerDates(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "planner-dates.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	ada, err := st.CreateUser("Ada", "ada@example.com", "secret1", RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ben, err := st.CreateUser("Ben", "ben@example.com", "secret1", RoleChoir, "Alt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	chef, err := st.CreateUser("AndiChef", "chef@example.com", "secret1", RoleChorleiter, "Chorleiter")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tech, err := st.CreateUser("Tech", "tech@example.com", "secret1", RoleTechnician, "Sound")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ada, err = st.SetUserPlanner(ada.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ben, err = st.SetUserPlanner(ben.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chef, err = st.SetUserPlanner(chef.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tech, err = st.SetUserPlanner(tech.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	start := time.Date(2026, 10, 1, 18, 0, 0, 0, time.UTC)
+	own, err := st.CreateMemberDate(ada, "Ada night", CategoryConcert, start, nil, "Hall", "", "", []string{RoleBand}, Bring{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if own.CreatedBy != ada.ID || len(own.Roles) != 1 || own.Roles[0] != RoleChoir {
+		t.Fatalf("own date %+v", own)
+	}
+	view, err := st.DateView(own.ID, &ada)
+	if err != nil || !view.Mine {
+		t.Fatalf("mine %+v %v", view, err)
+	}
+	if view.Creator == nil || view.Creator.ID != ada.ID || view.Creator.Nickname != "Ada" {
+		t.Fatalf("creator %+v", view.Creator)
+	}
+	otherView, err := st.DateView(own.ID, &ben)
+	if err != nil || otherView.Mine {
+		t.Fatalf("not mine %+v %v", otherView, err)
+	}
+	if otherView.Creator == nil || otherView.Creator.ID != ada.ID {
+		t.Fatalf("other creator %+v", otherView.Creator)
+	}
+
+	ctrl, err := st.CreateDate("Controller night", CategoryConcert, start.Add(24*time.Hour), nil, "", "", "", []string{RoleChoir}, Bring{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ctrl.CreatedBy != "" {
+		t.Fatalf("controller created_by %q", ctrl.CreatedBy)
+	}
+	ctrlView, err := st.DateView(ctrl.ID, &ada)
+	if err != nil || ctrlView.Creator != nil {
+		t.Fatalf("controller creator %+v %v", ctrlView.Creator, err)
+	}
+	if _, err := st.RequirePlannerDate(ada, ctrl.ID); err == nil {
+		t.Fatal("planner must not manage controller date")
+	}
+	if _, err := st.RequirePlannerDate(ben, own.ID); err == nil {
+		t.Fatal("planner must not manage another user's date")
+	}
+	if _, err := st.RequirePlannerDate(ada, own.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	plain, err := st.CreateUser("Cara", "cara@example.com", "secret1", RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateMemberDate(plain, "No", CategoryEvent, start, nil, "", "", "", nil, Bring{}, nil); err == nil {
+		t.Fatal("non-planner must not create")
+	}
+	if _, err := st.RequirePlannerDate(plain, own.ID); err == nil {
+		t.Fatal("non-planner must not manage")
+	}
+	if _, err := st.CreateMemberDate(tech, "Tech night", CategoryEvent, start, nil, "", "", "", nil, Bring{}, nil); err == nil {
+		t.Fatal("technician must not create")
+	}
+
+	bandDate, err := st.CreateMemberDate(chef, "Band night", CategoryRehearsal, start.Add(48*time.Hour), nil, "", "", "", []string{RoleBand}, Bring{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bandDate.Roles) != 1 || bandDate.Roles[0] != RoleBand {
+		t.Fatalf("chorleiter roles %+v", bandDate.Roles)
+	}
+
+	sat := time.Date(2026, 11, 7, 18, 0, 0, 0, time.UTC)
+	sun := time.Date(2026, 11, 8, 16, 0, 0, 0, time.UTC)
+	poll, err := st.CreateMemberDate(ada, "Weekend", CategoryConcert, time.Time{}, nil, "", "", "", nil, Bring{}, []PollOptionInput{
+		{StartsAt: sat},
+		{StartsAt: sun},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !poll.PollOpen {
+		t.Fatal("poll should be open")
+	}
+	if _, err := st.SetDateStatus(poll.ID, StatusAccepted); err == nil {
+		t.Fatal("must freeze before accept")
+	}
+	if _, err := st.FreezePoll(poll.ID, poll.Options[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.SetDateStatus(poll.ID, StatusAccepted); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DeleteDate(own.ID); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestArchiveApproval(t *testing.T) {
 	st, err := Open(filepath.Join(t.TempDir(), "archive-approve.db"))
 	if err != nil {

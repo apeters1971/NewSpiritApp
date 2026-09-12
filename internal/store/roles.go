@@ -56,6 +56,38 @@ func RoleCanVote(role string) bool {
 	return role != RoleEhemalige
 }
 
+func PlannerCreateRoles(user User, requested []string) ([]string, error) {
+	if user.Role == RoleChorleiter {
+		if len(requested) == 0 {
+			return NormalizeRoles([]string{RoleChoir})
+		}
+		for _, role := range requested {
+			if role != RoleChoir && role != RoleBand && role != RoleOrchestra {
+				return nil, fmt.Errorf("this role is not allowed")
+			}
+		}
+		return NormalizeRoles(requested)
+	}
+	if user.Role == RoleChoir || user.Role == RoleBand || user.Role == RoleOrchestra {
+		return []string{user.Role}, nil
+	}
+	return nil, fmt.Errorf("%w: this role cannot create dates", ErrForbidden)
+}
+
+func (s *Store) RequirePlannerDate(user User, dateID string) (Date, error) {
+	if !user.Planner {
+		return Date{}, fmt.Errorf("%w: only planners can manage dates", ErrForbidden)
+	}
+	d, err := s.dateRow(dateID)
+	if err != nil {
+		return Date{}, err
+	}
+	if d.CreatedBy == "" || d.CreatedBy != user.ID {
+		return Date{}, fmt.Errorf("%w: you can only manage dates you created", ErrForbidden)
+	}
+	return d, nil
+}
+
 func DateAudienceRoles(roles []string) []string {
 	out := append([]string{}, roles...)
 	if slicesContains(roles, RoleChoir) && !slicesContains(roles, RoleChorleiter) {

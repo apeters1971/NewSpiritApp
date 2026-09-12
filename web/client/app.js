@@ -31,6 +31,7 @@ applyTheme(currentTheme());
 
 const CHOICES = ["yes", "maybe", "no", "unknown"];
 const CHOIR_VOICES = ["Sopran", "Alt", "Tenor/Bass"];
+const PLANNER_CATEGORIES = ["concert", "rehearsal", "meeting", "event", "choir-weekend", "concert-tour"];
 
 const loginView = document.getElementById("login-view");
 const pwView = document.getElementById("pw-view");
@@ -47,6 +48,8 @@ let proposals = [];
 let directory = [];
 let archiveItems = [];
 let commentDateId = "";
+let plannerPollRows = [{ startsAt: "", endsAt: "", autoEnd: "" }, { startsAt: "", endsAt: "", autoEnd: "" }];
+let plannerAutoEnd = "";
 let titlesDateId = "";
 let galleryDateId = "";
 let galleryItems = [];
@@ -244,9 +247,13 @@ function renderPoll(date) {
     const buttons = canVote() ? CHOICES.map((c) => `
       <button type="button" data-id="${date.id}" data-option="${o.id}" data-choice="${c}" class="${c}${o.myChoice === c ? " on" : ""}" ${locked ? "disabled" : ""}>${voteLabel(c)}</button>
     `).join("") : "";
+    const freeze = dateIsMine(date) && date.pollOpen
+      ? `<button type="button" class="btn" data-planner-freeze="${date.id}" data-option="${o.id}">${I18N.t("freezePoll")}</button>`
+      : "";
     return `<div class="poll-option ${o.frozen ? "frozen" : ""}">
       <p class="when">${escapeHtml(formatOptionRange(o))}${o.frozen ? ` · ${I18N.t("chosenTime")}` : ""}</p>
       ${buttons ? `<div class="vote-row">${buttons}</div>` : ""}
+      ${freeze}
       ${canVote() ? mine : ""}
       <p class="muted">${I18N.t("yes")} ${o.yes} · ${I18N.t("maybe")} ${o.maybe} · ${I18N.t("no")} ${o.no} · ${I18N.t("unknown")} ${o.unknown}</p>
     </div>`;
@@ -291,6 +298,7 @@ function renderDate(date) {
       <div>
         <p class="brand">${escapeHtml(I18N.category(date.category))} · ${date.roles.map((r) => I18N.role(r)).join(" · ")}</p>
         <h2 id="date-${date.id}">${escapeHtml(date.title)}</h2>
+        ${renderPlannerTag(date)}
         <p class="when">${escapeHtml(when)}</p>
         ${renderBring(date.bring)}
         ${notes}
@@ -303,6 +311,7 @@ function renderDate(date) {
     </div>
     ${isPoll ? renderPoll(date) : ""}
     ${pollOpen(date) || !buttons ? "" : `<div class="vote-row">${buttons}</div>${mine}`}
+    ${renderPlannerActions(date)}
     <div class="card-actions">
       <button type="button" class="btn ghost" data-comments="${date.id}">${I18N.t("comments")}${commentCount ? ` (${commentCount})` : ""}</button>
       ${date.schedule ? `<button type="button" class="btn ghost" data-schedule="${date.id}">${I18N.t("schedule")}</button>` : ""}
@@ -356,6 +365,153 @@ function hasAnswered(d) {
 
 function canVote() {
   return me?.role !== "ehemalige";
+}
+
+function isPlanner() {
+  return !!me?.planner;
+}
+
+function dateIsMine(date) {
+  return !!(date?.mine || (me && date?.createdBy && date.createdBy === me.id));
+}
+
+function paintPlannerBar() {
+  const bar = document.getElementById("planner-bar");
+  if (bar) bar.hidden = !isPlanner();
+}
+
+function renderPlannerTag(date) {
+  const c = date?.creator;
+  if (!c?.id) return "";
+  return `<div class="planner-tag">
+    ${Photo.html(c, "sm")}
+    <span>
+      <span class="planner-tag-label">${escapeHtml(I18N.t("planner"))}</span>
+      <strong>${escapeHtml(c.nickname)}</strong>
+    </span>
+  </div>`;
+}
+
+function renderPlannerActions(date) {
+  if (!isPlanner() || !dateIsMine(date)) return "";
+  const finalize = date.status === "voting" && !date.pollOpen
+    ? `<button type="button" class="btn" data-planner-status="accepted" data-id="${date.id}">${I18N.t("accept")}</button>
+       <button type="button" class="btn ghost danger" data-planner-status="cancelled" data-id="${date.id}">${I18N.t("cancelDate")}</button>`
+    : "";
+  return `<div class="planner-actions">
+    ${date.pollOpen ? `<p class="muted">${I18N.t("freezeHint")}</p>` : ""}
+    ${finalize}
+    <button type="button" class="btn ghost danger" data-planner-delete="${date.id}">${I18N.t("delete")}</button>
+  </div>`;
+}
+
+function toISO(local) {
+  if (!local) return "";
+  return new Date(local).toISOString();
+}
+
+function plannerStartLocal() {
+  return When.readPair(document.getElementById("planner-start-date"), document.getElementById("planner-start-time"));
+}
+
+function plannerEndLocal() {
+  const endDate = document.getElementById("planner-end-date");
+  const endTime = document.getElementById("planner-end-time");
+  const date = endDate?.value || document.getElementById("planner-start-date")?.value || "";
+  return When.joinWhen(date, endTime?.value);
+}
+
+function setPlannerWhen(startLocal, endLocal) {
+  When.setPair(document.getElementById("planner-start-date"), document.getElementById("planner-start-time"), startLocal);
+  When.setPair(document.getElementById("planner-end-date"), document.getElementById("planner-end-time"), endLocal);
+}
+
+function presetPlannerEnd() {
+  const start = plannerStartLocal();
+  if (!start) return;
+  const current = plannerEndLocal();
+  if (current && current !== plannerAutoEnd) return;
+  const next = When.addHours(start, 3);
+  if (!next) return;
+  plannerAutoEnd = next;
+  When.setPair(document.getElementById("planner-end-date"), document.getElementById("planner-end-time"), next);
+}
+
+function fillPlannerCategories() {
+  const sel = document.getElementById("planner-category");
+  if (!sel) return;
+  const cur = sel.value || "event";
+  sel.innerHTML = PLANNER_CATEGORIES.map((id) => `<option value="${id}">${escapeHtml(I18N.category(id))}</option>`).join("");
+  sel.value = PLANNER_CATEGORIES.includes(cur) ? cur : "event";
+}
+
+function renderPlannerPollRows() {
+  const box = document.getElementById("planner-poll-options");
+  if (!box) return;
+  box.innerHTML = plannerPollRows.map((row, i) => `
+    <div class="planner-poll-row">
+      <p class="label">${I18N.t("optionStart")}</p>
+      ${When.rowHTML(row.startsAt, `data-planner-poll="${i}" data-field="start-date"`, `data-planner-poll="${i}" data-field="start-time" data-i18n-aria="whenTime" aria-label="${escapeHtml(I18N.t("whenTime"))}"`)}
+      <p class="label">${I18N.t("optionEnd")}</p>
+      ${When.rowHTML(row.endsAt, `data-planner-poll="${i}" data-field="end-date"`, `data-planner-poll="${i}" data-field="end-time" data-i18n-aria="whenTime" aria-label="${escapeHtml(I18N.t("whenTime"))}"`)}
+      <button type="button" class="btn ghost" data-remove-planner-poll="${i}">${I18N.t("removePollOption")}</button>
+    </div>`).join("");
+  syncPlannerPollMode();
+}
+
+function syncPlannerPollMode() {
+  const filled = [...document.querySelectorAll(".planner-poll-row")].filter((row) => (
+    When.joinWhen(row.querySelector("[data-field=start-date]")?.value, row.querySelector("[data-field=start-time]")?.value)
+  )).length;
+  const pollMode = filled >= 2;
+  const startWrap = document.getElementById("planner-start-wrap");
+  const endWrap = document.getElementById("planner-end-wrap");
+  const startDate = document.getElementById("planner-start-date");
+  const startTime = document.getElementById("planner-start-time");
+  if (startWrap) startWrap.hidden = pollMode;
+  if (endWrap) endWrap.hidden = pollMode;
+  if (startDate) startDate.required = !pollMode;
+  if (startTime) startTime.required = !pollMode;
+}
+
+function readPlannerPollRows() {
+  return [...document.querySelectorAll(".planner-poll-row")].map((row) => {
+    const start = When.joinWhen(row.querySelector("[data-field=start-date]")?.value, row.querySelector("[data-field=start-time]")?.value);
+    const endDate = row.querySelector("[data-field=end-date]")?.value || row.querySelector("[data-field=start-date]")?.value || "";
+    const end = When.joinWhen(endDate, row.querySelector("[data-field=end-time]")?.value);
+    return {
+      startsAt: start ? toISO(start) : "",
+      endsAt: end ? toISO(end) : "",
+    };
+  }).filter((r) => r.startsAt);
+}
+
+function resetPlannerForm() {
+  const title = document.getElementById("planner-title");
+  if (!title) return;
+  title.value = "";
+  plannerAutoEnd = "";
+  setPlannerWhen("", "");
+  document.getElementById("planner-location").value = "";
+  document.getElementById("planner-notes").value = "";
+  document.getElementById("planner-bring-mic").checked = false;
+  document.getElementById("planner-bring-cable").checked = false;
+  document.getElementById("planner-bring-stand").checked = false;
+  const none = document.querySelector("input[name=planner-dress][value='']");
+  if (none) none.checked = true;
+  document.querySelectorAll("input[name=planner-role]").forEach((el) => {
+    el.checked = el.value === "choir";
+  });
+  document.getElementById("planner-roles-wrap").hidden = me?.role !== "chorleiter";
+  plannerPollRows = [{ startsAt: "", endsAt: "", autoEnd: "" }, { startsAt: "", endsAt: "", autoEnd: "" }];
+  fillPlannerCategories();
+  renderPlannerPollRows();
+  showError(document.getElementById("planner-error"), "");
+}
+
+function openPlannerDialog() {
+  resetPlannerForm();
+  document.getElementById("planner-dialog").showModal();
 }
 
 function canUseChatRoom(room) {
@@ -694,6 +850,7 @@ function renderNextUp() {
     <div class="next-up-row">
       <div>
         <strong>${escapeHtml(next.title)}</strong>
+        ${renderPlannerTag(next)}
         <p class="when">${escapeHtml(when)}</p>
         <p class="muted">${escapeHtml(I18N.category(next.category))}</p>
       </div>
@@ -731,6 +888,7 @@ function renderOverview() {
     return `<button type="button" class="overview-item${pending ? " needs-vote" : ""}${current}" data-jump="${d.id}"${pending ? ` title="${escapeHtml(I18N.t("voteNeeded"))}"` : ""}">
       <div>
         <strong>${escapeHtml(d.title)}</strong>
+        ${renderPlannerTag(d)}
         <p>${escapeHtml(when)} · ${escapeHtml(I18N.category(d.category))}</p>
       </div>
       <div class="overview-item-meta">
@@ -2045,6 +2203,7 @@ async function enterApp() {
   paintMyChannels();
   renderChatTabs();
   paintStreamButtons();
+  paintPlannerBar();
   api("/api/me").then((data) => paintNewsTicker(data.newsTicker)).catch(() => {});
   showTab("home");
   await loadDates();
@@ -2623,6 +2782,43 @@ document.getElementById("next-up").addEventListener("click", async (e) => {
 });
 
 datesEl.addEventListener("click", async (e) => {
+  const freezeBtn = e.target.closest("button[data-planner-freeze]");
+  if (freezeBtn) {
+    try {
+      await api(`/api/dates/${freezeBtn.dataset.plannerFreeze}/freeze`, {
+        method: "POST",
+        body: JSON.stringify({ optionId: freezeBtn.dataset.option }),
+      });
+      await loadDates();
+    } catch (err) {
+      alert(err.message);
+    }
+    return;
+  }
+  const statusBtn = e.target.closest("button[data-planner-status]");
+  if (statusBtn) {
+    try {
+      await api(`/api/dates/${statusBtn.dataset.id}/status`, {
+        method: "POST",
+        body: JSON.stringify({ status: statusBtn.dataset.plannerStatus }),
+      });
+      await loadDates();
+    } catch (err) {
+      alert(err.message);
+    }
+    return;
+  }
+  const deleteBtn = e.target.closest("button[data-planner-delete]");
+  if (deleteBtn) {
+    if (!confirm(I18N.t("confirmDeleteDate"))) return;
+    try {
+      await api(`/api/dates/${deleteBtn.dataset.plannerDelete}`, { method: "DELETE" });
+      await loadDates();
+    } catch (err) {
+      alert(err.message);
+    }
+    return;
+  }
   const commentsBtn = e.target.closest("button[data-comments]");
   if (commentsBtn) {
     openComments(commentsBtn.dataset.comments);
@@ -2676,6 +2872,95 @@ datesEl.addEventListener("click", async (e) => {
     await loadDates();
   } catch (err) {
     alert(err.message);
+  }
+});
+
+document.getElementById("btn-new-date")?.addEventListener("click", () => {
+  if (!isPlanner()) return;
+  openPlannerDialog();
+});
+
+document.getElementById("planner-close")?.addEventListener("click", () => {
+  document.getElementById("planner-dialog").close();
+});
+
+document.getElementById("planner-add-poll")?.addEventListener("click", () => {
+  plannerPollRows.push({ startsAt: "", endsAt: "", autoEnd: "" });
+  renderPlannerPollRows();
+});
+
+document.getElementById("planner-poll-options")?.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-remove-planner-poll]");
+  if (!btn) return;
+  const i = Number(btn.dataset.removePlannerPoll);
+  if (Number.isNaN(i)) return;
+  plannerPollRows.splice(i, 1);
+  if (plannerPollRows.length < 2) plannerPollRows.push({ startsAt: "", endsAt: "", autoEnd: "" });
+  renderPlannerPollRows();
+});
+
+function syncPlannerPollRow(input) {
+  const i = Number(input?.dataset.plannerPoll);
+  const box = input?.closest(".planner-poll-row");
+  const row = plannerPollRows[i];
+  if (!row || !box) return;
+  const start = When.joinWhen(box.querySelector("[data-field=start-date]")?.value, box.querySelector("[data-field=start-time]")?.value);
+  const endDate = box.querySelector("[data-field=end-date]")?.value || box.querySelector("[data-field=start-date]")?.value || "";
+  let end = When.joinWhen(endDate, box.querySelector("[data-field=end-time]")?.value);
+  const startChanged = input.dataset.field === "start-date" || input.dataset.field === "start-time";
+  if (start && startChanged && (!end || end === row.autoEnd)) {
+    end = When.addHours(start, 3);
+    row.autoEnd = end;
+    When.setPair(box.querySelector("[data-field=end-date]"), box.querySelector("[data-field=end-time]"), end);
+  }
+  row.startsAt = start;
+  row.endsAt = end;
+  syncPlannerPollMode();
+}
+
+document.getElementById("planner-poll-options")?.addEventListener("input", (e) => {
+  syncPlannerPollRow(e.target.closest("[data-planner-poll]"));
+});
+document.getElementById("planner-poll-options")?.addEventListener("change", (e) => {
+  syncPlannerPollRow(e.target.closest("[data-planner-poll]"));
+});
+
+document.getElementById("planner-start-date")?.addEventListener("change", presetPlannerEnd);
+document.getElementById("planner-start-time")?.addEventListener("change", presetPlannerEnd);
+When.fillTimeSelect(document.getElementById("planner-start-time"), "");
+When.fillTimeSelect(document.getElementById("planner-end-time"), "");
+
+document.getElementById("planner-form")?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById("planner-error");
+  showError(errEl, "");
+  const options = readPlannerPollRows();
+  const roles = me?.role === "chorleiter"
+    ? [...document.querySelectorAll("input[name=planner-role]:checked")].map((el) => el.value)
+    : [];
+  const body = {
+    title: document.getElementById("planner-title").value,
+    category: document.getElementById("planner-category").value,
+    startsAt: options.length >= 2 ? "" : toISO(plannerStartLocal()),
+    endsAt: options.length >= 2 ? "" : toISO(plannerEndLocal()),
+    location: document.getElementById("planner-location").value,
+    notes: document.getElementById("planner-notes").value,
+    roles,
+    bring: {
+      mic: document.getElementById("planner-bring-mic").checked,
+      cable: document.getElementById("planner-bring-cable").checked,
+      stand: document.getElementById("planner-bring-stand").checked,
+      dress: document.querySelector("input[name=planner-dress]:checked")?.value || "",
+    },
+    options,
+  };
+  try {
+    const data = await api("/api/dates", { method: "POST", body: JSON.stringify(body) });
+    document.getElementById("planner-dialog").close();
+    if (data.date?.id) focusedDateId = data.date.id;
+    await loadDates();
+  } catch (err) {
+    showError(errEl, err.message);
   }
 });
 
@@ -4433,6 +4718,8 @@ I18N.onChange(() => {
     renderChatTabs();
     paintNoticesButton();
     paintStreamButtons();
+    paintPlannerBar();
+    fillPlannerCategories();
     paintChatCallActions();
     paintCallSize();
     if (document.getElementById("call-incoming")?.open) paintIncomingCall();

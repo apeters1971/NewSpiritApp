@@ -234,6 +234,9 @@
       <summary class="fold-head"><span class="brand" data-i18n="spiritOfTheYear">Spirit of the Year</span></summary>
       <div id="spirit" class="spirit fold-body"></div>
     </details>
+    <div id="planner-bar" class="planner-bar" hidden>
+      <button type="button" id="btn-new-date" class="btn" data-i18n="newDate">Neuer Termin</button>
+    </div>
     <nav id="date-nav" class="date-nav" hidden>
       <button type="button" id="date-prev" class="btn ghost date-nav-btn" data-i18n-aria="datePrev" aria-label="Vorheriger Termin">‹</button>
       <div class="date-nav-meta">
@@ -246,6 +249,68 @@
     <p id="empty" class="lede empty" hidden data-i18n="noDatesRole">Noch keine Termine für deine Rolle.</p>
     </div>
 
+  <dialog id="planner-dialog" class="dialog">
+    <div class="dialog-head">
+      <div>
+        <p class="brand" data-i18n="newDate">Neuer Termin</p>
+        <h2 data-i18n="plannerFormTitle">Termin anlegen</h2>
+      </div>
+      <button type="button" id="planner-close" class="btn ghost" data-i18n="close">Schließen</button>
+    </div>
+    <form id="planner-form" class="planner-form">
+      <label for="planner-title" data-i18n="title">Titel</label>
+      <input id="planner-title" required maxlength="200" />
+      <label for="planner-category" data-i18n="category">Kategorie</label>
+      <select id="planner-category" required></select>
+      <div id="planner-start-wrap">
+        <p class="label" data-i18n="starts">Beginn</p>
+        <div class="when-row">
+          <input id="planner-start-date" type="date" data-i18n-aria="whenDate" aria-label="Datum" />
+          <select id="planner-start-time" data-i18n-aria="whenTime" aria-label="Uhrzeit"></select>
+        </div>
+      </div>
+      <div id="planner-end-wrap">
+        <p class="label"><span data-i18n="ends">Ende</span> <span class="optional" data-i18n="optional">(optional)</span></p>
+        <div class="when-row">
+          <input id="planner-end-date" type="date" data-i18n-aria="whenDate" aria-label="Datum" />
+          <select id="planner-end-time" data-i18n-aria="whenTime" aria-label="Uhrzeit"></select>
+        </div>
+      </div>
+      <p class="label" data-i18n="pollOptions">Zeitvorschläge</p>
+      <p class="muted" data-i18n="plannerPollHint">Zwei oder mehr Zeitvorschläge: alle stimmen ab, danach legst du einen fest.</p>
+      <div id="planner-poll-options" class="planner-poll-rows"></div>
+      <button type="button" id="planner-add-poll" class="btn ghost" data-i18n="addPollOption">Zeitvorschlag hinzufügen</button>
+      <label for="planner-location" data-i18n="location">Ort</label>
+      <input id="planner-location" />
+      <label for="planner-notes" data-i18n="notes">Notizen</label>
+      <textarea id="planner-notes" rows="3"></textarea>
+      <p class="label" data-i18n="whatToBring">Mitbringen</p>
+      <div class="planner-checks">
+        <label><input type="checkbox" id="planner-bring-mic" /> <span data-i18n="gear.mic">Mikro</span></label>
+        <label><input type="checkbox" id="planner-bring-cable" /> <span data-i18n="gear.cable">Kabel</span></label>
+        <label><input type="checkbox" id="planner-bring-stand" /> <span data-i18n="gear.stand">Stativ</span></label>
+      </div>
+      <p class="label"><span data-i18n="dress">Kleidung</span> <span class="optional" data-i18n="optional">(optional)</span></p>
+      <div class="planner-checks">
+        <label><input type="radio" name="planner-dress" value="" checked /> <span data-i18n="dressNone">Keine</span></label>
+        <label><input type="radio" name="planner-dress" value="white" /> <span data-i18n="dress.white">Weiße Kleidung</span></label>
+        <label><input type="radio" name="planner-dress" value="black" /> <span data-i18n="dress.black">Schwarze Kleidung</span></label>
+        <label><input type="radio" name="planner-dress" value="casual" /> <span data-i18n="dress.casual">Casual</span></label>
+      </div>
+      <div id="planner-roles-wrap" hidden>
+        <p class="label" data-i18n="rolesForDate">Rollen, die diesen Termin sehen</p>
+        <div class="planner-checks">
+          <label><input type="checkbox" name="planner-role" value="choir" checked /> <span data-i18n="role.choir">Chor</span></label>
+          <label><input type="checkbox" name="planner-role" value="band" /> <span data-i18n="role.band">Band</span></label>
+          <label><input type="checkbox" name="planner-role" value="orchestra" /> <span data-i18n="role.orchestra">Orchester</span></label>
+        </div>
+      </div>
+      <p id="planner-error" class="error" hidden></p>
+      <div class="drawer-actions">
+        <button type="submit" class="btn" data-i18n="save">Speichern</button>
+      </div>
+    </form>
+  </dialog>
   <dialog id="comment-dialog" class="dialog">
     <div class="dialog-head">
       <div>
@@ -657,6 +722,7 @@
   <script src="/static/i18n.js"></script>
   <script src="/static/changelog.js"></script>
   <script src="/static/photo.js"></script>
+  <script src="/static/when.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

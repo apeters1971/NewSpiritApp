@@ -180,6 +180,8 @@
       category: "Kategorie",
       starts: "Beginn",
       ends: "Ende",
+      whenDate: "Datum",
+      whenTime: "Uhrzeit",
       optional: "(optional)",
       location: "Ort",
       notes: "Notizen",
@@ -320,6 +322,13 @@
       noticesDenied: "Der Browser blockiert Benachrichtigungen.",
       streamer: "Streamer",
       streamerHint: "Kann oben einen Live-Stream starten. Alle können zuschauen.",
+      planner: "Planer",
+      plannerHint: "Kann in der App Termine und Umfragen anlegen und nur selbst erstellte abschließen.",
+      plannerFormTitle: "Termin anlegen",
+      plannerPollHint: "Zwei oder mehr Zeitvorschläge: alle stimmen ab, danach legst du einen fest.",
+      errPlannerOnly: "Nur Planer können Termine anlegen oder ändern",
+      errPlannerOwn: "Du kannst nur selbst erstellte Termine ändern",
+      errPlannerRole: "Diese Rolle kann keine Termine anlegen",
       lastConnected: "Zuletzt verbunden",
       lastConnectedNever: "Noch nie",
       streamBrand: "Live",
@@ -698,6 +707,8 @@
       category: "Category",
       starts: "Starts",
       ends: "Ends",
+      whenDate: "Date",
+      whenTime: "Time",
       optional: "(optional)",
       location: "Location",
       notes: "Notes",
@@ -840,6 +851,13 @@
       noticesDenied: "The browser is blocking notifications.",
       streamer: "Streamer",
       streamerHint: "Can start a live stream from the header. Everyone can watch.",
+      planner: "Planner",
+      plannerHint: "Can create dates and polls in the member app, and only finish ones they created.",
+      plannerFormTitle: "Create a date",
+      plannerPollHint: "Add two or more time options so people can vote; then pick the final one.",
+      errPlannerOnly: "Only planners can create or change dates",
+      errPlannerOwn: "You can only change dates you created",
+      errPlannerRole: "This role cannot create dates",
       lastConnected: "Last connected",
       lastConnectedNever: "Never",
       streamBrand: "Live",
@@ -1178,6 +1196,9 @@
     if (raw.includes("poll is frozen")) return t("errPollFrozen");
     if (raw.includes("poll option")) return t("errPollVote");
     if (raw.includes("choose a poll time")) return t("errPollAccept");
+    if (raw.includes("only planners can manage dates")) return t("errPlannerOnly");
+    if (raw.includes("you can only manage dates you created")) return t("errPlannerOwn");
+    if (raw.includes("this role cannot create dates")) return t("errPlannerRole");
     return raw;
   }
 

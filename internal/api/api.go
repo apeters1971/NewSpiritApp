@@ -77,6 +77,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/me/photo", s.handleDeleteMePhoto)
 	mux.HandleFunc("GET /api/photos/{id}", s.handleGetPhoto)
 	mux.HandleFunc("GET /api/dates", s.handleDates)
+	mux.HandleFunc("POST /api/dates", s.handleMemberCreateDate)
+	mux.HandleFunc("DELETE /api/dates/{id}", s.handleMemberDeleteDate)
+	mux.HandleFunc("POST /api/dates/{id}/status", s.handleMemberDateStatus)
+	mux.HandleFunc("POST /api/dates/{id}/freeze", s.handleMemberFreezePoll)
 	mux.HandleFunc("POST /api/dates/{id}/vote", s.handleVote)
 	mux.HandleFunc("POST /api/dates/{id}/poll", s.handlePollVote)
 	mux.HandleFunc("POST /api/dates/{id}/comments", s.handleAddComment)
@@ -605,6 +609,113 @@ func (s *Server) handleDates(w http.ResponseWriter, r *http.Request) {
 		"ranking": payload,
 		"unread":  unread,
 	})
+}
+
+func (s *Server) handleMemberCreateDate(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	body, starts, ends, options, err := parseDateBody(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	d, err := s.Store.CreateMemberDate(user, body.Title, body.Category, starts, ends, body.Location, body.Notes, "", body.Roles, body.Bring, options)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	view, err := s.Store.DateView(d.ID, &user)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusCreated, map[string]any{"date": view})
+}
+
+func (s *Server) handleMemberDeleteDate(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if _, err := s.Store.RequirePlannerDate(user, r.PathValue("id")); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if err := s.Store.DeleteDate(r.PathValue("id")); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleMemberDateStatus(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if _, err := s.Store.RequirePlannerDate(user, r.PathValue("id")); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	var body struct {
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if body.Status != store.StatusAccepted && body.Status != store.StatusCancelled {
+		writeError(w, http.StatusBadRequest, "status must be accepted or cancelled")
+		return
+	}
+	if _, err := s.Store.SetDateStatus(r.PathValue("id"), body.Status); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	view, err := s.Store.DateView(r.PathValue("id"), &user)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"date": view})
+}
+
+func (s *Server) handleMemberFreezePoll(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if _, err := s.Store.RequirePlannerDate(user, r.PathValue("id")); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	var body struct {
+		OptionID string `json:"optionId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if _, err := s.Store.FreezePoll(r.PathValue("id"), body.OptionID); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	view, err := s.Store.DateView(r.PathValue("id"), &user)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"date": view})
 }
 
 func (s *Server) handleVote(w http.ResponseWriter, r *http.Request) {
@@ -1379,6 +1490,7 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		AltEmail    string `json:"altEmail"`
 		MemberSince string `json:"memberSince"`
 		Streamer    bool   `json:"streamer"`
+		Planner     bool   `json:"planner"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json")
@@ -1403,6 +1515,13 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if body.Planner {
+		user, err = s.Store.SetUserPlanner(user.ID, true)
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+	}
 	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
 	writeJSON(w, http.StatusCreated, map[string]any{"user": user})
 }
@@ -1418,6 +1537,7 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		Role     string `json:"role"`
 		Subrole  string `json:"subrole"`
 		Streamer bool   `json:"streamer"`
+		Planner  bool   `json:"planner"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json")
@@ -1429,6 +1549,11 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, err = s.Store.SetUserStreamer(user.ID, body.Streamer)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	user, err = s.Store.SetUserPlanner(user.ID, body.Planner)
 	if err != nil {
 		writeStoreError(w, err)
 		return

@@ -82,6 +82,7 @@
                 <th data-i18n="role">Rolle</th>
                 <th data-i18n="subrole">Teilrolle</th>
                 <th data-i18n="streamer">Streamer</th>
+                <th data-i18n="planner">Planer</th>
                 <th data-i18n="lastConnected">Zuletzt verbunden</th>
               </tr>
             </thead>
@@ -116,6 +117,11 @@
             <span data-i18n="streamer">Streamer</span>
           </label>
           <p class="muted" data-i18n="streamerHint">Kann oben einen Live-Stream starten. Alle können zuschauen.</p>
+          <label class="check-line">
+            <input type="checkbox" id="user-planner" />
+            <span data-i18n="planner">Planer</span>
+          </label>
+          <p class="muted" data-i18n="plannerHint">Kann in der App Termine und Umfragen anlegen und nur selbst erstellte abschließen.</p>
           <p id="people-error" class="error" hidden></p>
           <div class="drawer-actions">
             <button type="submit" class="btn" data-i18n="save">Speichern</button>
@@ -160,12 +166,18 @@
           <label for="date-category" data-i18n="category">Kategorie</label>
           <select id="date-category" required></select>
           <div id="date-start-wrap">
-            <label for="date-start" data-i18n="starts">Beginn</label>
-            <input id="date-start" type="datetime-local" />
+            <p class="label" data-i18n="starts">Beginn</p>
+            <div class="when-row">
+              <input id="date-start-date" type="date" data-i18n-aria="whenDate" aria-label="Datum" />
+              <select id="date-start-time" data-i18n-aria="whenTime" aria-label="Uhrzeit"></select>
+            </div>
           </div>
           <div id="date-end-wrap">
-            <label for="date-end"><span data-i18n="ends">Ende</span> <span class="optional" data-i18n="optional">(optional)</span></label>
-            <input id="date-end" type="datetime-local" />
+            <p class="label"><span data-i18n="ends">Ende</span> <span class="optional" data-i18n="optional">(optional)</span></p>
+            <div class="when-row">
+              <input id="date-end-date" type="date" data-i18n-aria="whenDate" aria-label="Datum" />
+              <select id="date-end-time" data-i18n-aria="whenTime" aria-label="Uhrzeit"></select>
+            </div>
           </div>
           <p class="label" data-i18n="pollOptions">Zeitvorschläge</p>
           <p class="muted" data-i18n="pollHint">Zwei oder mehr Zeitvorschläge: alle stimmen ab, die Verwaltung legt danach einen fest.</p>
@@ -555,6 +567,7 @@
   <script src="/static/i18n.js"></script>
   <script src="/static/changelog.js"></script>
   <script src="/static/photo.js"></script>
+  <script src="/static/when.js"></script>
   <script src="/controller/static/app.js"></script>
 </body>
 </html>

@@ -4,6 +4,8 @@
       date: "2026-09-12",
       items: {
         de: [
+          "Beim Anlegen eines Termins wählst du Datum und Uhrzeit getrennt. Die Uhrzeit ist eine Liste in Viertelstunden. Nach dem Beginn wird das Ende mit demselben Tag plus drei Stunden vorausgefüllt.",
+          "Die Verwaltung kann jemanden als Planer markieren. Planer legen Termine und Umfragen in der App an und können nur selbst erstellte annehmen, absagen oder löschen. Selbst angelegte Termine zeigen Foto und Namen des Planers.",
           "Im Notenarchiv und in der Titelliste hat jede Datei Öffnen und Herunterladen. Öffnen mit gibt es nur auf Handy und iPad.",
           "Spirit of the Year ist zugeklappt und lässt sich öffnen.",
           "Im Menü heißen die Gruppenchats Chor-Chat, Band-Chat und Orchester-Chat. Der allgemeine Chat-Eintrag ist weg.",
@@ -16,6 +18,8 @@
           "Bei Songvorschlägen gibt es Daumen hoch, Neutral und Daumen runter. Noch einmal tippen nimmt die Stimme zurück.",
         ],
         en: [
+          "When creating a date, pick the calendar day and the time separately. Time is a quarter-hour list. After you set the start, the end is filled with the same day plus three hours.",
+          "Controllers can mark someone as a planner. Planners create dates and polls in the member app and can only accept, decline, or delete ones they created. Planner-created dates show the planner's photo and name.",
           "Music Archive and the event title list show Open and Download as icons. Open with appears only on phone and iPad.",
           "Spirit of the Year starts folded and can be opened.",
           "The menu lists Choir Chat, Band Chat, and Orchestra Chat. The generic Chat entry is gone.",

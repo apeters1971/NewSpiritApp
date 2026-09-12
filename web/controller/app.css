@@ -906,6 +906,20 @@ tbody tr:hover, tbody tr.active, .date-item.active { background: rgba(61, 214, 1
 }
 .date-item h3 { margin: 0.2rem 0 0.2rem; font-size: 1.05rem; }
 .date-item p { margin: 0; color: var(--muted); font-size: 0.85rem; }
+.date-item .planner-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.35rem 0 0.2rem;
+  color: var(--ink);
+}
+.date-item .planner-tag .avatar-sm { width: 24px; height: 24px; font-size: 0.58rem; }
+.date-item .planner-tag-label {
+  color: var(--muted);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
 
 .badge {
   display: inline-block;
@@ -977,6 +991,17 @@ tbody tr:hover, tbody tr.active, .date-item.active { background: rgba(61, 214, 1
   padding: 0.55rem 0.6rem;
 }
 .poll-row label { margin: 0; }
+.when-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 7.2rem;
+  gap: 0.45rem;
+  align-items: center;
+}
+.when-row input[type="date"],
+.when-row select {
+  width: 100%;
+  min-width: 0;
+}
 .poll-result {
   border: 1px solid var(--line);
   background: #101820;
