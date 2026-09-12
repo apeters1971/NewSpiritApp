@@ -324,17 +324,18 @@ func (s *Server) handleMePassword(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"user": user})
 }
 
-func readUserInfo(r *http.Request) (address, phone, birthday, altEmail string, err error) {
+func readUserInfo(r *http.Request) (address, phone, birthday, altEmail, memberSince string, err error) {
 	var body struct {
-		Address  string `json:"address"`
-		Phone    string `json:"phone"`
-		Birthday string `json:"birthday"`
-		AltEmail string `json:"altEmail"`
+		Address     string `json:"address"`
+		Phone       string `json:"phone"`
+		Birthday    string `json:"birthday"`
+		AltEmail    string `json:"altEmail"`
+		MemberSince string `json:"memberSince"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		return "", "", "", "", err
+		return "", "", "", "", "", err
 	}
-	return body.Address, body.Phone, body.Birthday, body.AltEmail, nil
+	return body.Address, body.Phone, body.Birthday, body.AltEmail, body.MemberSince, nil
 }
 
 func (s *Server) handleMeInfo(w http.ResponseWriter, r *http.Request) {
@@ -343,12 +344,12 @@ func (s *Server) handleMeInfo(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	address, phone, birthday, altEmail, err := readUserInfo(r)
+	address, phone, birthday, altEmail, memberSince, err := readUserInfo(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	user, err = s.Store.SetUserInfo(user.ID, address, phone, birthday, altEmail)
+	user, err = s.Store.SetUserInfo(user.ID, address, phone, birthday, altEmail, memberSince)
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -403,7 +404,9 @@ func (s *Server) requireChannelAssigner(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handleMemberChannels(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireChannelAssigner(w, r); !ok {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	channels, err := s.Store.ListChannels()
@@ -411,10 +414,13 @@ func (s *Server) handleMemberChannels(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	people, err := s.Store.ChannelPeople()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+	people := []store.ChannelPerson{}
+	if store.CanAssignChannels(user.Role) {
+		people, err = s.Store.ChannelPeople()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"channels": channels, "people": people})
 }
@@ -1369,9 +1375,10 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		Subrole  string `json:"subrole"`
 		Address  string `json:"address"`
 		Phone    string `json:"phone"`
-		Birthday string `json:"birthday"`
-		AltEmail string `json:"altEmail"`
-		Streamer bool   `json:"streamer"`
+		Birthday    string `json:"birthday"`
+		AltEmail    string `json:"altEmail"`
+		MemberSince string `json:"memberSince"`
+		Streamer    bool   `json:"streamer"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json")
@@ -1382,8 +1389,8 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	if body.Address != "" || body.Phone != "" || body.Birthday != "" || body.AltEmail != "" {
-		user, err = s.Store.SetUserInfo(user.ID, body.Address, body.Phone, body.Birthday, body.AltEmail)
+	if body.Address != "" || body.Phone != "" || body.Birthday != "" || body.AltEmail != "" || body.MemberSince != "" {
+		user, err = s.Store.SetUserInfo(user.ID, body.Address, body.Phone, body.Birthday, body.AltEmail, body.MemberSince)
 		if err != nil {
 			writeStoreError(w, err)
 			return
@@ -1434,12 +1441,12 @@ func (s *Server) handleControllerUserInfo(w http.ResponseWriter, r *http.Request
 	if !s.requireController(w, r) {
 		return
 	}
-	address, phone, birthday, altEmail, err := readUserInfo(r)
+	address, phone, birthday, altEmail, memberSince, err := readUserInfo(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	user, err := s.Store.SetUserInfo(r.PathValue("id"), address, phone, birthday, altEmail)
+	user, err := s.Store.SetUserInfo(r.PathValue("id"), address, phone, birthday, altEmail, memberSince)
 	if err != nil {
 		writeStoreError(w, err)
 		return

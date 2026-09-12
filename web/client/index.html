@@ -158,7 +158,7 @@
         <button type="button" class="btn ghost header-tool" data-tab="calendar" role="tab" aria-selected="false" data-i18n-aria="subscribeCalendar" aria-label="Kalender" data-tip="Kalender">
           <span class="header-tool-icon calendar" aria-hidden="true"></span>
         </button>
-        <button type="button" id="btn-header-chat" class="btn ghost header-chat header-tool" data-tab="chat" role="tab" aria-selected="false" hidden data-i18n-aria="chatBrand" aria-label="Chat" data-tip="Chat">
+        <button type="button" id="btn-header-chat" class="btn ghost header-chat header-tool" data-tab="chat" role="tab" aria-selected="false" hidden aria-label="Chor-Chat" data-tip="Chor-Chat">
           <span class="header-chat-icon" aria-hidden="true"></span>
           <span id="header-chat-unread" class="menu-unread" hidden></span>
         </button>
@@ -171,11 +171,6 @@
       <div class="menu-head">
         <h2 data-i18n="menu">Menü</h2>
         <button type="button" id="menu-close" class="btn ghost" data-i18n="close">Schließen</button>
-      </div>
-      <div id="chat-tabs" class="chat-tabs" hidden>
-        <button type="button" class="btn ghost chat-tab" data-chat="choir" hidden>Chor</button>
-        <button type="button" class="btn ghost chat-tab" data-chat="band" hidden>Band</button>
-        <button type="button" class="btn ghost chat-tab" data-chat="orchestra" hidden>Orchester</button>
       </div>
       <button type="button" id="btn-home" class="btn" data-tab="home">
         <span class="header-tool-icon home" aria-hidden="true"></span>
@@ -209,10 +204,11 @@
         <span class="header-tool-icon calendar" aria-hidden="true"></span>
         <span data-i18n="subscribeCalendar">Kalender</span>
       </button>
-      <button type="button" id="btn-menu-chat" class="btn ghost" data-tab="chat" hidden>
-        <span class="header-chat-icon" aria-hidden="true"></span>
-        <span data-i18n="chatBrand">Chat</span>
-      </button>
+      <div id="chat-tabs" class="chat-tabs" hidden>
+        <button type="button" class="btn ghost chat-tab" data-chat="choir" hidden>Chor-Chat</button>
+        <button type="button" class="btn ghost chat-tab" data-chat="band" hidden>Band-Chat</button>
+        <button type="button" class="btn ghost chat-tab" data-chat="orchestra" hidden>Orchester-Chat</button>
+      </div>
       <button type="button" id="btn-logout-menu" class="btn ghost menu-logout">
         <span class="header-tool-icon logout" aria-hidden="true"></span>
         <span data-i18n="signOut">Abmelden</span>
@@ -234,7 +230,10 @@
         <p id="overview-empty" class="muted" hidden data-i18n="noUpcoming">Keine kommenden Termine.</p>
       </div>
     </details>
-    <section id="spirit" class="spirit" hidden></section>
+    <details id="fold-spirit" class="fold fold-spirit" hidden>
+      <summary class="fold-head"><span class="brand" data-i18n="spiritOfTheYear">Spirit of the Year</span></summary>
+      <div id="spirit" class="spirit fold-body"></div>
+    </details>
     <nav id="date-nav" class="date-nav" hidden>
       <button type="button" id="date-prev" class="btn ghost date-nav-btn" data-i18n-aria="datePrev" aria-label="Vorheriger Termin">‹</button>
       <div class="date-nav-meta">
@@ -300,6 +299,8 @@
       <p class="muted" data-i18n="altEmailHint">Nicht zum Anmelden.</p>
       <label for="info-birthday" data-i18n="birthday">Geburtstag</label>
       <input id="info-birthday" type="date" />
+      <label for="info-member-since" data-i18n="memberSince">Mitglied seit</label>
+      <input id="info-member-since" type="number" inputmode="numeric" min="1900" max="2100" step="1" placeholder="2018" />
       <p id="info-error" class="error" hidden></p>
       <button type="submit" data-i18n="save">Speichern</button>
     </form>

@@ -345,18 +345,21 @@ func TestUserInfo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := st.SetUserInfo(u.ID, "Hall Street 1", "+49 30 1234", "1990-05-01", "ada.home@example.com")
+	got, err := st.SetUserInfo(u.ID, "Hall Street 1", "+49 30 1234", "1990-05-01", "ada.home@example.com", "2018")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Address != "Hall Street 1" || got.Phone != "+49 30 1234" || got.Birthday != "1990-05-01" || got.AltEmail != "ada.home@example.com" {
+	if got.Address != "Hall Street 1" || got.Phone != "+49 30 1234" || got.Birthday != "1990-05-01" || got.AltEmail != "ada.home@example.com" || got.MemberSince != "2018" {
 		t.Fatalf("info %+v", got)
 	}
-	if _, err := st.SetUserInfo(u.ID, "Hall", "123", "13.05.1990", ""); err == nil {
+	if _, err := st.SetUserInfo(u.ID, "Hall", "123", "13.05.1990", "", ""); err == nil {
 		t.Fatal("expected invalid birthday")
 	}
-	if _, err := st.SetUserInfo(u.ID, "Hall", "123", "1990-05-01", "not-an-email"); err == nil {
+	if _, err := st.SetUserInfo(u.ID, "Hall", "123", "1990-05-01", "not-an-email", ""); err == nil {
 		t.Fatal("expected invalid email")
+	}
+	if _, err := st.SetUserInfo(u.ID, "Hall", "123", "1990-05-01", "", "99"); err == nil {
+		t.Fatal("expected invalid member since")
 	}
 	if _, _, err := st.Login("ada.home@example.com", "secret1"); err == nil {
 		t.Fatal("alt email must not log in")
@@ -377,7 +380,7 @@ func TestDirectory(t *testing.T) {
 	if _, err := st.CreateUser("Ben", "ben@example.com", "secret1", RoleChoir, "Alt"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.SetUserInfo(ada.ID, "Hidden Street", "+49 611 1234", "1990-05-01", "ada.home@example.com"); err != nil {
+	if _, err := st.SetUserInfo(ada.ID, "Hidden Street", "+49 611 1234", "1990-05-01", "ada.home@example.com", ""); err != nil {
 		t.Fatal(err)
 	}
 	list, err := st.ListDirectory()

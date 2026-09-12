@@ -45,10 +45,10 @@
       </div>
       <div class="top-actions">
         <div id="chat-tabs" class="chat-tabs">
-          <button type="button" class="btn ghost chat-tab" data-chat="choir">Chor</button>
-          <button type="button" class="btn ghost chat-tab" data-chat="band">Band</button>
-          <button type="button" class="btn ghost chat-tab" data-chat="orchestra">Orchester</button>
-          <button type="button" class="btn ghost chat-tab" data-chat="live">Live</button>
+          <button type="button" class="btn ghost chat-tab" data-chat="choir">Chor-Chat</button>
+          <button type="button" class="btn ghost chat-tab" data-chat="band">Band-Chat</button>
+          <button type="button" class="btn ghost chat-tab" data-chat="orchestra">Orchester-Chat</button>
+          <button type="button" class="btn ghost chat-tab" data-chat="live">Live-Chat</button>
         </div>
         <div class="lang-switch" role="group" data-i18n-aria="lang">
           <button type="button" class="lang-btn" data-lang="de">DE</button>
@@ -139,6 +139,7 @@
               <th data-i18n="address">Adresse</th>
               <th data-i18n="phone">Telefon</th>
               <th data-i18n="birthday">Geburtstag</th>
+              <th data-i18n="memberSince">Mitglied seit</th>
             </tr>
           </thead>
           <tbody id="contacts-body"></tbody>
@@ -534,6 +535,8 @@
       <p class="muted" data-i18n="altEmailHint">Nicht zum Anmelden.</p>
       <label for="info-birthday" data-i18n="birthday">Geburtstag</label>
       <input id="info-birthday" type="date" />
+      <label for="info-member-since" data-i18n="memberSince">Mitglied seit</label>
+      <input id="info-member-since" type="number" inputmode="numeric" min="1900" max="2100" step="1" placeholder="2018" />
       <p id="info-error" class="error" hidden></p>
       <button type="submit" data-i18n="save">Speichern</button>
     </form>

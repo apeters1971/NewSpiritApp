@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -38,6 +39,7 @@ type User struct {
 	Phone              string     `json:"phone"`
 	AltEmail           string     `json:"altEmail,omitempty"`
 	Birthday           string     `json:"birthday"`
+	MemberSince        string     `json:"memberSince,omitempty"`
 	HasPhoto           bool       `json:"hasPhoto"`
 	PhotoUpdatedAt     *time.Time `json:"photoUpdatedAt,omitempty"`
 	Channels           []Channel  `json:"channels,omitempty"`
@@ -274,6 +276,7 @@ CREATE TABLE IF NOT EXISTS settings (
 	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0`)
 	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN streamer INTEGER NOT NULL DEFAULT 0`)
 	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN last_connected_at TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN member_since TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`
 CREATE TABLE IF NOT EXISTS chat_reactions (
   message_id TEXT NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
@@ -538,7 +541,7 @@ func (s *Store) ChangeOwnPassword(id, password string) (User, error) {
 	return s.UserByID(id)
 }
 
-func (s *Store) SetUserInfo(id, address, phone, birthday, altEmail string) (User, error) {
+func (s *Store) SetUserInfo(id, address, phone, birthday, altEmail, memberSince string) (User, error) {
 	if _, err := s.UserByID(id); err != nil {
 		return User{}, err
 	}
@@ -552,13 +555,17 @@ func (s *Store) SetUserInfo(id, address, phone, birthday, altEmail string) (User
 	if err != nil {
 		return User{}, err
 	}
+	memberSince, err = normalizeMemberSince(memberSince)
+	if err != nil {
+		return User{}, err
+	}
 	if len(address) > 500 {
 		return User{}, fmt.Errorf("address is too long")
 	}
 	if len(phone) > 80 {
 		return User{}, fmt.Errorf("phone is too long")
 	}
-	if _, err := s.db.Exec(`UPDATE users SET address=?, phone=?, birthday=?, alt_email=? WHERE id=?`, address, phone, birthday, altEmail, id); err != nil {
+	if _, err := s.db.Exec(`UPDATE users SET address=?, phone=?, birthday=?, alt_email=?, member_since=? WHERE id=?`, address, phone, birthday, altEmail, memberSince, id); err != nil {
 		return User{}, err
 	}
 	return s.UserByID(id)
@@ -585,6 +592,19 @@ func normalizeBirthday(s string) (string, error) {
 		return "", fmt.Errorf("invalid birthday")
 	}
 	return t.Format("2006-01-02"), nil
+}
+
+func normalizeMemberSince(s string) (string, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", nil
+	}
+	year, err := strconv.Atoi(s)
+	max := now().Year() + 1
+	if err != nil || year < 1900 || year > max {
+		return "", fmt.Errorf("invalid member since")
+	}
+	return strconv.Itoa(year), nil
 }
 
 func (s *Store) DeleteUser(id string) error {
@@ -655,7 +675,7 @@ func (s *Store) TouchLastConnected(id string) error {
 }
 
 func (s *Store) ListUsers() ([]User, error) {
-	rows, err := s.db.Query(`SELECT id, nickname, email, role, subrole, address, phone, alt_email, birthday, must_change_password, streamer, created_at, last_connected_at FROM users ORDER BY nickname COLLATE NOCASE`)
+	rows, err := s.db.Query(`SELECT id, nickname, email, role, subrole, address, phone, alt_email, birthday, member_since, must_change_password, streamer, created_at, last_connected_at FROM users ORDER BY nickname COLLATE NOCASE`)
 	if err != nil {
 		return nil, err
 	}
@@ -715,7 +735,7 @@ func (s *Store) ListDirectory() ([]DirectoryEntry, error) {
 }
 
 func (s *Store) UserByID(id string) (User, error) {
-	u, err := scanUserRow(s.db.QueryRow(`SELECT id, nickname, email, role, subrole, address, phone, alt_email, birthday, must_change_password, streamer, created_at, last_connected_at FROM users WHERE id=?`, id))
+	u, err := scanUserRow(s.db.QueryRow(`SELECT id, nickname, email, role, subrole, address, phone, alt_email, birthday, member_since, must_change_password, streamer, created_at, last_connected_at FROM users WHERE id=?`, id))
 	if err != nil {
 		return User{}, err
 	}
@@ -737,9 +757,9 @@ func (s *Store) Login(email, password string) (User, string, error) {
 	var hash, created string
 	var mustChange, streamer int
 	err := s.db.QueryRow(
-		`SELECT id, nickname, email, password_hash, role, subrole, address, phone, alt_email, birthday, must_change_password, streamer, created_at FROM users WHERE email=?`,
+		`SELECT id, nickname, email, password_hash, role, subrole, address, phone, alt_email, birthday, member_since, must_change_password, streamer, created_at FROM users WHERE email=?`,
 		email,
-	).Scan(&u.ID, &u.Nickname, &u.Email, &hash, &u.Role, &u.Subrole, &u.Address, &u.Phone, &u.AltEmail, &u.Birthday, &mustChange, &streamer, &created)
+	).Scan(&u.ID, &u.Nickname, &u.Email, &hash, &u.Role, &u.Subrole, &u.Address, &u.Phone, &u.AltEmail, &u.Birthday, &u.MemberSince, &mustChange, &streamer, &created)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, "", ErrUnauthorized
 	}
@@ -770,7 +790,7 @@ func (s *Store) UserBySession(sessionID string) (User, error) {
 		return User{}, ErrUnauthorized
 	}
 	u, err := scanUserRow(s.db.QueryRow(`
-SELECT u.id, u.nickname, u.email, u.role, u.subrole, u.address, u.phone, u.alt_email, u.birthday, u.must_change_password, u.streamer, u.created_at, u.last_connected_at
+SELECT u.id, u.nickname, u.email, u.role, u.subrole, u.address, u.phone, u.alt_email, u.birthday, u.member_since, u.must_change_password, u.streamer, u.created_at, u.last_connected_at
 FROM sessions s
 JOIN users u ON u.id = s.user_id
 WHERE s.id=? AND s.revoked_at IS NULL`, sessionID))
@@ -1403,7 +1423,7 @@ func scanUser(rs rowScanner) (User, error) {
 	var u User
 	var created, lastConnected string
 	var mustChange, streamer int
-	if err := rs.Scan(&u.ID, &u.Nickname, &u.Email, &u.Role, &u.Subrole, &u.Address, &u.Phone, &u.AltEmail, &u.Birthday, &mustChange, &streamer, &created, &lastConnected); err != nil {
+	if err := rs.Scan(&u.ID, &u.Nickname, &u.Email, &u.Role, &u.Subrole, &u.Address, &u.Phone, &u.AltEmail, &u.Birthday, &u.MemberSince, &mustChange, &streamer, &created, &lastConnected); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return User{}, ErrNotFound
 		}

@@ -408,53 +408,145 @@ function mapsSearchURL(location) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(String(location || "").trim())}`;
 }
 
+let showAllChannels = false;
+
 function canAssignChannels() {
   return me?.role === "technician";
+}
+
+function canHaveChannel() {
+  return ["choir", "chorleiter", "band", "orchestra", "ehemalige"].includes(me?.role);
+}
+
+function seesChannelFold() {
+  return canAssignChannels() || canHaveChannel();
+}
+
+function channelShowAllToggle() {
+  return `<label class="channel-show-all">
+    <input type="checkbox" id="show-all-channels" ${showAllChannels ? "checked" : ""} />
+    ${escapeHtml(I18N.t("showAllChannels"))}
+  </label>`;
+}
+
+function collectOwnChannelDrafts(box) {
+  const dirty = {};
+  if (!box) return dirty;
+  box.querySelectorAll("form[data-channel] input[name=comment].dirty").forEach((input) => {
+    const n = Number(input.closest("form").dataset.channel);
+    if (input.value !== savedChannelComment(n)) dirty[String(n)] = input.value;
+  });
+  return dirty;
+}
+
+function ownChannelForm(ch, dirty) {
+  const draft = Object.hasOwn(dirty, String(ch.number));
+  const value = draft ? dirty[String(ch.number)] : (ch.comment || "");
+  return `
+    <form class="my-channel" data-channel="${ch.number}">
+      <strong>${I18N.t("channel")} ${ch.number}</strong>
+      <label>
+        <span class="visually-hidden">${I18N.t("channelComment")}</span>
+        <input name="comment" maxlength="200" value="${escapeHtml(value)}" placeholder="${escapeHtml(I18N.t("channelComment"))}" class="${draft ? "dirty" : ""}" />
+      </label>
+      <button type="button" class="btn ghost v48-btn${ch.v48 ? " on" : ""}" data-channel-v48="${ch.number}" aria-pressed="${ch.v48 ? "true" : "false"}">${I18N.t("channel48v")}</button>
+    </form>`;
 }
 
 function paintMyChannels() {
   const fold = document.getElementById("fold-channels");
   const box = document.getElementById("my-channels");
-  if (box) box.classList.toggle("mixer-desk", canAssignChannels());
+  if (box) box.classList.toggle("mixer-desk", canAssignChannels() || showAllChannels);
   if (canAssignChannels()) {
     paintMixerDesk();
     return;
   }
   const header = document.getElementById("who-channels");
-  const channels = me?.channels || [];
-  const dirty = {};
-  if (box) {
-    box.querySelectorAll("form[data-channel] input[name=comment].dirty").forEach((input) => {
-      const n = Number(input.closest("form").dataset.channel);
-      if (input.value !== savedChannelComment(n)) dirty[String(n)] = input.value;
-    });
+  const mine = me?.channels || [];
+  const dirty = collectOwnChannelDrafts(box);
+  if (fold) fold.hidden = !seesChannelFold();
+  if (showAllChannels) {
+    paintAllChannelsDesk(dirty);
+    return;
   }
   if (header) {
-    header.hidden = channels.length === 0;
-    header.textContent = channels.map((ch) => {
+    header.hidden = mine.length === 0;
+    header.textContent = mine.map((ch) => {
       const note = ch.comment ? ` · ${ch.comment}` : "";
       const v48 = ch.v48 ? ` · ${I18N.t("channel48v")}` : "";
       return `${I18N.t("channel")} ${ch.number}${note}${v48}`;
     }).join(" · ");
   }
-  if (fold) fold.hidden = channels.length === 0;
   if (box) {
-    box.innerHTML = channels.length
-      ? channels.map((ch) => {
-        const draft = Object.hasOwn(dirty, String(ch.number));
-        const value = draft ? dirty[String(ch.number)] : (ch.comment || "");
-        return `
-          <form class="my-channel" data-channel="${ch.number}">
-            <strong>${I18N.t("channel")} ${ch.number}</strong>
+    box.innerHTML = channelShowAllToggle()
+      + (mine.length ? mine.map((ch) => ownChannelForm(ch, dirty)).join("") : "")
+      + `<p id="channel-error" class="error" hidden></p>`;
+  }
+}
+
+function paintAllChannelsDesk(dirty) {
+  const header = document.getElementById("who-channels");
+  const box = document.getElementById("my-channels");
+  const fold = document.getElementById("fold-channels");
+  if (!box) return;
+  const channels = mixer.channels || [];
+  const assigned = channels.filter((ch) => ch.userId).length;
+  const q = (document.getElementById("channel-all-search")?.value || "").trim().toLowerCase();
+  if (header) {
+    header.hidden = false;
+    header.textContent = `${I18N.t("channels")} · ${assigned}/${channels.length || 96}`;
+  }
+  if (fold) fold.hidden = false;
+  const mine = new Set((me?.channels || []).map((ch) => ch.number));
+  const rows = channels.filter((ch) => {
+    if (!q) return true;
+    const hay = `${ch.number} ${ch.nickname || ""} ${ch.comment || ""} ${I18N.role(ch.role || "")}${ch.v48 ? " 48v" : ""}`.toLowerCase();
+    return hay.includes(q);
+  }).map((ch) => {
+    const own = mine.has(ch.number) || (!!me?.id && ch.userId === me.id);
+    const who = ch.nickname
+      ? `${escapeHtml(ch.nickname)}${ch.role ? ` · ${escapeHtml(I18N.role(ch.role))}` : ""}`
+      : `<span class="muted">${escapeHtml(I18N.t("channelNone"))}</span>`;
+    if (own) {
+      const draft = Object.hasOwn(dirty, String(ch.number));
+      const value = draft ? dirty[String(ch.number)] : (ch.comment || "");
+      return `<tr>
+        <td>${ch.number}</td>
+        <td>${who}</td>
+        <td>
+          <form class="channel-inline" data-channel="${ch.number}">
             <label>
               <span class="visually-hidden">${I18N.t("channelComment")}</span>
               <input name="comment" maxlength="200" value="${escapeHtml(value)}" placeholder="${escapeHtml(I18N.t("channelComment"))}" class="${draft ? "dirty" : ""}" />
             </label>
-            <button type="button" class="btn ghost v48-btn${ch.v48 ? " on" : ""}" data-channel-v48="${ch.number}" aria-pressed="${ch.v48 ? "true" : "false"}">${I18N.t("channel48v")}</button>
-          </form>`;
-      }).join("") + `<p id="channel-error" class="error" hidden></p>`
-      : "";
-  }
+          </form>
+        </td>
+        <td><button type="button" class="btn ghost v48-btn${ch.v48 ? " on" : ""}" data-channel-v48="${ch.number}" aria-pressed="${ch.v48 ? "true" : "false"}">${I18N.t("channel48v")}</button></td>
+      </tr>`;
+    }
+    return `<tr>
+      <td>${ch.number}</td>
+      <td>${who}</td>
+      <td>${ch.comment ? escapeHtml(ch.comment) : "—"}</td>
+      <td>${ch.v48 ? `<span class="v48-btn on">${escapeHtml(I18N.t("channel48v"))}</span>` : "—"}</td>
+    </tr>`;
+  }).join("");
+  box.innerHTML = `
+    ${channelShowAllToggle()}
+    <label class="mixer-search-label" for="channel-all-search">${I18N.t("search")}</label>
+    <input id="channel-all-search" type="search" autocomplete="off" value="${escapeHtml(q)}" />
+    <div class="mixer-wrap">
+      <table class="roster mixer-table">
+        <thead><tr>
+          <th>${I18N.t("channel")}</th>
+          <th>${I18N.t("person")}</th>
+          <th>${I18N.t("channelComment")}</th>
+          <th>${I18N.t("channel48v")}</th>
+        </tr></thead>
+        <tbody>${rows || `<tr><td colspan="4" class="muted">${I18N.t("archivePickEmpty")}</td></tr>`}</tbody>
+      </table>
+    </div>
+    <p id="channel-error" class="error" hidden></p>`;
 }
 
 function mixerPeople() {
@@ -520,13 +612,17 @@ function paintMixerDesk() {
 }
 
 async function loadMixer() {
-  if (!canAssignChannels()) {
+  if (!seesChannelFold()) {
     mixer = { channels: [], people: [] };
     return;
   }
-  const data = await api("/api/channels");
-  mixer.channels = data.channels || [];
-  mixer.people = data.people || [];
+  try {
+    const data = await api("/api/channels");
+    mixer.channels = data.channels || [];
+    mixer.people = data.people || [];
+  } catch {
+    mixer = { channels: [], people: [] };
+  }
   paintMyChannels();
 }
 
@@ -681,11 +777,12 @@ function spiritStatHTML(pct, extraClass = "") {
 }
 
 function renderSpirit() {
+  const fold = document.getElementById("fold-spirit");
   const box = document.getElementById("spirit");
   const leaders = spiritLeaders(ranking);
   if (!canSeeSpirit() || !leaders.length) {
-    box.hidden = true;
-    box.innerHTML = "";
+    if (fold) fold.hidden = true;
+    if (box) box.innerHTML = "";
     return;
   }
   const events = ranking.events || leaders[0].events || 0;
@@ -697,9 +794,8 @@ function renderSpirit() {
         <span>${escapeHtml(I18N.subrole(leader.subrole))}</span>
         ${sharedPct === null ? spiritStatHTML(leaderPcts[i]) : ""}
       </div>`).join("");
-  box.hidden = false;
+  if (fold) fold.hidden = false;
   box.innerHTML = `
-    <p class="brand" data-i18n="spiritOfTheYear">${I18N.t("spiritOfTheYear")}</p>
     <div class="spirit-row">
       <div class="spirit-leader">
         ${people}
@@ -790,6 +886,67 @@ function archiveFileLabel(file, kindLabel) {
   return bits.join(" · ");
 }
 
+function archiveFileAttrs(id, file) {
+  return `data-item="${escapeHtml(id)}" data-file="${escapeHtml(file.id)}" data-name="${escapeHtml(file.name || "")}" data-mime="${escapeHtml(file.mime || "")}"`;
+}
+
+function archiveCanOpenWith() {
+  try {
+    if (navigator.maxTouchPoints > 0) return true;
+    return window.matchMedia("(pointer: coarse)").matches;
+  } catch {
+    return false;
+  }
+}
+
+function archiveFileToolsHTML(id, file) {
+  const url = archiveFileURL(id, file);
+  const attrs = archiveFileAttrs(id, file);
+  const open = escapeHtml(I18N.t("fileOpen"));
+  const openWith = escapeHtml(I18N.t("fileOpenWith"));
+  const download = escapeHtml(I18N.t("fileDownload"));
+  const share = archiveCanOpenWith()
+    ? `<button type="button" class="btn ghost archive-file-tool archive-open-with-btn" data-archive-open-with ${attrs} aria-label="${openWith}" title="${openWith}"></button>`
+    : "";
+  return `<div class="archive-file-tools">
+    <a class="btn ghost archive-file-tool archive-open-btn" href="${url}" target="_blank" rel="noopener" aria-label="${open}" title="${open}"></a>
+    ${share}
+    <button type="button" class="btn ghost archive-file-tool archive-download-btn" data-archive-download ${attrs} aria-label="${download}" title="${download}"></button>
+  </div>`;
+}
+
+async function archiveBlobFile(btn) {
+  const itemId = btn.dataset.item;
+  const fileId = btn.dataset.file;
+  const res = await fetch(`/api/archive/${encodeURIComponent(itemId)}/files/${encodeURIComponent(fileId)}`, { credentials: "same-origin" });
+  if (!res.ok) throw new Error(I18N.t("galleryShareFail"));
+  const blob = await res.blob();
+  const type = btn.dataset.mime || blob.type || "application/octet-stream";
+  return new File([blob], btn.dataset.name || "file", { type });
+}
+
+function archiveFileToolButton(e) {
+  return e.target.closest("[data-archive-open-with], [data-archive-download]");
+}
+
+async function runArchiveFileTool(btn) {
+  if (btn.disabled) return;
+  btn.disabled = true;
+  try {
+    const file = await archiveBlobFile(btn);
+    if (btn.hasAttribute("data-archive-open-with") && navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file] });
+      return;
+    }
+    downloadHubFile(file);
+  } catch (err) {
+    if (err && (err.name === "AbortError" || err.name === "NotAllowedError")) return;
+    alert(err.message || I18N.t("galleryShareFail"));
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 function archiveKindAccept(kind) {
   if (kind === "audio" || kind === "tracks") return ".mp3,.m4a,.wav,.aac,.ogg,.flac,.aiff,.aif,.caf";
   if (kind === "lyrics") return "application/pdf,text/plain,image/*";
@@ -863,10 +1020,10 @@ function titleMaterialHTML(item, back) {
       ${item.composer ? `<p class="muted">${escapeHtml(item.composer)}</p>` : ""}
     </div>`;
   audios.forEach((audio) => {
-    html += `<div><p class="label">${escapeHtml(archiveFileLabel(audio, I18N.t("archiveAudio")))}</p><audio controls src="${archiveFileURL(item.id, audio)}"></audio></div>`;
+    html += `<div><p class="label">${escapeHtml(archiveFileLabel(audio, I18N.t("archiveAudio")))}</p><audio controls src="${archiveFileURL(item.id, audio)}"></audio>${archiveFileToolsHTML(item.id, audio)}</div>`;
   });
   tracks.forEach((track) => {
-    html += `<div><p class="label">${escapeHtml(archiveFileLabel(track, I18N.t("archiveTracks")))}</p><audio controls src="${archiveFileURL(item.id, track)}"></audio></div>`;
+    html += `<div><p class="label">${escapeHtml(archiveFileLabel(track, I18N.t("archiveTracks")))}</p><audio controls src="${archiveFileURL(item.id, track)}"></audio>${archiveFileToolsHTML(item.id, track)}</div>`;
   });
   lyrics.forEach((f) => {
     html += filePreviewHTML(item.id, f, archiveFileLabel(f, I18N.t("archiveLyrics")));
@@ -900,7 +1057,7 @@ function filePreviewHTML(id, file, label) {
   return `<div>
     <p class="label">${escapeHtml(label)}</p>
     ${body}
-    <p><a class="btn ghost" href="${url}" target="_blank" rel="noopener">${I18N.t("fileOpen")}</a></p>
+    ${archiveFileToolsHTML(id, file)}
   </div>`;
 }
 
@@ -1766,8 +1923,16 @@ function newsTickerReminders() {
   return bits;
 }
 
+function newsTickerStream() {
+  const name = String(liveStream?.nickname || "").trim();
+  if (!name) return "";
+  return I18N.t("feedStreaming").replace("{name}", name);
+}
+
 function newsTickerText(official) {
   if (official !== undefined) newsTickerOfficial = String(official || "").trim();
+  const live = newsTickerStream();
+  if (live) return live;
   return [...newsTickerReminders(), newsTickerOfficial].filter(Boolean).join("   ·   ");
 }
 
@@ -1776,7 +1941,7 @@ function paintNewsTicker(text) {
   if (!bar) return;
   const el = bar.querySelector(".news-ticker-text");
   if (!el) return;
-  const remind = newsTickerReminders();
+  const remind = newsTickerStream() ? [] : newsTickerReminders();
   const clean = newsTickerText(text);
   stopNewsTicker(bar);
   const runId = newsTickerRun;
@@ -2332,6 +2497,11 @@ document.getElementById("my-channels").addEventListener("input", (e) => {
     document.getElementById("mixer-search")?.focus();
     return;
   }
+  if (e.target.id === "channel-all-search") {
+    paintMyChannels();
+    document.getElementById("channel-all-search")?.focus();
+    return;
+  }
   const input = e.target.closest("input[name=comment]");
   if (input) paintChannelDirty(input);
   const mixerComment = e.target.closest("[data-mixer-comment]");
@@ -2341,6 +2511,15 @@ document.getElementById("my-channels").addEventListener("input", (e) => {
 });
 
 document.getElementById("my-channels").addEventListener("change", async (e) => {
+  if (e.target.id === "show-all-channels") {
+    showAllChannels = e.target.checked;
+    if (showAllChannels && !(mixer.channels || []).length) {
+      await loadMixer();
+      return;
+    }
+    paintMyChannels();
+    return;
+  }
   const userEl = e.target.closest("[data-mixer-user]");
   const commentEl = e.target.closest("[data-mixer-comment]");
   const n = Number(userEl?.dataset.mixerUser || commentEl?.dataset.mixerComment || 0);
@@ -2358,7 +2537,9 @@ document.getElementById("my-channels").addEventListener("submit", async (e) => {
   e.preventDefault();
   const n = Number(form.dataset.channel);
   const comment = form.querySelector("[name=comment]")?.value || "";
-  const v48 = form.querySelector("[data-channel-v48]")?.getAttribute("aria-pressed") === "true";
+  const v48Btn = form.querySelector("[data-channel-v48]")
+    || document.querySelector(`#my-channels [data-channel-v48="${n}"]`);
+  const v48 = v48Btn?.getAttribute("aria-pressed") === "true";
   try {
     await saveMyChannel(n, comment, v48);
   } catch (err) {
@@ -2378,11 +2559,13 @@ document.getElementById("my-channels").addEventListener("click", async (e) => {
   }
   const btn = e.target.closest("[data-channel-v48]");
   if (!btn) return;
-  const form = btn.closest("form[data-channel]");
-  if (!form) return;
-  const n = Number(form.dataset.channel);
+  const n = Number(btn.dataset.channelV48);
+  const form = btn.closest("form[data-channel]")
+    || document.querySelector(`#my-channels form[data-channel="${n}"]`);
+  if (!n) return;
+  const comment = form?.querySelector("[name=comment]")?.value ?? savedChannelComment(n);
   try {
-    await saveMyChannel(n, savedChannelComment(n), btn.getAttribute("aria-pressed") !== "true");
+    await saveMyChannel(n, comment, btn.getAttribute("aria-pressed") !== "true");
   } catch (err) {
     showError(document.getElementById("channel-error"), err.message);
   }
@@ -2837,7 +3020,7 @@ function renderChatTabs() {
     btn.hidden = !show;
     btn.classList.toggle("on", show && chatRoom === btn.dataset.chat);
     const n = show ? unreadCount(btn.dataset.chat) : 0;
-    const label = I18N.role(btn.dataset.chat);
+    const label = I18N.t(`chat.${btn.dataset.chat}`);
     btn.innerHTML = `${escapeHtml(label)}${chatBadge(n)}`;
     btn.setAttribute("aria-label", n ? `${label}, ${n}` : label);
     if (show) any = true;
@@ -2864,14 +3047,15 @@ function paintMenuUnread() {
 
 function paintHeaderChat() {
   const btn = document.getElementById("btn-header-chat");
-  const menu = document.getElementById("btn-menu-chat");
   const room = primaryChatRoom();
   if (btn) btn.hidden = !room;
-  if (menu) menu.hidden = !room;
   const n = chatUnreadTotal();
   paintUnreadBadge("header-chat-unread", n);
   const label = room ? I18N.t(`chat.${room}`) : I18N.t("chatBrand");
-  if (btn) btn.setAttribute("aria-label", n ? `${label}, ${n}` : label);
+  if (btn) {
+    btn.setAttribute("aria-label", n ? `${label}, ${n}` : label);
+    btn.setAttribute("data-tip", label);
+  }
 }
 
 function chatAuthorKey(m) {
@@ -3792,6 +3976,7 @@ function applyLiveStream(stream, announce) {
   const wasId = liveStream?.userId || "";
   liveStream = next;
   paintStreamButtons();
+  paintNewsTicker();
   if (!next) {
     if (wasId) stopWatch(false);
     return;
@@ -4522,6 +4707,11 @@ document.getElementById("titles-list").addEventListener("click", async (e) => {
 });
 
 document.getElementById("title-detail").addEventListener("click", (e) => {
+  const tool = archiveFileToolButton(e);
+  if (tool) {
+    runArchiveFileTool(tool);
+    return;
+  }
   if (!e.target.closest("[data-titles-back]")) return;
   showTitlesList();
 });
@@ -4583,7 +4773,7 @@ document.getElementById("chat-list").addEventListener("click", onChatListClick);
 document.getElementById("stream-chat-list").addEventListener("click", onChatListClick);
 
 function hasInfo(user) {
-  return !!(user?.address || user?.phone || user?.birthday || user?.altEmail);
+  return !!(user?.address || user?.phone || user?.birthday || user?.altEmail || user?.memberSince);
 }
 
 function paintInfoButton(btn, user) {
@@ -4597,6 +4787,7 @@ function fillInfoForm(user = {}) {
   document.getElementById("info-phone").value = user.phone || "";
   document.getElementById("info-alt-email").value = user.altEmail || "";
   document.getElementById("info-birthday").value = user.birthday || "";
+  document.getElementById("info-member-since").value = user.memberSince || "";
   showError(document.getElementById("info-error"), "");
 }
 
@@ -4606,6 +4797,7 @@ function readInfoForm() {
     phone: document.getElementById("info-phone").value,
     altEmail: document.getElementById("info-alt-email").value,
     birthday: document.getElementById("info-birthday").value,
+    memberSince: document.getElementById("info-member-since").value,
   };
 }
 
@@ -4838,6 +5030,11 @@ document.getElementById("archive-list").addEventListener("click", async (e) => {
 });
 
 document.getElementById("archive-detail").addEventListener("click", (e) => {
+  const tool = archiveFileToolButton(e);
+  if (tool) {
+    runArchiveFileTool(tool);
+    return;
+  }
   if (e.target.closest("[data-archive-back]")) {
     showArchiveList();
     return;

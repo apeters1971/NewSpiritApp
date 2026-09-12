@@ -19,7 +19,7 @@ let pollRows = [];
 let pollFrozen = false;
 let pendingPhoto = null;
 let pendingPhotoURL = "";
-let pendingInfo = { address: "", phone: "", birthday: "", altEmail: "" };
+let pendingInfo = { address: "", phone: "", birthday: "", altEmail: "", memberSince: "" };
 let chatRoom = "";
 let chatMessages = [];
 let chatUnread = {};
@@ -51,7 +51,7 @@ function currentPerson() {
 }
 
 function hasInfo(user) {
-  return !!(user?.address || user?.phone || user?.birthday || user?.altEmail);
+  return !!(user?.address || user?.phone || user?.birthday || user?.altEmail || user?.memberSince);
 }
 
 function paintInfoButton(btn, user) {
@@ -80,6 +80,7 @@ function fillInfoForm(user = {}) {
   document.getElementById("info-phone").value = user.phone || "";
   document.getElementById("info-alt-email").value = user.altEmail || "";
   document.getElementById("info-birthday").value = user.birthday || "";
+  document.getElementById("info-member-since").value = user.memberSince || "";
   showError(document.getElementById("info-error"), "");
 }
 
@@ -89,6 +90,7 @@ function readInfoForm() {
     phone: document.getElementById("info-phone").value,
     altEmail: document.getElementById("info-alt-email").value,
     birthday: document.getElementById("info-birthday").value,
+    memberSince: document.getElementById("info-member-since").value,
   };
 }
 
@@ -286,7 +288,7 @@ function renderPeople() {
 function renderContacts() {
   const body = document.getElementById("contacts-body");
   if (!state.users.length) {
-    body.innerHTML = `<tr><td colspan="7" class="muted">${I18N.t("noContacts")}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="8" class="muted">${I18N.t("noContacts")}</td></tr>`;
     return;
   }
   body.innerHTML = state.users.map((u) => `
@@ -298,6 +300,7 @@ function renderContacts() {
       <td>${escapeHtml(u.address || "")}</td>
       <td>${escapeHtml(u.phone || "")}</td>
       <td>${escapeHtml(formatBirthday(u.birthday))}</td>
+      <td>${escapeHtml(u.memberSince || "")}</td>
     </tr>
   `).join("");
 }
@@ -440,7 +443,7 @@ function clearPendingPhoto() {
 
 function resetUserForm() {
   selectedUser = "";
-  pendingInfo = { address: "", phone: "", birthday: "", altEmail: "" };
+  pendingInfo = { address: "", phone: "", birthday: "", altEmail: "", memberSince: "" };
   clearPendingPhoto();
   document.getElementById("people-form-title").textContent = I18N.t("addPerson");
   document.getElementById("user-id").value = "";
@@ -461,7 +464,7 @@ function resetUserForm() {
 
 function fillUserForm(u) {
   selectedUser = u.id;
-  pendingInfo = { address: u.address || "", phone: u.phone || "", birthday: u.birthday || "", altEmail: u.altEmail || "" };
+  pendingInfo = { address: u.address || "", phone: u.phone || "", birthday: u.birthday || "", altEmail: u.altEmail || "", memberSince: u.memberSince || "" };
   clearPendingPhoto();
   document.getElementById("people-form-title").textContent = I18N.t("editPerson");
   document.getElementById("user-id").value = u.id;
@@ -1881,7 +1884,7 @@ function noteChatMessage(m) {
 function renderChatTabs() {
   document.querySelectorAll("#chat-tabs [data-chat]").forEach((btn) => {
     const n = unreadCount(btn.dataset.chat);
-    const label = btn.dataset.chat === "live" ? I18N.t("chat.live") : I18N.role(btn.dataset.chat);
+    const label = I18N.t(`chat.${btn.dataset.chat}`);
     btn.innerHTML = `${escapeHtml(label)}${chatBadge(n)}`;
     btn.setAttribute("aria-label", n ? `${label}, ${n}` : label);
     btn.classList.toggle("on", chatRoom === btn.dataset.chat);
