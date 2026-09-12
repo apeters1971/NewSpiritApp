@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -12,12 +13,12 @@ import (
 )
 
 const (
-	ArchiveKindAudio  = "audio"
-	ArchiveKindTracks = "tracks"
-	ArchiveKindLyrics = "lyrics"
-	ArchiveKindSheet  = "sheet"
-	ArchiveKindMIDI   = "midi"
-	ArchiveKindLink   = "link"
+	ArchiveKindAudio      = "audio"
+	ArchiveKindTracks     = "tracks"
+	ArchiveKindLyrics     = "lyrics"
+	ArchiveKindSheet      = "sheet"
+	ArchiveKindMIDI       = "midi"
+	ArchiveKindLink       = "link"
 	ArchiveStatusPending  = "pending"
 	ArchiveStatusAccepted = "accepted"
 	ArchiveMaxAudio       = 25 << 20
@@ -48,7 +49,20 @@ type ArchiveItem struct {
 	Status    string            `json:"status"`
 	CreatedBy string            `json:"createdBy,omitempty"`
 	Files     []ArchiveFileMeta `json:"files"`
+	Soloists  []OnlinePerson    `json:"soloists,omitempty"`
 	CreatedAt time.Time         `json:"createdAt"`
+}
+
+type DateTitleInput struct {
+	ID         string   `json:"id"`
+	SoloistIDs []string `json:"soloistIds,omitempty"`
+}
+
+type ChoirSoloCount struct {
+	ID       string `json:"id"`
+	Nickname string `json:"nickname"`
+	Subrole  string `json:"subrole"`
+	Soli     int    `json:"soli"`
 }
 
 type ArchiveFile struct {
@@ -104,7 +118,21 @@ CREATE INDEX IF NOT EXISTS idx_date_titles_date ON date_titles(date_id, sort_ord
 	_, _ = s.db.Exec(`ALTER TABLE archive_files ADD COLUMN status TEXT NOT NULL DEFAULT 'accepted'`)
 	_, _ = s.db.Exec(`ALTER TABLE archive_files ADD COLUMN created_by TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE archive_files ADD COLUMN url TEXT NOT NULL DEFAULT ''`)
-	return nil
+	return s.migrateTitleSoloists()
+}
+
+func (s *Store) migrateTitleSoloists() error {
+	_, err := s.db.Exec(`
+CREATE TABLE IF NOT EXISTS date_title_soloists (
+  date_id TEXT NOT NULL REFERENCES dates(id) ON DELETE CASCADE,
+  item_id TEXT NOT NULL REFERENCES archive_items(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY (date_id, item_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_title_soloists_user ON date_title_soloists(user_id);
+CREATE INDEX IF NOT EXISTS idx_title_soloists_date ON date_title_soloists(date_id, item_id);
+`)
+	return err
 }
 
 func archiveFilesDDL() string {
@@ -581,36 +609,111 @@ func (s *Store) MemberCanAccessArchive(userID, itemID string) error {
 }
 
 func (s *Store) SetDateTitles(dateID string, itemIDs []string) error {
+	inputs := make([]DateTitleInput, 0, len(itemIDs))
+	for _, id := range itemIDs {
+		inputs = append(inputs, DateTitleInput{ID: id})
+	}
+	return s.SetDateTitleInputs(dateID, inputs)
+}
+
+func (s *Store) SetDateTitleInputs(dateID string, titles []DateTitleInput) error {
 	if _, err := s.dateRow(dateID); err != nil {
 		return err
 	}
 	seen := map[string]bool{}
-	clean := make([]string, 0, len(itemIDs))
-	for _, id := range itemIDs {
-		id = strings.TrimSpace(id)
+	clean := make([]DateTitleInput, 0, len(titles))
+	for _, title := range titles {
+		id := strings.TrimSpace(title.ID)
 		if id == "" || seen[id] {
 			continue
 		}
 		if _, err := s.archiveItemRow(id); err != nil {
 			return err
 		}
+		soloists, err := s.cleanChoirSoloists(title.SoloistIDs)
+		if err != nil {
+			return err
+		}
 		seen[id] = true
-		clean = append(clean, id)
+		clean = append(clean, DateTitleInput{ID: id, SoloistIDs: soloists})
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.Exec(`DELETE FROM date_title_soloists WHERE date_id=?`, dateID); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(`DELETE FROM date_titles WHERE date_id=?`, dateID); err != nil {
 		return err
 	}
-	for i, id := range clean {
-		if _, err := tx.Exec(`INSERT INTO date_titles(date_id, item_id, sort_order) VALUES(?,?,?)`, dateID, id, i); err != nil {
+	for i, title := range clean {
+		if _, err := tx.Exec(`INSERT INTO date_titles(date_id, item_id, sort_order) VALUES(?,?,?)`, dateID, title.ID, i); err != nil {
 			return err
+		}
+		for _, userID := range title.SoloistIDs {
+			if _, err := tx.Exec(`INSERT INTO date_title_soloists(date_id, item_id, user_id) VALUES(?,?,?)`, dateID, title.ID, userID); err != nil {
+				return err
+			}
 		}
 	}
 	return tx.Commit()
+}
+
+func (s *Store) cleanChoirSoloists(ids []string) ([]string, error) {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			continue
+		}
+		var role string
+		err := s.db.QueryRow(`SELECT role FROM users WHERE id=?`, id).Scan(&role)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		if err != nil {
+			return nil, err
+		}
+		if role != RoleChoir {
+			return nil, fmt.Errorf("soloist must be a choir member")
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	return out, nil
+}
+
+func (s *Store) ChoirSoloCounts() ([]ChoirSoloCount, error) {
+	rows, err := s.db.Query(`
+SELECT u.id, u.nickname, u.subrole,
+  (
+    SELECT COUNT(*)
+    FROM date_title_soloists s
+    JOIN dates d ON d.id = s.date_id
+    WHERE s.user_id = u.id
+      AND d.status = ?
+      AND d.category IN (?, ?)
+  ) AS soli
+FROM users u
+WHERE u.role = ?
+ORDER BY soli DESC, u.nickname COLLATE NOCASE`,
+		StatusAccepted, CategoryConcert, CategoryConcertTour, RoleChoir)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []ChoirSoloCount{}
+	for rows.Next() {
+		var row ChoirSoloCount
+		if err := rows.Scan(&row.ID, &row.Nickname, &row.Subrole, &row.Soli); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) titlesForDates(ids []string) (map[string][]ArchiveItem, error) {
@@ -673,7 +776,59 @@ ORDER BY t.sort_order, a.title COLLATE NOCASE`, args...)
 		}
 		out[p.dateID] = append(out[p.dateID], item)
 	}
+	if err := s.attachTitleSoloists(out); err != nil {
+		return nil, err
+	}
 	return out, nil
+}
+
+func (s *Store) attachTitleSoloists(titlesByDate map[string][]ArchiveItem) error {
+	dateIDs := make([]string, 0, len(titlesByDate))
+	for id := range titlesByDate {
+		dateIDs = append(dateIDs, id)
+	}
+	if len(dateIDs) == 0 {
+		return nil
+	}
+	placeholders := strings.Repeat("?,", len(dateIDs))
+	placeholders = placeholders[:len(placeholders)-1]
+	args := make([]any, len(dateIDs))
+	for i, id := range dateIDs {
+		args[i] = id
+	}
+	rows, err := s.db.Query(`
+SELECT s.date_id, s.item_id, u.id, u.nickname
+FROM date_title_soloists s
+JOIN users u ON u.id = s.user_id
+WHERE s.date_id IN (`+placeholders+`)
+ORDER BY u.nickname COLLATE NOCASE`, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	byKey := map[string][]OnlinePerson{}
+	for rows.Next() {
+		var dateID, itemID string
+		var person OnlinePerson
+		if err := rows.Scan(&dateID, &itemID, &person.ID, &person.Nickname); err != nil {
+			return err
+		}
+		key := dateID + "\x00" + itemID
+		byKey[key] = append(byKey[key], person)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for dateID, titles := range titlesByDate {
+		for i := range titles {
+			titles[i].Soloists = byKey[dateID+"\x00"+titles[i].ID]
+			if titles[i].Soloists == nil {
+				titles[i].Soloists = []OnlinePerson{}
+			}
+		}
+		titlesByDate[dateID] = titles
+	}
+	return nil
 }
 
 func (s *Store) archiveItemRow(id string) (ArchiveItem, error) {

@@ -8,11 +8,12 @@ const dateError = document.getElementById("date-error");
 const CHOIR_VOICES = ["Sopran", "Alt", "Tenor/Bass"];
 
 let catalog = { roles: [], categories: [] };
-let state = { users: [], dates: [], online: 0, ranking: { entries: [], bySubrole: [] }, archive: [], channels: [], proposals: [] };
+let state = { users: [], dates: [], online: 0, ranking: { entries: [], bySubrole: [] }, archive: [], channels: [], proposals: [], choirSoli: [] };
 let selectedUser = "";
 let selectedDate = "";
 let selectedArchive = "";
 let dateTitleIDs = [];
+let dateTitleSoloists = {};
 let dateFormClean = "";
 let pollRows = [];
 let pollFrozen = false;
@@ -148,6 +149,7 @@ function dateFormSnapshot() {
     bring: readBringForm(),
     options: pollRows.map((r) => ({ id: r.id || "", startsAt: r.startsAt || "", endsAt: r.endsAt || "" })),
     titleIds: dateTitleIDs.slice(),
+    soloists: dateTitleIDs.map((id) => ({ id, ids: (dateTitleSoloists[id] || []).slice().sort() })),
   });
 }
 
@@ -309,6 +311,7 @@ function showTab(name) {
   document.getElementById("tab-channels").hidden = name !== "channels";
   document.getElementById("tab-proposals").hidden = name !== "proposals";
   document.getElementById("tab-ranking").hidden = name !== "ranking";
+  document.getElementById("tab-soli").hidden = name !== "soli";
   document.getElementById("tab-settings").hidden = name !== "settings";
 }
 
@@ -492,6 +495,7 @@ function resetDateForm() {
   setBringForm();
   setPollRows([], false);
   dateTitleIDs = [];
+  dateTitleSoloists = {};
   const pickSearch = document.getElementById("archive-pick-search");
   if (pickSearch) pickSearch.value = "";
   clearTitleNewForm();
@@ -518,7 +522,7 @@ function fillDateForm(d) {
   });
   setBringForm(d.bring);
   setPollRows(d.options, !d.pollOpen && (d.options || []).length >= 2);
-  dateTitleIDs = (d.titles || []).map((t) => t.id);
+  setDateTitlesFrom(d.titles);
   const pickSearch = document.getElementById("archive-pick-search");
   if (pickSearch) pickSearch.value = "";
   clearTitleNewForm();
@@ -548,6 +552,7 @@ async function loadState() {
   }
   renderContacts();
   renderRanking();
+  renderSoli();
   renderArchive();
   renderChannels();
   renderProposals();
@@ -677,7 +682,7 @@ function renderProposals() {
     return hay.includes(q);
   });
   if (!items.length) {
-    body.innerHTML = `<tr><td colspan="6" class="muted">${I18N.t("noProposals")}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="7" class="muted">${I18N.t("noProposals")}</td></tr>`;
     return;
   }
   body.innerHTML = items.map((p) => `
@@ -690,6 +695,7 @@ function renderProposals() {
       <td class="proposal-url">${proposalLink(p.url)}</td>
       <td><span class="badge ${proposalBadge(p.status)}">${escapeHtml(I18N.status(p.status))}</span></td>
       <td><input data-proposal-comment="${p.id}" value="${escapeHtml(p.comment || "")}" maxlength="2000" /></td>
+      <td class="proposal-votes">${proposalVoteCounts(p)}</td>
       <td class="proposal-actions">
         ${p.status !== "accepted" ? `<button type="button" class="btn ghost" data-proposal-status="accepted">${I18N.t("acceptProposal")}</button>` : ""}
         ${p.status !== "declined" ? `<button type="button" class="btn ghost" data-proposal-status="declined">${I18N.t("declineProposal")}</button>` : ""}
@@ -710,6 +716,11 @@ async function patchProposal(id, body) {
   } catch (err) {
     showError(document.getElementById("proposals-error"), err.message);
   }
+}
+
+function proposalVoteCounts(p) {
+  const votes = p.votes || {};
+  return `${votes.up || 0} 👍 · ${votes.neutral || 0} ➖ · ${votes.down || 0} 👎`;
 }
 
 function archiveItems() {
@@ -985,20 +996,40 @@ function renderDateTitles() {
   if (!box) return;
   const copyBtn = document.getElementById("date-titles-copy");
   if (copyBtn) copyBtn.disabled = dateTitleIDs.length === 0;
+  const choir = choirMembers();
+  const openID = box.querySelector("details[open]")?.closest("[data-title]")?.dataset.title;
   box.innerHTML = dateTitleIDs.map((id, i) => {
     const item = archiveByID(id);
     const title = item?.title || id;
     const composer = item?.composer || "";
+    const selected = new Set(dateTitleSoloists[id] || []);
+    const names = soloistNamesFor(id);
+    const summary = names.length
+      ? `${I18N.t("soloists")}: ${names.join(", ")}`
+      : I18N.t("soloists");
+    const picks = choir.length
+      ? choir.map((u) => `
+          <label class="title-soloist">
+            <input type="checkbox" data-soloist="${u.id}" ${selected.has(u.id) ? "checked" : ""} />
+            ${escapeHtml(u.nickname)}
+          </label>`).join("")
+      : `<p class="muted">${I18N.t("noChoirSoloists")}</p>`;
     return `<div class="title-pick" data-title="${id}">
-      <div>
-        <strong>${escapeHtml(title)}</strong>
-        ${composer ? `<span>${escapeHtml(composer)}</span>` : ""}
+      <div class="title-pick-top">
+        <div>
+          <strong>${escapeHtml(title)}</strong>
+          ${composer ? `<span>${escapeHtml(composer)}</span>` : ""}
+        </div>
+        <div class="title-pick-actions">
+          <button type="button" class="btn ghost" data-move="-1" ${i === 0 ? "disabled" : ""}>↑</button>
+          <button type="button" class="btn ghost" data-move="1" ${i === dateTitleIDs.length - 1 ? "disabled" : ""}>↓</button>
+          <button type="button" class="btn ghost danger" data-remove-title>${I18N.t("removeTitle")}</button>
+        </div>
       </div>
-      <div class="title-pick-actions">
-        <button type="button" class="btn ghost" data-move="-1" ${i === 0 ? "disabled" : ""}>↑</button>
-        <button type="button" class="btn ghost" data-move="1" ${i === dateTitleIDs.length - 1 ? "disabled" : ""}>↓</button>
-        <button type="button" class="btn ghost danger" data-remove-title>${I18N.t("removeTitle")}</button>
-      </div>
+      <details class="title-soloists" ${openID === id ? "open" : ""}>
+        <summary>${escapeHtml(summary)}</summary>
+        <div class="title-soloist-list">${picks}</div>
+      </details>
     </div>`;
   }).join("");
   renderDateTitleSelects();
@@ -1090,6 +1121,51 @@ function renderRanking() {
       <td>${e.flipped || 0}</td>
     </tr>`;
   }).join("");
+}
+
+function renderSoli() {
+  const body = document.getElementById("soli-body");
+  if (!body) return;
+  const rows = state.choirSoli || [];
+  if (!rows.length) {
+    body.innerHTML = `<tr><td colspan="3" class="muted">${I18N.t("noChoirMembers")}</td></tr>`;
+    return;
+  }
+  body.innerHTML = rows.map((row) => `
+    <tr>
+      <td>${escapeHtml(row.nickname)}</td>
+      <td>${escapeHtml(I18N.subrole(row.subrole))}</td>
+      <td><strong>${row.soli || 0}</strong></td>
+    </tr>
+  `).join("");
+}
+
+function choirMembers() {
+  return (state.users || [])
+    .filter((u) => u.role === "choir")
+    .slice()
+    .sort((a, b) => String(a.nickname || "").localeCompare(String(b.nickname || ""), I18N.locale(), { sensitivity: "base" }));
+}
+
+function setDateTitlesFrom(titles) {
+  dateTitleIDs = (titles || []).map((t) => t.id);
+  dateTitleSoloists = {};
+  for (const t of titles || []) {
+    dateTitleSoloists[t.id] = (t.soloists || []).map((s) => s.id);
+  }
+}
+
+function dateTitlesPayload() {
+  return dateTitleIDs.map((id) => ({
+    id,
+    soloistIds: dateTitleSoloists[id] || [],
+  }));
+}
+
+function soloistNamesFor(id) {
+  return (dateTitleSoloists[id] || [])
+    .map((uid) => state.users.find((u) => u.id === uid)?.nickname)
+    .filter(Boolean);
 }
 
 async function boot() {
@@ -1229,6 +1305,7 @@ document.getElementById("date-form").addEventListener("submit", async (e) => {
     bring: readBringForm(),
     options: readPollRows(),
     titleIds: dateTitleIDs,
+    titles: dateTitlesPayload(),
   };
   try {
     const data = id
@@ -2627,6 +2704,7 @@ document.getElementById("btn-archive-delete").addEventListener("click", async ()
   try {
     await api(`/api/controller/archive/${id}`, { method: "DELETE" });
     dateTitleIDs = dateTitleIDs.filter((x) => x !== id);
+    delete dateTitleSoloists[id];
     resetArchiveForm();
     await loadState();
     renderDateTitles();
@@ -2716,7 +2794,7 @@ document.getElementById("inherit-titles").addEventListener("change", (e) => {
   const d = state.dates.find((x) => x.id === e.target.value);
   e.target.value = "";
   if (!d) return;
-  dateTitleIDs = (d.titles || []).map((t) => t.id);
+  setDateTitlesFrom(d.titles);
   renderDateTitles();
   paintDateSave();
 });
@@ -2744,6 +2822,13 @@ document.getElementById("btn-title-new").addEventListener("click", () => {
     createTitleForDate().catch((err) => showError(document.getElementById("title-new-error"), err.message));
   });
 });
+
+function titleClipboardLine(id) {
+  const title = archiveByID(id)?.title || "";
+  const names = soloistNamesFor(id);
+  if (!title) return "";
+  return names.length ? `${title} — ${I18N.t("soloLabel")}: ${names.join(", ")}` : title;
+}
 
 function numberedTitleList(titles) {
   return titles.map((title, i) => `${i + 1}. ${title}`).join("\n");
@@ -2791,7 +2876,7 @@ function flashCopyBtn(btn) {
 }
 
 document.getElementById("date-titles-copy").addEventListener("click", async () => {
-  const titles = dateTitleIDs.map((id) => archiveByID(id)?.title || "").filter((t) => t);
+  const titles = dateTitleIDs.map((id) => titleClipboardLine(id)).filter((t) => t);
   if (!titles.length) return;
   const date = {
     title: document.getElementById("date-title").value,
@@ -2806,7 +2891,22 @@ document.getElementById("date-titles-copy").addEventListener("click", async () =
   }
 });
 
+document.getElementById("date-titles").addEventListener("change", (e) => {
+  const box = e.target.closest("[data-soloist]");
+  const row = e.target.closest("[data-title]");
+  if (!box || !row) return;
+  const id = row.dataset.title;
+  const uid = box.dataset.soloist;
+  const cur = new Set(dateTitleSoloists[id] || []);
+  if (box.checked) cur.add(uid);
+  else cur.delete(uid);
+  dateTitleSoloists[id] = [...cur];
+  renderDateTitles();
+  paintDateSave();
+});
+
 document.getElementById("date-titles").addEventListener("click", (e) => {
+  if (e.target.closest("[data-soloist]") || e.target.closest("summary")) return;
   const row = e.target.closest("[data-title]");
   if (!row) return;
   const id = row.dataset.title;
@@ -2814,6 +2914,7 @@ document.getElementById("date-titles").addEventListener("click", (e) => {
   if (idx < 0) return;
   if (e.target.closest("[data-remove-title]")) {
     dateTitleIDs.splice(idx, 1);
+    delete dateTitleSoloists[id];
     renderDateTitles();
     paintDateSave();
     return;
@@ -2857,6 +2958,7 @@ I18N.onChange(() => {
     renderContacts();
     renderDates();
     renderRanking();
+    renderSoli();
     renderArchive();
     renderChannels();
     renderProposals();

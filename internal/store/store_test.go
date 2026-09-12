@@ -776,6 +776,91 @@ func TestArchiveAndDateTitles(t *testing.T) {
 	}
 }
 
+func TestDateTitleSoloists(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "soloists.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	ada, err := st.CreateUser("Ada", "ada@example.com", "secret1", RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ben, err := st.CreateUser("Ben", "ben@example.com", "secret1", RoleChoir, "Alt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cara, err := st.CreateUser("Cara", "cara@example.com", "secret1", RoleBand, "Guitar")
+	if err != nil {
+		t.Fatal(err)
+	}
+	song, err := st.CreateArchiveItem("Amazing Grace", "Traditional")
+	if err != nil {
+		t.Fatal(err)
+	}
+	concert, err := st.CreateDate("Show", CategoryConcert, time.Now().UTC().Add(24*time.Hour), nil, "", "", "", []string{RoleChoir}, Bring{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetDateTitleInputs(concert.ID, []DateTitleInput{{ID: song.ID, SoloistIDs: []string{cara.ID}}}); err == nil {
+		t.Fatal("band soloist should fail")
+	}
+	if err := st.SetDateTitleInputs(concert.ID, []DateTitleInput{{ID: song.ID, SoloistIDs: []string{ada.ID}}}); err != nil {
+		t.Fatal(err)
+	}
+	view, err := st.DateView(concert.ID, &ada)
+	if err != nil || len(view.Titles) != 1 || len(view.Titles[0].Soloists) != 1 || view.Titles[0].Soloists[0].ID != ada.ID {
+		t.Fatalf("soloists %+v %v", view.Titles, err)
+	}
+	counts, err := st.ChoirSoloCounts()
+	if err != nil || len(counts) != 2 || counts[0].Soli != 0 || counts[1].Soli != 0 {
+		t.Fatalf("voting concert should not count %+v %v", counts, err)
+	}
+	if _, err := st.SetDateStatus(concert.ID, StatusAccepted); err != nil {
+		t.Fatal(err)
+	}
+	counts, err = st.ChoirSoloCounts()
+	if err != nil || len(counts) != 2 || counts[0].ID != ada.ID || counts[0].Soli != 1 || counts[1].ID != ben.ID || counts[1].Soli != 0 {
+		t.Fatalf("accepted concert %+v %v", counts, err)
+	}
+	rehearsal, err := st.CreateDate("Practice", CategoryRehearsal, time.Now().UTC().Add(48*time.Hour), nil, "", "", "", []string{RoleChoir}, Bring{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetDateTitleInputs(rehearsal.ID, []DateTitleInput{{ID: song.ID, SoloistIDs: []string{ada.ID, ben.ID}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.SetDateStatus(rehearsal.ID, StatusAccepted); err != nil {
+		t.Fatal(err)
+	}
+	counts, err = st.ChoirSoloCounts()
+	if err != nil || counts[0].ID != ada.ID || counts[0].Soli != 1 || counts[1].Soli != 0 {
+		t.Fatalf("rehearsal should not count %+v %v", counts, err)
+	}
+	tour, err := st.CreateDate("Tour", CategoryConcertTour, time.Now().UTC().Add(72*time.Hour), nil, "", "", "", []string{RoleChoir}, Bring{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetDateTitleInputs(tour.ID, []DateTitleInput{{ID: song.ID, SoloistIDs: []string{ada.ID}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.SetDateStatus(tour.ID, StatusAccepted); err != nil {
+		t.Fatal(err)
+	}
+	counts, err = st.ChoirSoloCounts()
+	if err != nil || counts[0].ID != ada.ID || counts[0].Soli != 2 || counts[1].Soli != 0 {
+		t.Fatalf("tour should count %+v %v", counts, err)
+	}
+	if err := st.SetDateTitles(concert.ID, []string{song.ID}); err != nil {
+		t.Fatal(err)
+	}
+	counts, err = st.ChoirSoloCounts()
+	if err != nil || counts[0].ID != ada.ID || counts[0].Soli != 1 {
+		t.Fatalf("cleared concert soloists %+v %v", counts, err)
+	}
+}
+
 func TestArchiveLinks(t *testing.T) {
 	st, err := Open(filepath.Join(t.TempDir(), "archive-links.db"))
 	if err != nil {
@@ -1071,7 +1156,7 @@ func TestSongProposals(t *testing.T) {
 	if err != nil || p.Status != ProposalAccepted || p.Comment != "Sunday set" {
 		t.Fatalf("update %+v %v", p, err)
 	}
-	list, err := st.ListProposals()
+	list, err := st.ListProposals("")
 	if err != nil || len(list) != 1 || list[0].Nickname != "Ada" {
 		t.Fatalf("list %+v %v", list, err)
 	}
@@ -1080,6 +1165,48 @@ func TestSongProposals(t *testing.T) {
 	}
 	if err := st.DeleteProposal(p.ID); err != ErrNotFound {
 		t.Fatalf("second delete %v", err)
+	}
+}
+
+func TestProposalVotes(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "prop-votes.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	ada, err := st.CreateUser("Ada", "ada@example.com", "secret1", RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ben, err := st.CreateUser("Ben", "ben@example.com", "secret1", RoleChoir, "Alt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := st.CreateProposal(ada.ID, "Oceans", "https://example.com/oceans")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Votes.Up != 0 || p.MyVote != "" {
+		t.Fatalf("fresh %+v", p)
+	}
+	if _, err := st.SetProposalVote(ada.ID, p.ID, "maybe"); err == nil {
+		t.Fatal("invalid vote should fail")
+	}
+	voted, err := st.SetProposalVote(ada.ID, p.ID, ProposalVoteUp)
+	if err != nil || voted.MyVote != ProposalVoteUp || voted.Votes.Up != 1 {
+		t.Fatalf("ada up %+v %v", voted, err)
+	}
+	if _, err := st.SetProposalVote(ben.ID, p.ID, ProposalVoteDown); err != nil {
+		t.Fatal(err)
+	}
+	list, err := st.ListProposals(ada.ID)
+	if err != nil || len(list) != 1 || list[0].MyVote != ProposalVoteUp || list[0].Votes.Up != 1 || list[0].Votes.Down != 1 || list[0].Votes.Neutral != 0 {
+		t.Fatalf("list %+v %v", list, err)
+	}
+	cleared, err := st.SetProposalVote(ada.ID, p.ID, "")
+	if err != nil || cleared.MyVote != "" || cleared.Votes.Up != 0 || cleared.Votes.Down != 1 {
+		t.Fatalf("clear %+v %v", cleared, err)
 	}
 }
 

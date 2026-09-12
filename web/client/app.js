@@ -915,14 +915,18 @@ function showTitlesList() {
   const items = date?.titles || [];
   if (copyBtn) copyBtn.disabled = items.length === 0;
   list.innerHTML = items.length
-    ? items.map((item, i) => `
+    ? items.map((item, i) => {
+      const soloists = (item.soloists || []).map((s) => s.nickname).filter(Boolean).join(", ");
+      return `
       <button type="button" class="title-item" data-title="${item.id}">
         <span class="title-num">${i + 1}</span>
         <div class="title-item-text">
           <strong>${escapeHtml(item.title)}</strong>
           ${item.composer ? `<p>${escapeHtml(item.composer)}</p>` : ""}
+          ${soloists ? `<p class="title-soloists">${escapeHtml(I18N.t("soloists"))}: ${escapeHtml(soloists)}</p>` : ""}
         </div>
-      </button>`).join("")
+      </button>`;
+    }).join("")
     : `<p class="muted">${I18N.t("noTitles")}</p>`;
 }
 
@@ -1738,6 +1742,8 @@ function showGate(which) {
 let newsTickerRun = 0;
 let newsTickerPause = false;
 let newsTickerWait = 0;
+let newsTickerOfficial = "";
+let newsTickerRemindOnce = true;
 
 function stopNewsTicker(bar) {
   newsTickerRun += 1;
@@ -1748,12 +1754,30 @@ function stopNewsTicker(bar) {
   bar?.querySelector(".news-ticker-text")?.getAnimations().forEach((anim) => anim.cancel());
 }
 
+function hasAddressInfo(user) {
+  return !!String(user?.address || "").trim();
+}
+
+function newsTickerReminders() {
+  if (!newsTickerRemindOnce || !me || me.mustChangePassword) return [];
+  const bits = [];
+  if (!me.hasPhoto) bits.push(I18N.t("feedNeedPhoto"));
+  if (!hasAddressInfo(me)) bits.push(I18N.t("feedNeedAddress"));
+  return bits;
+}
+
+function newsTickerText(official) {
+  if (official !== undefined) newsTickerOfficial = String(official || "").trim();
+  return [...newsTickerReminders(), newsTickerOfficial].filter(Boolean).join("   ·   ");
+}
+
 function paintNewsTicker(text) {
   const bar = document.getElementById("news-ticker");
   if (!bar) return;
   const el = bar.querySelector(".news-ticker-text");
   if (!el) return;
-  const clean = String(text || "").trim();
+  const remind = newsTickerReminders();
+  const clean = newsTickerText(text);
   stopNewsTicker(bar);
   const runId = newsTickerRun;
   if (!clean) {
@@ -1763,7 +1787,10 @@ function paintNewsTicker(text) {
   }
   el.textContent = clean;
   bar.hidden = false;
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    if (remind.length) newsTickerRemindOnce = false;
+    return;
+  }
 
   const cycle = () => {
     if (runId !== newsTickerRun || bar.hidden) return;
@@ -1777,6 +1804,11 @@ function paintNewsTicker(text) {
     if (newsTickerPause) anim.pause();
     anim.finished.then(() => {
       if (runId !== newsTickerRun) return;
+      if (remind.length) {
+        newsTickerRemindOnce = false;
+        paintNewsTicker();
+        return;
+      }
       newsTickerWait = window.setTimeout(cycle, 2000);
     }).catch(() => {});
   };
@@ -1796,7 +1828,7 @@ function paintNewsTicker(text) {
   });
   window.addEventListener("resize", () => {
     if (bar.hidden) return;
-    paintNewsTicker(bar.querySelector(".news-ticker-text")?.textContent || "");
+    paintNewsTicker();
   });
 })();
 
@@ -1839,6 +1871,7 @@ document.getElementById("online-chip-list")?.addEventListener("click", (e) => {
 });
 
 async function enterApp() {
+  newsTickerRemindOnce = true;
   showGate("app");
   document.getElementById("who-name").textContent = me.nickname;
   document.getElementById("who-meta").textContent = `${I18N.role(me.role)} · ${I18N.subrole(me.subrole)} · ${me.email}`;
@@ -4202,6 +4235,7 @@ function connectWS() {
 
 I18N.onChange(() => {
   I18N.apply();
+  paintNewsTicker();
   paintThemeButtons();
   paintInstallButtons();
   paintOnline();
@@ -4237,6 +4271,7 @@ I18N.onChange(() => {
       renderChat(document.getElementById("chat-list").scrollTop);
     }
     if (paneVisible("proposals-dialog")) renderProposalList();
+    if (document.getElementById("titles-dialog")?.open) showTitlesList();
     if (paneVisible("directory-dialog")) renderDirectory();
     if (paneVisible("archive-dialog")) renderArchive();
     paintHubShare();
@@ -4407,6 +4442,13 @@ document.getElementById("schedule-close").addEventListener("click", () => {
   document.getElementById("schedule-dialog").close();
 });
 
+function titleClipboardLine(item) {
+  const title = item?.title || "";
+  const names = (item?.soloists || []).map((s) => s.nickname).filter(Boolean);
+  if (!title) return "";
+  return names.length ? `${title} — ${I18N.t("soloLabel")}: ${names.join(", ")}` : title;
+}
+
 function numberedTitleList(titles) {
   return titles.map((title, i) => `${i + 1}. ${title}`).join("\n");
 }
@@ -4454,7 +4496,7 @@ function flashCopyBtn(btn) {
 
 document.getElementById("titles-copy").addEventListener("click", async () => {
   const date = dates.find((d) => d.id === titlesDateId);
-  const titles = (date?.titles || []).map((item) => item.title).filter((t) => t);
+  const titles = (date?.titles || []).map((item) => titleClipboardLine(item)).filter((t) => t);
   if (!titles.length) return;
   try {
     await copyText(titlesClipboardText(date, titles));
@@ -4626,8 +4668,36 @@ function renderProposalList() {
       <p class="meta">${escapeHtml(formatWhen(p.createdAt))}</p>
       ${p.url ? `<p class="proposal-url">${proposalLink(p.url)}</p>` : ""}
       ${p.comment ? `<p class="proposal-comment"><span class="label">${escapeHtml(I18N.t("adminComment"))}</span>${escapeHtml(p.comment)}</p>` : ""}
+      <div class="proposal-vote-row">
+        ${proposalVoteButton(p, "up", "👍", "proposalVoteUp")}
+        ${proposalVoteButton(p, "neutral", "➖", "proposalVoteNeutral")}
+        ${proposalVoteButton(p, "down", "👎", "proposalVoteDown")}
+      </div>
     </article>
   `).join("");
+}
+
+function proposalVoteButton(p, choice, icon, labelKey) {
+  const votes = p.votes || {};
+  const count = choice === "up" ? (votes.up || 0) : choice === "down" ? (votes.down || 0) : (votes.neutral || 0);
+  const on = p.myVote === choice;
+  return `<button type="button" class="proposal-vote${on ? " active" : ""}" data-proposal-vote="${escapeHtml(p.id)}" data-choice="${choice}" aria-pressed="${on}" aria-label="${escapeHtml(I18N.t(labelKey))}">${icon} ${count}</button>`;
+}
+
+async function setProposalVote(id, choice) {
+  const p = proposals.find((x) => x.id === id);
+  const next = p?.myVote === choice ? "" : choice;
+  const data = await api(`/api/proposals/${encodeURIComponent(id)}/vote`, {
+    method: "PUT",
+    body: JSON.stringify({ choice: next }),
+  });
+  if (data.proposal) {
+    proposals = proposals.map((item) => item.id === data.proposal.id ? data.proposal : item);
+  } else {
+    await loadProposals();
+    return;
+  }
+  renderProposalList();
 }
 
 function phoneHref(phone) {
@@ -4921,6 +4991,16 @@ document.getElementById("propose-form").addEventListener("submit", async (e) => 
     showTab("proposals");
   } catch (err) {
     showError(errEl, err.message);
+  }
+});
+
+document.getElementById("proposals-list").addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-proposal-vote]");
+  if (!btn) return;
+  try {
+    await setProposalVote(btn.dataset.proposalVote, btn.dataset.choice);
+  } catch (err) {
+    alert(err.message);
   }
 });
 

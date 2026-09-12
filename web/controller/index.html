@@ -66,6 +66,7 @@
       <button type="button" class="tab" data-tab="channels" data-i18n="tabChannels">Kanäle</button>
       <button type="button" class="tab" data-tab="proposals" data-i18n="tabProposals">Songvorschläge</button>
       <button type="button" class="tab" data-tab="ranking" data-i18n="tabRanking">Rang</button>
+      <button type="button" class="tab" data-tab="soli" data-i18n="tabSoli">Soli</button>
       <button type="button" class="tab" data-tab="settings" data-i18n="tabSettings">Einstellungen</button>
     </nav>
 
@@ -312,6 +313,7 @@
               <th data-i18n="songURL">URL</th>
               <th data-i18n="status">Status</th>
               <th data-i18n="adminComment">Kommentar der Verwaltung</th>
+              <th data-i18n="proposalVotes">Stimmen</th>
               <th></th>
             </tr>
           </thead>
@@ -340,6 +342,23 @@
             </tr>
           </thead>
           <tbody id="ranking-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="tab-soli" class="tab-panel" hidden>
+      <h2 data-i18n="tabSoli">Soli</h2>
+      <p class="lede" data-i18n="soliHint">Wie oft Chor-Personen in angenommenen Konzerten und Konzertreisen ein Solo gesungen haben. Proben zählen nicht.</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th data-i18n="name">Name</th>
+              <th data-i18n="subrole">Teilrolle</th>
+              <th data-i18n="soli">Soli</th>
+            </tr>
+          </thead>
+          <tbody id="soli-body"></tbody>
         </table>
       </div>
     </div>

@@ -4,10 +4,16 @@
       date: "2026-09-12",
       items: {
         de: [
+          "Beim Öffnen erinnert der Lauftext einmal an Profilbild und Adresse, bevor die offizielle Meldung kommt.",
           "In der Personenübersicht der Verwaltung steht, wann jemand zuletzt verbunden war.",
+          "Auf der Titelliste kann die Verwaltung Chor-Solisten setzen. Mitglieder sehen die Namen. Unter Soli steht, wie oft jemand in Konzerten ein Solo gesungen hat.",
+          "Bei Songvorschlägen gibt es Daumen hoch, Neutral und Daumen runter. Noch einmal tippen nimmt die Stimme zurück.",
         ],
         en: [
+          "On each open, the news ticker once reminds you to add a profile picture and address before the official message.",
           "The controller people list shows when someone last connected.",
+          "Controllers can assign choir soloists on each title list. Members see the names. The Soli tab counts concert soli, not rehearsals.",
+          "Song proposals have thumbs up, neutral, and thumbs down. Tap the same choice again to clear your vote.",
         ],
       },
     },

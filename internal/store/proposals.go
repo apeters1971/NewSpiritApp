@@ -16,18 +16,30 @@ const (
 	proposalTitleMax   = 200
 	proposalURLMax     = 500
 	proposalCommentMax = 2000
+
+	ProposalVoteUp      = "up"
+	ProposalVoteNeutral = "neutral"
+	ProposalVoteDown    = "down"
 )
 
+type ProposalVoteCounts struct {
+	Up      int `json:"up"`
+	Neutral int `json:"neutral"`
+	Down    int `json:"down"`
+}
+
 type SongProposal struct {
-	ID        string `json:"id"`
-	UserID    string `json:"userId"`
-	Nickname  string `json:"nickname"`
-	Title     string `json:"title"`
-	URL       string `json:"url,omitempty"`
-	Status    string `json:"status"`
-	Comment   string `json:"comment,omitempty"`
-	CreatedAt string `json:"createdAt"`
-	UpdatedAt string `json:"updatedAt"`
+	ID        string             `json:"id"`
+	UserID    string             `json:"userId"`
+	Nickname  string             `json:"nickname"`
+	Title     string             `json:"title"`
+	URL       string             `json:"url,omitempty"`
+	Status    string             `json:"status"`
+	Comment   string             `json:"comment,omitempty"`
+	MyVote    string             `json:"myVote,omitempty"`
+	Votes     ProposalVoteCounts `json:"votes"`
+	CreatedAt string             `json:"createdAt"`
+	UpdatedAt string             `json:"updatedAt"`
 }
 
 func (s *Store) migrateProposals() error {
@@ -42,6 +54,23 @@ CREATE TABLE IF NOT EXISTS song_proposals (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 )`)
+	if err != nil {
+		return err
+	}
+	return s.migrateProposalVotes()
+}
+
+func (s *Store) migrateProposalVotes() error {
+	_, err := s.db.Exec(`
+CREATE TABLE IF NOT EXISTS proposal_votes (
+  proposal_id TEXT NOT NULL REFERENCES song_proposals(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  choice TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (proposal_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_proposal_votes_proposal ON proposal_votes(proposal_id);
+`)
 	return err
 }
 
@@ -108,10 +137,10 @@ VALUES (?, ?, ?, ?, ?, '', ?, ?)`, id, userID, title, rawURL, ProposalPending, t
 	if err != nil {
 		return SongProposal{}, err
 	}
-	return s.ProposalByID(id)
+	return s.proposalByID(id, "")
 }
 
-func (s *Store) ListProposals() ([]SongProposal, error) {
+func (s *Store) ListProposals(viewerID string) ([]SongProposal, error) {
 	rows, err := s.db.Query(`
 SELECT p.id, p.user_id, u.nickname, p.title, p.url, p.status, p.comment, p.created_at, p.updated_at
 FROM song_proposals p
@@ -129,10 +158,20 @@ ORDER BY CASE p.status WHEN 'pending' THEN 0 WHEN 'accepted' THEN 1 ELSE 2 END, 
 		}
 		out = append(out, p)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := s.attachProposalVotes(out, viewerID); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (s *Store) ProposalByID(id string) (SongProposal, error) {
+	return s.proposalByID(id, "")
+}
+
+func (s *Store) proposalByID(id, viewerID string) (SongProposal, error) {
 	row := s.db.QueryRow(`
 SELECT p.id, p.user_id, u.nickname, p.title, p.url, p.status, p.comment, p.created_at, p.updated_at
 FROM song_proposals p
@@ -142,7 +181,14 @@ WHERE p.id=?`, id)
 	if err == sql.ErrNoRows {
 		return SongProposal{}, ErrNotFound
 	}
-	return p, err
+	if err != nil {
+		return SongProposal{}, err
+	}
+	list := []SongProposal{p}
+	if err := s.attachProposalVotes(list, viewerID); err != nil {
+		return SongProposal{}, err
+	}
+	return list[0], nil
 }
 
 func (s *Store) UpdateProposal(id string, status, comment *string) (SongProposal, error) {
@@ -185,6 +231,110 @@ func (s *Store) DeleteProposal(id string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (s *Store) SetProposalVote(userID, proposalID, choice string) (SongProposal, error) {
+	if _, err := s.UserByID(userID); err != nil {
+		return SongProposal{}, err
+	}
+	if _, err := s.ProposalByID(proposalID); err != nil {
+		return SongProposal{}, err
+	}
+	choice = strings.TrimSpace(strings.ToLower(choice))
+	if choice == "" {
+		if _, err := s.db.Exec(`DELETE FROM proposal_votes WHERE proposal_id=? AND user_id=?`, proposalID, userID); err != nil {
+			return SongProposal{}, err
+		}
+		return s.proposalByID(proposalID, userID)
+	}
+	switch choice {
+	case ProposalVoteUp, ProposalVoteNeutral, ProposalVoteDown:
+	default:
+		return SongProposal{}, fmt.Errorf("invalid proposal vote")
+	}
+	_, err := s.db.Exec(`
+INSERT INTO proposal_votes (proposal_id, user_id, choice, updated_at)
+VALUES (?, ?, ?, ?)
+ON CONFLICT(proposal_id, user_id) DO UPDATE SET choice=excluded.choice, updated_at=excluded.updated_at`,
+		proposalID, userID, choice, fmtTime(now()))
+	if err != nil {
+		return SongProposal{}, err
+	}
+	return s.proposalByID(proposalID, userID)
+}
+
+func (s *Store) attachProposalVotes(list []SongProposal, viewerID string) error {
+	if len(list) == 0 {
+		return nil
+	}
+	ids := make([]string, len(list))
+	index := map[string]int{}
+	for i := range list {
+		ids[i] = list[i].ID
+		index[list[i].ID] = i
+		list[i].Votes = ProposalVoteCounts{}
+		list[i].MyVote = ""
+	}
+	placeholders := strings.Repeat("?,", len(ids))
+	placeholders = placeholders[:len(placeholders)-1]
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+	rows, err := s.db.Query(`
+SELECT proposal_id, choice, COUNT(*)
+FROM proposal_votes
+WHERE proposal_id IN (`+placeholders+`)
+GROUP BY proposal_id, choice`, args...)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var id, choice string
+		var n int
+		if err := rows.Scan(&id, &choice, &n); err != nil {
+			rows.Close()
+			return err
+		}
+		i, ok := index[id]
+		if !ok {
+			continue
+		}
+		switch choice {
+		case ProposalVoteUp:
+			list[i].Votes.Up = n
+		case ProposalVoteNeutral:
+			list[i].Votes.Neutral = n
+		case ProposalVoteDown:
+			list[i].Votes.Down = n
+		}
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(viewerID) == "" {
+		return nil
+	}
+	mine, err := s.db.Query(`
+SELECT proposal_id, choice
+FROM proposal_votes
+WHERE user_id=? AND proposal_id IN (`+placeholders+`)`, append([]any{viewerID}, args...)...)
+	if err != nil {
+		return err
+	}
+	defer mine.Close()
+	for mine.Next() {
+		var id, choice string
+		if err := mine.Scan(&id, &choice); err != nil {
+			return err
+		}
+		if i, ok := index[id]; ok {
+			list[i].MyVote = choice
+		}
+	}
+	return mine.Err()
 }
 
 type proposalScanner interface {

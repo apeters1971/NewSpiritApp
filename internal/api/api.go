@@ -110,6 +110,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/archive/{id}/links", s.handleArchiveAddLink)
 	mux.HandleFunc("GET /api/proposals", s.handleProposals)
 	mux.HandleFunc("POST /api/proposals", s.handleCreateProposal)
+	mux.HandleFunc("PUT /api/proposals/{id}/vote", s.handleProposalVote)
 	mux.HandleFunc("GET /api/directory", s.handleDirectory)
 	mux.HandleFunc("GET /api/me/calendar", s.handleMeCalendar)
 	mux.HandleFunc("GET /api/stream", s.handleStreamStatus)
@@ -1300,7 +1301,12 @@ func (s *Server) handleControllerState(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	proposals, err := s.Store.ListProposals()
+	proposals, err := s.Store.ListProposals("")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	choirSoli, err := s.Store.ChoirSoloCounts()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1320,6 +1326,7 @@ func (s *Server) handleControllerState(w http.ResponseWriter, r *http.Request) {
 		"archive":    archive,
 		"channels":   channels,
 		"proposals":  proposals,
+		"choirSoli":  choirSoli,
 		"unread":     unread,
 	})
 }
@@ -1460,17 +1467,29 @@ type pollOptionBody struct {
 }
 
 type dateBody struct {
-	Title    string           `json:"title"`
-	Category string           `json:"category"`
-	StartsAt string           `json:"startsAt"`
-	EndsAt   string           `json:"endsAt"`
-	Location string           `json:"location"`
-	Notes    string           `json:"notes"`
-	Schedule string           `json:"schedule"`
-	Roles    []string         `json:"roles"`
-	Bring    store.Bring      `json:"bring"`
-	Options  []pollOptionBody `json:"options"`
-	TitleIDs []string         `json:"titleIds"`
+	Title    string                 `json:"title"`
+	Category string                 `json:"category"`
+	StartsAt string                 `json:"startsAt"`
+	EndsAt   string                 `json:"endsAt"`
+	Location string                 `json:"location"`
+	Notes    string                 `json:"notes"`
+	Schedule string                 `json:"schedule"`
+	Roles    []string               `json:"roles"`
+	Bring    store.Bring            `json:"bring"`
+	Options  []pollOptionBody       `json:"options"`
+	TitleIDs []string               `json:"titleIds"`
+	Titles   []store.DateTitleInput `json:"titles"`
+}
+
+func dateTitleInputs(body dateBody) []store.DateTitleInput {
+	if len(body.Titles) > 0 {
+		return body.Titles
+	}
+	out := make([]store.DateTitleInput, 0, len(body.TitleIDs))
+	for _, id := range body.TitleIDs {
+		out = append(out, store.DateTitleInput{ID: id})
+	}
+	return out
 }
 
 func parsePollOptions(raw []pollOptionBody) ([]store.PollOptionInput, error) {
@@ -1552,7 +1571,7 @@ func (s *Server) handleCreateDate(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	if err := s.Store.SetDateTitles(d.ID, body.TitleIDs); err != nil {
+	if err := s.Store.SetDateTitleInputs(d.ID, dateTitleInputs(body)); err != nil {
 		writeStoreError(w, err)
 		return
 	}
@@ -1578,7 +1597,7 @@ func (s *Server) handleUpdateDate(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	if err := s.Store.SetDateTitles(r.PathValue("id"), body.TitleIDs); err != nil {
+	if err := s.Store.SetDateTitleInputs(r.PathValue("id"), dateTitleInputs(body)); err != nil {
 		writeStoreError(w, err)
 		return
 	}
@@ -2102,16 +2121,39 @@ func (s *Server) handleDirectory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleProposals(w http.ResponseWriter, r *http.Request) {
-	if _, err := s.userFromRequest(r); err != nil {
+	user, err := s.userFromRequest(r)
+	if err != nil {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	list, err := s.Store.ListProposals()
+	list, err := s.Store.ListProposals(user.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"proposals": list})
+}
+
+func (s *Server) handleProposalVote(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var body struct {
+		Choice string `json:"choice"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	p, err := s.Store.SetProposalVote(user.ID, r.PathValue("id"), body.Choice)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"proposal": p})
 }
 
 func (s *Server) handleCreateProposal(w http.ResponseWriter, r *http.Request) {
