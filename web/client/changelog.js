@@ -1,6 +1,17 @@
 (() => {
   const ENTRIES = [
     {
+      date: "2026-09-12",
+      items: {
+        de: [
+          "In der Personenübersicht der Verwaltung steht, wann jemand zuletzt verbunden war.",
+        ],
+        en: [
+          "The controller people list shows when someone last connected.",
+        ],
+      },
+    },
+    {
       date: "2026-09-11",
       items: {
         de: [

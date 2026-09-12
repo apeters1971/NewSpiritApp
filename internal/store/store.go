@@ -44,6 +44,7 @@ type User struct {
 	MustChangePassword bool       `json:"mustChangePassword,omitempty"`
 	Streamer           bool       `json:"streamer"`
 	CreatedAt          time.Time  `json:"createdAt"`
+	LastConnectedAt    *time.Time `json:"lastConnectedAt,omitempty"`
 }
 
 type OnlinePerson struct {
@@ -272,6 +273,7 @@ CREATE TABLE IF NOT EXISTS settings (
 	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN alt_email TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0`)
 	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN streamer INTEGER NOT NULL DEFAULT 0`)
+	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN last_connected_at TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`
 CREATE TABLE IF NOT EXISTS chat_reactions (
   message_id TEXT NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
@@ -637,8 +639,23 @@ func (s *Store) PeopleByIDs(ids []string) ([]OnlinePerson, error) {
 	return out, rows.Err()
 }
 
+func (s *Store) TouchLastConnected(id string) error {
+	if id == "" {
+		return ErrNotFound
+	}
+	res, err := s.db.Exec(`UPDATE users SET last_connected_at=? WHERE id=?`, fmtTime(now()), id)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (s *Store) ListUsers() ([]User, error) {
-	rows, err := s.db.Query(`SELECT id, nickname, email, role, subrole, address, phone, alt_email, birthday, must_change_password, streamer, created_at FROM users ORDER BY nickname COLLATE NOCASE`)
+	rows, err := s.db.Query(`SELECT id, nickname, email, role, subrole, address, phone, alt_email, birthday, must_change_password, streamer, created_at, last_connected_at FROM users ORDER BY nickname COLLATE NOCASE`)
 	if err != nil {
 		return nil, err
 	}
@@ -698,7 +715,7 @@ func (s *Store) ListDirectory() ([]DirectoryEntry, error) {
 }
 
 func (s *Store) UserByID(id string) (User, error) {
-	u, err := scanUserRow(s.db.QueryRow(`SELECT id, nickname, email, role, subrole, address, phone, alt_email, birthday, must_change_password, streamer, created_at FROM users WHERE id=?`, id))
+	u, err := scanUserRow(s.db.QueryRow(`SELECT id, nickname, email, role, subrole, address, phone, alt_email, birthday, must_change_password, streamer, created_at, last_connected_at FROM users WHERE id=?`, id))
 	if err != nil {
 		return User{}, err
 	}
@@ -753,7 +770,7 @@ func (s *Store) UserBySession(sessionID string) (User, error) {
 		return User{}, ErrUnauthorized
 	}
 	u, err := scanUserRow(s.db.QueryRow(`
-SELECT u.id, u.nickname, u.email, u.role, u.subrole, u.address, u.phone, u.alt_email, u.birthday, u.must_change_password, u.streamer, u.created_at
+SELECT u.id, u.nickname, u.email, u.role, u.subrole, u.address, u.phone, u.alt_email, u.birthday, u.must_change_password, u.streamer, u.created_at, u.last_connected_at
 FROM sessions s
 JOIN users u ON u.id = s.user_id
 WHERE s.id=? AND s.revoked_at IS NULL`, sessionID))
@@ -1384,15 +1401,16 @@ type rowScanner interface {
 
 func scanUser(rs rowScanner) (User, error) {
 	var u User
-	var created string
+	var created, lastConnected string
 	var mustChange, streamer int
-	if err := rs.Scan(&u.ID, &u.Nickname, &u.Email, &u.Role, &u.Subrole, &u.Address, &u.Phone, &u.AltEmail, &u.Birthday, &mustChange, &streamer, &created); err != nil {
+	if err := rs.Scan(&u.ID, &u.Nickname, &u.Email, &u.Role, &u.Subrole, &u.Address, &u.Phone, &u.AltEmail, &u.Birthday, &mustChange, &streamer, &created, &lastConnected); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return User{}, ErrNotFound
 		}
 		return User{}, err
 	}
 	u.CreatedAt = parseTime(created)
+	u.LastConnectedAt = parseTimePtr(sql.NullString{String: lastConnected, Valid: lastConnected != ""})
 	u.MustChangePassword = mustChange != 0
 	u.Streamer = streamer != 0
 	return u, nil

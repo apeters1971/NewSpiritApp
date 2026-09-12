@@ -269,6 +269,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "invalid email or password")
 		return
 	}
+	_ = s.Store.TouchLastConnected(user.ID)
 	http.SetCookie(w, sessionCookie(memberCookie, sid, 60*60*24*30, r))
 	writeJSON(w, http.StatusOK, map[string]any{"user": user})
 }
@@ -2207,6 +2208,7 @@ func (s *Server) handleMemberWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c := s.Hub.RegisterMember(conn, user.ID, user.Role)
+	_ = s.Store.TouchLastConnected(user.ID)
 	s.publishOnline()
 	defer func() {
 		if s.Hub.StopStream(user.ID) {

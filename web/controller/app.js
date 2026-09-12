@@ -276,6 +276,7 @@ function renderPeople() {
       <td>${escapeHtml(I18N.role(u.role))}</td>
       <td>${escapeHtml(I18N.subrole(u.subrole))}</td>
       <td>${u.streamer ? escapeHtml(I18N.t("streamer")) : "—"}</td>
+      <td>${u.lastConnectedAt ? escapeHtml(formatWhen(u.lastConnectedAt)) : escapeHtml(I18N.t("lastConnectedNever"))}</td>
     </tr>
   `).join("");
 }

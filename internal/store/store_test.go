@@ -2,6 +2,7 @@ package store
 
 import (
 	"bytes"
+	"errors"
 	"image"
 	"image/jpeg"
 	"path/filepath"
@@ -296,6 +297,40 @@ func TestUserPhoto(t *testing.T) {
 	}
 	if _, err := NormalizePhoto([]byte("not-an-image")); err == nil {
 		t.Fatal("expected invalid picture")
+	}
+}
+
+func TestLastConnected(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "last-connected.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	u, err := st.CreateUser("Ada", "ada@example.com", "secret1", RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.LastConnectedAt != nil {
+		t.Fatal("new user should have no last connect")
+	}
+	fresh, err := st.UserByID(u.ID)
+	if err != nil || fresh.LastConnectedAt != nil {
+		t.Fatalf("fresh %+v %v", fresh, err)
+	}
+	if err := st.TouchLastConnected(u.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.UserByID(u.ID)
+	if err != nil || got.LastConnectedAt == nil || got.LastConnectedAt.IsZero() {
+		t.Fatalf("touched %+v %v", got, err)
+	}
+	list, err := st.ListUsers()
+	if err != nil || len(list) != 1 || list[0].LastConnectedAt == nil {
+		t.Fatalf("list %+v %v", list, err)
+	}
+	if err := st.TouchLastConnected("missing"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing %v", err)
 	}
 }
 
