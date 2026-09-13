@@ -12,7 +12,6 @@ const (
 	RoleBand        = "band"
 	RoleOrchestra   = "orchestra"
 	RoleTechnician  = "technician"
-	RoleArchiver    = "archiver"
 	RoleEhemalige   = "ehemalige"
 	StatusVoting    = "voting"
 	StatusAccepted  = "accepted"
@@ -25,7 +24,7 @@ const (
 	VoteSetByAdmin  = "admin"
 )
 
-var Roles = []string{RoleChoir, RoleChorleiter, RoleBand, RoleOrchestra, RoleTechnician, RoleArchiver, RoleEhemalige}
+var Roles = []string{RoleChoir, RoleChorleiter, RoleBand, RoleOrchestra, RoleTechnician, RoleEhemalige}
 
 var Subroles = map[string][]string{
 	RoleChoir:       {"Sopran", "Alt", "Tenor/Bass"},
@@ -33,7 +32,6 @@ var Subroles = map[string][]string{
 	RoleBand:        {"Drums", "Percussion", "Guitar", "Hammond", "E-Bass", "Trumpet", "Sax", "Trombone", "Piano"},
 	RoleOrchestra:   {"Strings", "Woodbrass", "Brass", "Percussion", "Harp"},
 	RoleTechnician:  {"Sound", "Light", "Stage"},
-	RoleArchiver:    {"Archiver"},
 	RoleEhemalige:   {"Ehemalige"},
 }
 
@@ -43,7 +41,6 @@ var RoleLabels = map[string]string{
 	RoleBand:        "Band",
 	RoleOrchestra:   "Orchestra",
 	RoleTechnician:  "Technician",
-	RoleArchiver:    "Archiver",
 	RoleEhemalige:   "Alumni",
 }
 
@@ -58,11 +55,7 @@ func RoleSeesDate(role string, dateRoles []string) bool {
 }
 
 func RoleCanVote(role string) bool {
-	return role != RoleEhemalige && role != RoleArchiver
-}
-
-func RoleCanTrashArchive(role string) bool {
-	return role == RoleArchiver
+	return role != RoleEhemalige
 }
 
 func PlannerCreateRoles(user User, requested []string) ([]string, error) {

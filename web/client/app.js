@@ -1382,7 +1382,7 @@ function archiveCanOpenWith() {
 }
 
 function canTrashArchive() {
-  return me?.role === "archiver";
+  return !!me?.archiver;
 }
 
 function archiveFileToolsHTML(id, file) {

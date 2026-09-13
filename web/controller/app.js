@@ -356,6 +356,7 @@ function renderPeople() {
       <td>${escapeHtml(I18N.subrole(u.subrole))}</td>
       <td>${u.streamer ? escapeHtml(I18N.t("streamer")) : "—"}</td>
       <td>${u.planner ? escapeHtml(I18N.t("planner")) : "—"}</td>
+      <td>${u.archiver ? escapeHtml(I18N.t("archiver")) : "—"}</td>
       <td>${u.lastConnectedAt ? escapeHtml(formatWhen(u.lastConnectedAt)) : escapeHtml(I18N.t("lastConnectedNever"))}</td>
     </tr>
   `).join("");
@@ -551,6 +552,7 @@ function resetUserForm() {
   fillSubroles();
   document.getElementById("user-streamer").checked = false;
   document.getElementById("user-planner").checked = false;
+  document.getElementById("user-archiver").checked = false;
   renderPeople();
   paintPersonPhoto();
   paintUserChannels();
@@ -573,6 +575,7 @@ function fillUserForm(u) {
   document.getElementById("user-subrole").value = u.subrole;
   document.getElementById("user-streamer").checked = !!u.streamer;
   document.getElementById("user-planner").checked = !!u.planner;
+  document.getElementById("user-archiver").checked = !!u.archiver;
   document.getElementById("btn-user-delete").disabled = false;
   renderPeople();
   paintPersonPhoto();
@@ -1376,6 +1379,7 @@ document.getElementById("people-form").addEventListener("submit", async (e) => {
     subrole: document.getElementById("user-subrole").value,
     streamer: document.getElementById("user-streamer").checked,
     planner: document.getElementById("user-planner").checked,
+    archiver: document.getElementById("user-archiver").checked,
   };
   try {
     const data = id

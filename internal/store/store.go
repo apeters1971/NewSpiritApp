@@ -46,6 +46,7 @@ type User struct {
 	MustChangePassword bool       `json:"mustChangePassword,omitempty"`
 	Streamer           bool       `json:"streamer"`
 	Planner            bool       `json:"planner"`
+	Archiver           bool       `json:"archiver"`
 	CreatedAt          time.Time  `json:"createdAt"`
 	LastConnectedAt    *time.Time `json:"lastConnectedAt,omitempty"`
 }
@@ -293,6 +294,8 @@ CREATE TABLE IF NOT EXISTS settings (
 	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN last_connected_at TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN member_since TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN planner INTEGER NOT NULL DEFAULT 0`)
+	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN archiver INTEGER NOT NULL DEFAULT 0`)
+	_, _ = s.db.Exec(`UPDATE users SET archiver=1, role='choir', subrole=CASE WHEN subrole='Archiver' THEN 'Sopran' ELSE subrole END WHERE role='archiver'`)
 	_, _ = s.db.Exec(`ALTER TABLE dates ADD COLUMN created_by TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`
 CREATE TABLE IF NOT EXISTS chat_reactions (
@@ -552,6 +555,16 @@ func (s *Store) SetUserPlanner(id string, on bool) (User, error) {
 	return s.UserByID(id)
 }
 
+func (s *Store) SetUserArchiver(id string, on bool) (User, error) {
+	if _, err := s.UserByID(id); err != nil {
+		return User{}, err
+	}
+	if _, err := s.db.Exec(`UPDATE users SET archiver=? WHERE id=?`, boolInt(on), id); err != nil {
+		return User{}, err
+	}
+	return s.UserByID(id)
+}
+
 func (s *Store) ChangeOwnPassword(id, password string) (User, error) {
 	if len(password) < 6 {
 		return User{}, fmt.Errorf("password must be at least 6 characters")
@@ -711,7 +724,7 @@ func (s *Store) TouchLastConnected(id string) error {
 }
 
 func (s *Store) ListUsers() ([]User, error) {
-	rows, err := s.db.Query(`SELECT id, nickname, email, role, subrole, address, phone, alt_email, birthday, member_since, must_change_password, streamer, planner, created_at, last_connected_at FROM users ORDER BY nickname COLLATE NOCASE`)
+	rows, err := s.db.Query(`SELECT id, nickname, email, role, subrole, address, phone, alt_email, birthday, member_since, must_change_password, streamer, planner, archiver, created_at, last_connected_at FROM users ORDER BY nickname COLLATE NOCASE`)
 	if err != nil {
 		return nil, err
 	}
@@ -771,7 +784,7 @@ func (s *Store) ListDirectory() ([]DirectoryEntry, error) {
 }
 
 func (s *Store) UserByID(id string) (User, error) {
-	u, err := scanUserRow(s.db.QueryRow(`SELECT id, nickname, email, role, subrole, address, phone, alt_email, birthday, member_since, must_change_password, streamer, planner, created_at, last_connected_at FROM users WHERE id=?`, id))
+	u, err := scanUserRow(s.db.QueryRow(`SELECT id, nickname, email, role, subrole, address, phone, alt_email, birthday, member_since, must_change_password, streamer, planner, archiver, created_at, last_connected_at FROM users WHERE id=?`, id))
 	if err != nil {
 		return User{}, err
 	}
@@ -791,11 +804,11 @@ func (s *Store) Login(email, password string) (User, string, error) {
 	}
 	var u User
 	var hash, created string
-	var mustChange, streamer, planner int
+	var mustChange, streamer, planner, archiver int
 	err := s.db.QueryRow(
-		`SELECT id, nickname, email, password_hash, role, subrole, address, phone, alt_email, birthday, member_since, must_change_password, streamer, planner, created_at FROM users WHERE email=?`,
+		`SELECT id, nickname, email, password_hash, role, subrole, address, phone, alt_email, birthday, member_since, must_change_password, streamer, planner, archiver, created_at FROM users WHERE email=?`,
 		email,
-	).Scan(&u.ID, &u.Nickname, &u.Email, &hash, &u.Role, &u.Subrole, &u.Address, &u.Phone, &u.AltEmail, &u.Birthday, &u.MemberSince, &mustChange, &streamer, &planner, &created)
+	).Scan(&u.ID, &u.Nickname, &u.Email, &hash, &u.Role, &u.Subrole, &u.Address, &u.Phone, &u.AltEmail, &u.Birthday, &u.MemberSince, &mustChange, &streamer, &planner, &archiver, &created)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, "", ErrUnauthorized
 	}
@@ -809,6 +822,7 @@ func (s *Store) Login(email, password string) (User, string, error) {
 	u.MustChangePassword = mustChange != 0
 	u.Streamer = streamer != 0
 	u.Planner = planner != 0
+	u.Archiver = archiver != 0
 	sid := newID()
 	if _, err := s.db.Exec(`INSERT INTO sessions(id, user_id, created_at) VALUES(?,?,?)`, sid, u.ID, fmtTime(now())); err != nil {
 		return User{}, "", err
@@ -827,7 +841,7 @@ func (s *Store) UserBySession(sessionID string) (User, error) {
 		return User{}, ErrUnauthorized
 	}
 	u, err := scanUserRow(s.db.QueryRow(`
-SELECT u.id, u.nickname, u.email, u.role, u.subrole, u.address, u.phone, u.alt_email, u.birthday, u.member_since, u.must_change_password, u.streamer, u.planner, u.created_at, u.last_connected_at
+SELECT u.id, u.nickname, u.email, u.role, u.subrole, u.address, u.phone, u.alt_email, u.birthday, u.member_since, u.must_change_password, u.streamer, u.planner, u.archiver, u.created_at, u.last_connected_at
 FROM sessions s
 JOIN users u ON u.id = s.user_id
 WHERE s.id=? AND s.revoked_at IS NULL`, sessionID))
@@ -1554,8 +1568,8 @@ type rowScanner interface {
 func scanUser(rs rowScanner) (User, error) {
 	var u User
 	var created, lastConnected string
-	var mustChange, streamer, planner int
-	if err := rs.Scan(&u.ID, &u.Nickname, &u.Email, &u.Role, &u.Subrole, &u.Address, &u.Phone, &u.AltEmail, &u.Birthday, &u.MemberSince, &mustChange, &streamer, &planner, &created, &lastConnected); err != nil {
+	var mustChange, streamer, planner, archiver int
+	if err := rs.Scan(&u.ID, &u.Nickname, &u.Email, &u.Role, &u.Subrole, &u.Address, &u.Phone, &u.AltEmail, &u.Birthday, &u.MemberSince, &mustChange, &streamer, &planner, &archiver, &created, &lastConnected); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return User{}, ErrNotFound
 		}
@@ -1566,6 +1580,7 @@ func scanUser(rs rowScanner) (User, error) {
 	u.MustChangePassword = mustChange != 0
 	u.Streamer = streamer != 0
 	u.Planner = planner != 0
+	u.Archiver = archiver != 0
 	return u, nil
 }
 

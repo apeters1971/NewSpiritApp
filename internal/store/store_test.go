@@ -955,12 +955,16 @@ func TestArchiveTrashAndArchiver(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ann, err := st.CreateUser("Ann", "ann@example.com", "secret1", RoleArchiver, "Archiver")
+	ann, err := st.CreateUser("Ann", "ann@example.com", "secret1", RoleChoir, "Alt")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if RoleCanVote(ann.Role) || !RoleCanTrashArchive(ann.Role) || RoleCanTrashArchive(ada.Role) {
-		t.Fatal("archiver role")
+	ann, err = st.SetUserArchiver(ann.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !RoleCanVote(ann.Role) || !ann.Archiver || ada.Archiver {
+		t.Fatal("archiver flag")
 	}
 	song, err := st.CreateArchiveItem("Keep Me", "")
 	if err != nil {
@@ -1346,6 +1350,52 @@ func TestUserPlanner(t *testing.T) {
 	}
 	ada, err = st.SetUserPlanner(ada.ID, false)
 	if err != nil || ada.Planner {
+		t.Fatalf("clear %+v %v", ada, err)
+	}
+}
+
+func TestUserArchiver(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "archiver.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	ada, err := st.CreateUser("Ada", "ada@example.com", "secret1", RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ada.Archiver {
+		t.Fatal("new user should not archive")
+	}
+	ada, err = st.SetUserArchiver(ada.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ada.Archiver {
+		t.Fatal("archiver not set")
+	}
+	got, err := st.UserByID(ada.ID)
+	if err != nil || !got.Archiver || got.Role != RoleChoir {
+		t.Fatalf("by id %+v %v", got, err)
+	}
+	users, err := st.ListUsers()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(users) != 1 || !users[0].Archiver {
+		t.Fatalf("list %+v", users)
+	}
+	logged, sid, err := st.Login("ada@example.com", "secret1")
+	if err != nil || !logged.Archiver {
+		t.Fatalf("login %+v %v", logged, err)
+	}
+	sess, err := st.UserBySession(sid)
+	if err != nil || !sess.Archiver {
+		t.Fatalf("session %+v %v", sess, err)
+	}
+	ada, err = st.SetUserArchiver(ada.ID, false)
+	if err != nil || ada.Archiver {
 		t.Fatalf("clear %+v %v", ada, err)
 	}
 }

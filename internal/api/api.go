@@ -1533,6 +1533,7 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		MemberSince string `json:"memberSince"`
 		Streamer    bool   `json:"streamer"`
 		Planner     bool   `json:"planner"`
+		Archiver    bool   `json:"archiver"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json")
@@ -1564,6 +1565,13 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if body.Archiver {
+		user, err = s.Store.SetUserArchiver(user.ID, true)
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+	}
 	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
 	writeJSON(w, http.StatusCreated, map[string]any{"user": user})
 }
@@ -1580,6 +1588,7 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		Subrole  string `json:"subrole"`
 		Streamer bool   `json:"streamer"`
 		Planner  bool   `json:"planner"`
+		Archiver bool   `json:"archiver"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json")
@@ -1596,6 +1605,11 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, err = s.Store.SetUserPlanner(user.ID, body.Planner)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	user, err = s.Store.SetUserArchiver(user.ID, body.Archiver)
 	if err != nil {
 		writeStoreError(w, err)
 		return

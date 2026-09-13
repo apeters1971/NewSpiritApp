@@ -378,7 +378,7 @@ func (s *Store) TrashArchiveItemByMember(userID, id string) error {
 	if err != nil {
 		return err
 	}
-	if !RoleCanTrashArchive(u.Role) {
+	if !u.Archiver {
 		return fmt.Errorf("%w: only an archiver can delete archive items", ErrForbidden)
 	}
 	return s.DeleteArchiveItem(id)
@@ -604,7 +604,7 @@ func (s *Store) TrashArchiveFileByMember(userID, itemID, fileID string) (Archive
 	if err != nil {
 		return ArchiveItem{}, err
 	}
-	if !RoleCanTrashArchive(u.Role) {
+	if !u.Archiver {
 		return ArchiveItem{}, fmt.Errorf("%w: only an archiver can delete archive items", ErrForbidden)
 	}
 	return s.DeleteArchiveFile(itemID, fileID)
