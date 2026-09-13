@@ -164,8 +164,28 @@ func TestProxyVote(t *testing.T) {
 	if view.MyChoice != VoteNo || !view.MyProxy {
 		t.Fatalf("admin vote %+v", view)
 	}
+	if err := st.SetVoteFor(ada.ID, ben.ID, d.ID, VoteNotExpected); err != nil {
+		t.Fatal(err)
+	}
+	view, err = st.DateView(d.ID, &ben)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.MyChoice != VoteNotExpected || !view.MyProxy {
+		t.Fatalf("not expected %+v", view)
+	}
 	if err := st.SetVoteFor(ben.ID, ada.ID, d.ID, VoteYes); err == nil {
 		t.Fatal("non-planner must not set another vote")
+	}
+	cara, err := st.CreateUser("Cara", "cara@example.com", "secret1", RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.SetUserPlanner(cara.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetVoteFor(cara.ID, ben.ID, d.ID, VoteYes); err == nil {
+		t.Fatal("other planner must not set a vote on this date")
 	}
 }
 

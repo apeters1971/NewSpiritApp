@@ -231,7 +231,7 @@ function renderVoteSet(date, entry, optionId) {
     return voteBadgeHTML(entry.choice, entry.proxy);
   }
   const opt = optionId ? ` data-option="${optionId}"` : "";
-  const list = optionId ? ["yes", "maybe", "no", "unknown", "notExpected"] : ["yes", "maybe", "no", "unknown"];
+  const list = ["yes", "maybe", "no", "unknown", "notExpected"];
   const buttons = list.map((c) => {
     const tip = escapeHtml(voteTip(c));
     return `

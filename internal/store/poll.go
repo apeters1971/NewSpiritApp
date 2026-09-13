@@ -269,8 +269,8 @@ func (s *Store) SetPollVoteFor(actorID, userID, dateID, optionID, choice string)
 	if err != nil {
 		return err
 	}
-	if !canPlannerSetVote(actor, d) {
-		return fmt.Errorf("%w: only a planner can set another vote", ErrForbidden)
+	if err := plannerMaySetVote(actor, d); err != nil {
+		return err
 	}
 	return s.setPollVote(actor.ID, userID, dateID, optionID, choice)
 }

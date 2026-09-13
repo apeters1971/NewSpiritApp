@@ -6,12 +6,12 @@
         de: [
           "Das Kreisdiagramm am Termin und die Kärtchen Chor · Sopran, Chor · Alt und Chor · Tenor/Bass nutzen Blau, Violett und Türkis, nicht mehr die Farben von Ja, Vielleicht und Nein.",
           "Über den Stimmen-Symbolen steht, was Ja, Vielleicht, Nein, Unbekannt und Nicht erwartet bedeuten.",
-          "In einer Umfrage können Planer und Verwaltung jemanden als nicht erwartet markieren. Die Stimme zählt nicht in der Statistik. Die Person kann trotzdem abstimmen.",
+          "Planer und Verwaltung können jemanden als nicht erwartet markieren, auch ohne Umfrage. Nur der Planer des Termins setzt Stimmen für andere. Die Person sieht Nicht erwartet am zugeklappten Termin und neben Ja, Vielleicht und Nein. Der Lauftext erinnert sie dann nicht. Die Stimme zählt nicht in der Statistik. Die Person kann trotzdem abstimmen.",
         ],
         en: [
           "The pie chart on a date and the Choir · Soprano, Choir · Alto, and Choir · Tenor/Bass cards use blue, violet, and teal, not the Yes, Maybe, and No colors.",
           "Hovering a vote icon explains Yes, Maybe, No, Unknown, and Not expected.",
-          "In a poll, planners and the controller can mark someone as not expected. That vote stays out of the statistics. The person can still vote.",
+          "Planners and the controller can mark someone as not expected, also on a date without a poll. Only that date’s planner can set someone else’s vote. That person sees Not expected on the folded date and next to Yes, Maybe, and No. The news ticker does not remind them. That vote stays out of the statistics. The person can still vote.",
         ],
       },
     },

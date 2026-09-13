@@ -2452,6 +2452,9 @@ body.call-fs { overflow: hidden; }
   padding: 0.32rem 0.5rem;
   font-size: 0.82rem;
 }
+.vote-row .not-expected-note {
+  align-self: center;
+}
 .date-summary-actions .date-menu-list { z-index: 34; }
 .date-body { padding-top: 0.75rem; }
 .date-extras { margin-bottom: 0.15rem; }

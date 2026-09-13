@@ -198,13 +198,24 @@ function voteBadgeHTML(choice, proxy) {
   return `<span class="badge ${choice}${proxy ? " proxy" : ""}"${tip}>${voteChoiceHTML(choice)}</span>`;
 }
 
+function notExpectedNote(choice) {
+  if (choice !== "notExpected") return "";
+  const tip = escapeHtml(I18N.t("notExpectedHint"));
+  return `<span class="badge notExpected not-expected-note" title="${tip}">${voteChoiceHTML("notExpected")}</span>`;
+}
+
+function dateShowsNotExpected(date) {
+  if (date?.myChoice === "notExpected") return true;
+  return (date?.options || []).some((o) => o.myChoice === "notExpected");
+}
+
 function voteOnClass(current, choice, proxy) {
   if (current !== choice) return "";
   return proxy ? " on proxy" : " on";
 }
 
 function canSetVoteFor(date) {
-  return isPlanner() && date?.status !== "cancelled";
+  return isPlanner() && dateIsMine(date) && date?.status !== "cancelled";
 }
 
 function renderVoteButtons(date, entry, optionId) {
@@ -214,7 +225,7 @@ function renderVoteButtons(date, entry, optionId) {
   const proxy = !!(entry ? entry.proxy : date.myProxy);
   const locked = date.status === "cancelled";
   const iconOnly = !!entry;
-  const list = optionId ? POLL_PROXY_CHOICES : CHOICES;
+  const list = iconOnly ? POLL_PROXY_CHOICES : CHOICES;
   return list.map((c) => {
     const tip = escapeHtml(iconOnly ? voteTip(c) : voteLabel(c));
     return `
@@ -353,18 +364,17 @@ function renderPoll(date) {
   const blocks = options.map((o) => {
     const mine = o.myInitial && o.myInitial !== o.myChoice
       ? `<p class="changed">${I18N.t("yourFirstVote")}: ${voteChoiceHTML(o.myInitial)}</p>`
-      : o.myChoice === "notExpected"
-        ? `<p class="muted">${I18N.t("notExpectedHint")}</p>`
-        : "";
+      : "";
     const buttons = canVote() ? CHOICES.map((c) => `
       <button type="button" data-id="${date.id}" data-option="${o.id}" data-choice="${c}" class="${c}${voteOnClass(o.myChoice, c, o.myProxy)}" ${locked ? "disabled" : ""}>${voteChoiceHTML(c)}</button>
     `).join("") : "";
+    const note = canVote() ? notExpectedNote(o.myChoice) : "";
     const freeze = dateIsMine(date) && date.pollOpen
       ? `<button type="button" class="btn" data-planner-freeze="${date.id}" data-option="${o.id}">${I18N.t("freezePoll")}</button>`
       : "";
     return `<div class="poll-option ${o.frozen ? "frozen" : ""}">
       <p class="when">${escapeHtml(formatOptionRange(o))}${o.frozen ? ` · ${I18N.t("chosenTime")}` : ""}</p>
-      ${buttons ? `<div class="vote-row">${buttons}</div>` : ""}
+      ${buttons || note ? `<div class="vote-row">${buttons}${note}</div>` : ""}
       ${freeze}
       ${canVote() ? mine : ""}
       <p class="muted">${I18N.t("yes")} ${o.yes} · ${I18N.t("maybe")} ${o.maybe} · ${I18N.t("no")} ${o.no} · ${I18N.t("unknown")} ${o.unknown}</p>
@@ -403,6 +413,7 @@ function renderDate(date) {
   const mine = canVote() && date.myInitial && date.myInitial !== date.myChoice
     ? `<p class="changed">${I18N.t("yourFirstVote")}: ${voteChoiceHTML(date.myInitial)}</p>`
     : "";
+  const ownNote = canVote() ? notExpectedNote(date.myChoice) : "";
   const notes = date.notes ? `<p class="notes">${escapeHtml(date.notes)}</p>` : "";
   const when = pollOpen(date)
     ? I18N.t("severalTimes") + (date.location ? " · " + date.location : "")
@@ -410,9 +421,9 @@ function renderDate(date) {
   const extraBadge = pollOpen(date)
     ? `<span class="badge voting">${I18N.t("poll")}</span>`
     : date.frozenOptionId ? `<span class="badge accepted">${I18N.t("chosenTime")}</span>` : "";
-  const vote = pollOpen(date) || !buttons ? "" : `<div class="vote-block">
+  const vote = pollOpen(date) || !(buttons || ownNote) ? "" : `<div class="vote-block">
       <p class="vote-block-label">${I18N.t("yourVote")}</p>
-      <div class="vote-row">${buttons}</div>
+      <div class="vote-row">${buttons}${ownNote}</div>
       ${mine}
     </div>`;
   const table = isPoll ? renderPollTable(date) : pollOpen(date) ? "" : renderRoster(date);
@@ -489,12 +500,14 @@ function dateMenuHTML(date) {
 }
 
 function renderCompactVote(date) {
-  if (!canVote() || pollOpen(date)) return "";
+  if (!canVote()) return "";
+  const note = dateShowsNotExpected(date) ? notExpectedNote("notExpected") : "";
+  if (pollOpen(date)) return note ? `<div class="vote-row vote-row-compact">${note}</div>` : "";
   const locked = date.status === "cancelled";
   const buttons = ["yes", "maybe", "no"].map((c) => `
     <button type="button" data-id="${date.id}" data-choice="${c}" class="${c}${voteOnClass(date.myChoice, c, date.myProxy)}" ${locked ? "disabled" : ""}>${voteChoiceHTML(c)}</button>
   `).join("");
-  return `<div class="vote-row vote-row-compact">${buttons}</div>`;
+  return `<div class="vote-row vote-row-compact">${buttons}${note}</div>`;
 }
 
 function dateToolIcons(date) {
@@ -614,7 +627,7 @@ function hasAnswered(d) {
     const options = d.options || [];
     return options.length > 0 && options.every((o) => pollChoiceAnswered(o.myChoice));
   }
-  return d.myChoice === "yes" || d.myChoice === "maybe" || d.myChoice === "no";
+  return pollChoiceAnswered(d.myChoice);
 }
 
 function canVote() {

@@ -1092,8 +1092,8 @@ func (s *Store) SetVoteFor(actorID, userID, dateID, choice string) error {
 	if err != nil {
 		return err
 	}
-	if !canPlannerSetVote(actor, d) {
-		return fmt.Errorf("%w: only a planner can set another vote", ErrForbidden)
+	if err := plannerMaySetVote(actor, d); err != nil {
+		return err
 	}
 	return s.setVote(actor.ID, userID, dateID, choice)
 }
@@ -1102,11 +1102,14 @@ func (s *Store) SetAdminVote(userID, dateID, choice string) error {
 	return s.setVote(VoteSetByAdmin, userID, dateID, choice)
 }
 
-func canPlannerSetVote(actor User, d Date) bool {
+func plannerMaySetVote(actor User, d Date) error {
 	if !actor.Planner {
-		return false
+		return fmt.Errorf("%w: only a planner can set another vote", ErrForbidden)
 	}
-	return d.CreatedBy == actor.ID || RoleSeesDate(actor.Role, d.Roles)
+	if d.CreatedBy == "" || d.CreatedBy != actor.ID {
+		return fmt.Errorf("%w: you can only manage dates you created", ErrForbidden)
+	}
+	return nil
 }
 
 func (s *Store) setVote(setBy, userID, dateID, choice string) error {
