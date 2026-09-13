@@ -858,6 +858,8 @@ button.avatar {
   border: 1px solid var(--line);
   background: rgba(24, 34, 44, 0.9);
 }
+.archive-trash { margin-top: 1.6rem; }
+.archive-trash h2 { margin: 0 0 0.35rem; font-size: 1.1rem; }
 table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 th, td {
   text-align: left;

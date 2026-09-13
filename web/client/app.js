@@ -1381,6 +1381,10 @@ function archiveCanOpenWith() {
   }
 }
 
+function canTrashArchive() {
+  return me?.role === "archiver";
+}
+
 function archiveFileToolsHTML(id, file) {
   const url = archiveFileURL(id, file);
   const attrs = archiveFileAttrs(id, file);
@@ -1390,10 +1394,14 @@ function archiveFileToolsHTML(id, file) {
   const share = archiveCanOpenWith()
     ? `<button type="button" class="btn ghost archive-file-tool archive-open-with-btn" data-archive-open-with ${attrs} aria-label="${openWith}" title="${openWith}"></button>`
     : "";
+  const trash = canTrashArchive()
+    ? `<button type="button" class="btn ghost danger" data-archive-trash-file ${attrs}>${escapeHtml(I18N.t("delete"))}</button>`
+    : "";
   return `<div class="archive-file-tools">
     <a class="btn ghost archive-file-tool archive-open-btn" href="${url}" target="_blank" rel="noopener" aria-label="${open}" title="${open}"></a>
     ${share}
     <button type="button" class="btn ghost archive-file-tool archive-download-btn" data-archive-download ${attrs} aria-label="${download}" title="${download}"></button>
+    ${trash}
   </div>`;
 }
 
@@ -1500,6 +1508,7 @@ function titleMaterialHTML(item, back) {
     <div>
       <strong>${escapeHtml(item.title)}</strong>
       ${item.composer ? `<p class="muted">${escapeHtml(item.composer)}</p>` : ""}
+      ${canTrashArchive() && back === "archive" ? `<p><button type="button" class="btn ghost danger" data-archive-trash="${item.id}">${escapeHtml(I18N.t("delete"))}</button></p>` : ""}
     </div>`;
   audios.forEach((audio) => {
     html += `<div><p class="label">${escapeHtml(archiveFileLabel(audio, I18N.t("archiveAudio")))}</p><audio controls src="${archiveFileURL(item.id, audio)}"></audio>${archiveFileToolsHTML(item.id, audio)}</div>`;
@@ -1518,7 +1527,7 @@ function titleMaterialHTML(item, back) {
   });
   links.forEach((f) => {
     const label = f.name || I18N.t("archiveShareURL");
-    html += `<div><p class="label">${escapeHtml(label)}</p><a class="btn ghost" href="${escapeHtml(f.url)}" target="_blank" rel="noopener">${escapeHtml(f.url)}</a></div>`;
+    html += `<div><p class="label">${escapeHtml(label)}</p><a class="btn ghost" href="${escapeHtml(f.url)}" target="_blank" rel="noopener">${escapeHtml(f.url)}</a>${canTrashArchive() && back === "archive" ? archiveFileToolsHTML(item.id, f) : ""}</div>`;
   });
   if (!audios.length && !tracks.length && !lyrics.length && !sheets.length && !midis.length && !links.length) {
     html += `<p class="muted">${I18N.t("archiveNoFile")}</p>`;
@@ -5824,6 +5833,28 @@ document.getElementById("archive-detail").addEventListener("click", (e) => {
   }
   if (e.target.closest("[data-archive-back]")) {
     showArchiveList();
+    return;
+  }
+  const trashItem = e.target.closest("[data-archive-trash]");
+  if (trashItem) {
+    if (!confirm(I18N.t("confirmDeleteArchive"))) return;
+    api(`/api/archive/${encodeURIComponent(trashItem.dataset.archiveTrash)}`, { method: "DELETE" })
+      .then(async () => {
+        await loadArchive();
+        showArchiveList();
+      })
+      .catch((err) => alert(err.message));
+    return;
+  }
+  const trashFile = e.target.closest("[data-archive-trash-file]");
+  if (trashFile) {
+    if (!confirm(I18N.t("confirmDeleteFile"))) return;
+    api(`/api/archive/${encodeURIComponent(trashFile.dataset.item)}/files/${encodeURIComponent(trashFile.dataset.file)}`, { method: "DELETE" })
+      .then(async (data) => {
+        await loadArchive();
+        await openArchiveItem(data.item.id);
+      })
+      .catch((err) => alert(err.message));
     return;
   }
   const addLink = e.target.closest("[data-archive-add-link]");

@@ -932,8 +932,81 @@ func TestArchiveAndDateTitles(t *testing.T) {
 	if err := st.DeleteArchiveItem(song.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.ArchiveItem(song.ID); err == nil {
-		t.Fatal("deleted archive item still there")
+	trashed, err := st.ArchiveItem(song.ID)
+	if err != nil || trashed.Status != ArchiveStatusTrashed {
+		t.Fatalf("trashed item %+v %v", trashed, err)
+	}
+	if live, err := st.ListArchive(""); err != nil || len(live) != 1 || live[0].ID != other.ID {
+		t.Fatalf("live list %+v %v", live, err)
+	}
+	if err := st.MemberCanAccessArchive(ada.ID, song.ID); err == nil {
+		t.Fatal("trashed item should be hidden")
+	}
+}
+
+func TestArchiveTrashAndArchiver(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "archive-trash.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	ada, err := st.CreateUser("Ada", "ada@example.com", "secret1", RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ann, err := st.CreateUser("Ann", "ann@example.com", "secret1", RoleArchiver, "Archiver")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if RoleCanVote(ann.Role) || !RoleCanTrashArchive(ann.Role) || RoleCanTrashArchive(ada.Role) {
+		t.Fatal("archiver role")
+	}
+	song, err := st.CreateArchiveItem("Keep Me", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, err := st.AddArchiveFile(song.ID, ArchiveKindLyrics, "choir", "lyrics.txt", []byte("words"))
+	if err != nil || len(item.Files) == 0 {
+		t.Fatalf("file %+v %v", item, err)
+	}
+	fileID := item.Files[0].ID
+	if _, err := st.TrashArchiveFileByMember(ada.ID, song.ID, fileID); err == nil {
+		t.Fatal("choir must not trash")
+	}
+	if _, err := st.TrashArchiveFileByMember(ann.ID, song.ID, fileID); err != nil {
+		t.Fatal(err)
+	}
+	live, err := st.ArchiveItem(song.ID)
+	if err != nil || len(live.Files) != 0 {
+		t.Fatalf("live files %+v %v", live.Files, err)
+	}
+	_, loose, err := st.ListArchiveTrash()
+	if err != nil || len(loose) != 1 || loose[0].File.ID != fileID {
+		t.Fatalf("loose trash %+v %v", loose, err)
+	}
+	if _, err := st.RestoreArchiveFile(song.ID, fileID); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.TrashArchiveItemByMember(ada.ID, song.ID); err == nil {
+		t.Fatal("choir must not trash item")
+	}
+	if err := st.TrashArchiveItemByMember(ann.ID, song.ID); err != nil {
+		t.Fatal(err)
+	}
+	bin, loose, err := st.ListArchiveTrash()
+	if err != nil || len(bin) != 1 || bin[0].ID != song.ID || len(loose) != 0 {
+		t.Fatalf("item trash %+v %+v %v", bin, loose, err)
+	}
+	if listed, err := st.ListArchive(""); err != nil || len(listed) != 0 {
+		t.Fatalf("hidden %+v %v", listed, err)
+	}
+	restored, err := st.RestoreArchiveItem(song.ID)
+	if err != nil || restored.Status != ArchiveStatusAccepted {
+		t.Fatalf("restore %+v %v", restored, err)
+	}
+	if listed, err := st.ListArchive(""); err != nil || len(listed) != 1 {
+		t.Fatalf("restored list %+v %v", listed, err)
 	}
 }
 

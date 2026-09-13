@@ -113,6 +113,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/archive/{id}/files/{fileId}", s.handleArchiveFile)
 	mux.HandleFunc("POST /api/archive/{id}/files", s.handleArchiveUpload)
 	mux.HandleFunc("POST /api/archive/{id}/links", s.handleArchiveAddLink)
+	mux.HandleFunc("DELETE /api/archive/{id}", s.handleArchiveDelete)
+	mux.HandleFunc("DELETE /api/archive/{id}/files/{fileId}", s.handleArchiveDeleteFile)
 	mux.HandleFunc("GET /api/proposals", s.handleProposals)
 	mux.HandleFunc("POST /api/proposals", s.handleCreateProposal)
 	mux.HandleFunc("PUT /api/proposals/{id}/vote", s.handleProposalVote)
@@ -159,6 +161,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PATCH /api/controller/chats/{room}/messages/{id}", s.handleControllerChatEdit)
 	mux.HandleFunc("DELETE /api/controller/chats/{room}/messages/{id}", s.handleControllerChatDelete)
 	mux.HandleFunc("GET /api/controller/archive", s.handleControllerArchiveList)
+	mux.HandleFunc("GET /api/controller/archive/trash", s.handleControllerArchiveTrash)
+	mux.HandleFunc("POST /api/controller/archive/{id}/restore", s.handleControllerArchiveRestore)
+	mux.HandleFunc("POST /api/controller/archive/{id}/files/{fileId}/restore", s.handleControllerArchiveRestoreFile)
 	mux.HandleFunc("POST /api/controller/archive", s.handleControllerArchiveCreate)
 	mux.HandleFunc("PATCH /api/controller/archive/{id}", s.handleControllerArchiveUpdate)
 	mux.HandleFunc("DELETE /api/controller/archive/{id}", s.handleControllerArchiveDelete)
@@ -1444,6 +1449,11 @@ func (s *Server) handleControllerState(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	trashItems, trashFiles, err := s.Store.ListArchiveTrash()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	channels, err := s.Store.ListChannels()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -1471,7 +1481,8 @@ func (s *Server) handleControllerState(w http.ResponseWriter, r *http.Request) {
 		"ranking":    rank,
 		"adminAlias": s.Store.AdminAlias(),
 		"newsTicker": s.Store.NewsTicker(),
-		"archive":    archive,
+		"archive":      archive,
+		"archiveTrash": map[string]any{"items": trashItems, "files": trashFiles},
 		"channels":   channels,
 		"proposals":  proposals,
 		"choirSoli":  choirSoli,
@@ -2002,6 +2013,35 @@ func (s *Server) handleArchiveAddLink(w http.ResponseWriter, r *http.Request) {
 	s.applyArchiveLink(w, r, id, user.ID, true)
 }
 
+func (s *Server) handleArchiveDelete(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if err := s.Store.TrashArchiveItemByMember(user.ID, r.PathValue("id")); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleArchiveDeleteFile(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	item, err := s.Store.TrashArchiveFileByMember(user.ID, r.PathValue("id"), r.PathValue("fileId"))
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"item": item})
+}
+
 func (s *Server) handleArchiveUpload(w http.ResponseWriter, r *http.Request) {
 	user, err := s.userFromRequest(r)
 	if err != nil {
@@ -2078,6 +2118,44 @@ func (s *Server) handleControllerArchiveList(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (s *Server) handleControllerArchiveTrash(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	items, files, err := s.Store.ListArchiveTrash()
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "files": files})
+}
+
+func (s *Server) handleControllerArchiveRestore(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	item, err := s.Store.RestoreArchiveItem(r.PathValue("id"))
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"item": item})
+}
+
+func (s *Server) handleControllerArchiveRestoreFile(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	item, err := s.Store.RestoreArchiveFile(r.PathValue("id"), r.PathValue("fileId"))
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"item": item})
 }
 
 func (s *Server) handleControllerArchiveCreate(w http.ResponseWriter, r *http.Request) {

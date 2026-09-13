@@ -21,6 +21,7 @@ const (
 	ArchiveKindLink       = "link"
 	ArchiveStatusPending  = "pending"
 	ArchiveStatusAccepted = "accepted"
+	ArchiveStatusTrashed  = "trashed"
 	ArchiveMaxAudio       = 25 << 20
 	ArchiveMaxDoc         = 12 << 20
 	archiveTitleMax       = 200
@@ -340,7 +341,14 @@ func (s *Store) UpdateArchiveItem(id, title, composer string) (ArchiveItem, erro
 }
 
 func (s *Store) DeleteArchiveItem(id string) error {
-	res, err := s.db.Exec(`DELETE FROM archive_items WHERE id=?`, id)
+	item, err := s.archiveItemRow(id)
+	if err != nil {
+		return err
+	}
+	if item.Status == ArchiveStatusTrashed {
+		return nil
+	}
+	res, err := s.db.Exec(`UPDATE archive_items SET status=? WHERE id=?`, ArchiveStatusTrashed, id)
 	if err != nil {
 		return err
 	}
@@ -351,12 +359,37 @@ func (s *Store) DeleteArchiveItem(id string) error {
 	return nil
 }
 
+func (s *Store) RestoreArchiveItem(id string) (ArchiveItem, error) {
+	item, err := s.archiveItemRow(id)
+	if err != nil {
+		return ArchiveItem{}, err
+	}
+	if item.Status != ArchiveStatusTrashed {
+		return s.ArchiveItem(id)
+	}
+	if _, err := s.db.Exec(`UPDATE archive_items SET status=? WHERE id=?`, ArchiveStatusAccepted, id); err != nil {
+		return ArchiveItem{}, err
+	}
+	return s.ArchiveItem(id)
+}
+
+func (s *Store) TrashArchiveItemByMember(userID, id string) error {
+	u, err := s.UserByID(userID)
+	if err != nil {
+		return err
+	}
+	if !RoleCanTrashArchive(u.Role) {
+		return fmt.Errorf("%w: only an archiver can delete archive items", ErrForbidden)
+	}
+	return s.DeleteArchiveItem(id)
+}
+
 func (s *Store) ArchiveItem(id string) (ArchiveItem, error) {
 	item, err := s.archiveItemRow(id)
 	if err != nil {
 		return ArchiveItem{}, err
 	}
-	files, err := s.archiveFileMetas([]string{id})
+	files, err := s.archiveFileMetas([]string{id}, false)
 	if err != nil {
 		return ArchiveItem{}, err
 	}
@@ -372,12 +405,12 @@ func (s *Store) ListArchive(query string) ([]ArchiveItem, error) {
 	var rows *sql.Rows
 	var err error
 	if query == "" {
-		rows, err = s.db.Query(`SELECT id, title, composer, status, created_by, created_at FROM archive_items ORDER BY title COLLATE NOCASE, created_at`)
+		rows, err = s.db.Query(`SELECT id, title, composer, status, created_by, created_at FROM archive_items WHERE status!=? ORDER BY title COLLATE NOCASE, created_at`, ArchiveStatusTrashed)
 	} else {
 		like := "%" + query + "%"
 		rows, err = s.db.Query(
-			`SELECT id, title, composer, status, created_by, created_at FROM archive_items WHERE title LIKE ? COLLATE NOCASE OR composer LIKE ? COLLATE NOCASE ORDER BY title COLLATE NOCASE, created_at`,
-			like, like,
+			`SELECT id, title, composer, status, created_by, created_at FROM archive_items WHERE status!=? AND (title LIKE ? COLLATE NOCASE OR composer LIKE ? COLLATE NOCASE) ORDER BY title COLLATE NOCASE, created_at`,
+			ArchiveStatusTrashed, like, like,
 		)
 	}
 	if err != nil {
@@ -397,7 +430,7 @@ func (s *Store) ListArchive(query string) ([]ArchiveItem, error) {
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	files, err := s.archiveFileMetas(ids)
+	files, err := s.archiveFileMetas(ids, false)
 	if err != nil {
 		return nil, err
 	}
@@ -542,7 +575,7 @@ func (s *Store) DeleteArchiveFile(itemID, fileID string) (ArchiveItem, error) {
 	if _, err := s.archiveItemRow(itemID); err != nil {
 		return ArchiveItem{}, err
 	}
-	res, err := s.db.Exec(`DELETE FROM archive_files WHERE id=? AND item_id=?`, fileID, itemID)
+	res, err := s.db.Exec(`UPDATE archive_files SET status=?, updated_at=? WHERE id=? AND item_id=?`, ArchiveStatusTrashed, fmtTime(now()), fileID, itemID)
 	if err != nil {
 		return ArchiveItem{}, err
 	}
@@ -551,6 +584,92 @@ func (s *Store) DeleteArchiveFile(itemID, fileID string) (ArchiveItem, error) {
 		return ArchiveItem{}, ErrNotFound
 	}
 	return s.ArchiveItem(itemID)
+}
+
+func (s *Store) RestoreArchiveFile(itemID, fileID string) (ArchiveItem, error) {
+	f, err := s.GetArchiveFile(itemID, fileID)
+	if err != nil {
+		return ArchiveItem{}, err
+	}
+	if f.Status == ArchiveStatusTrashed {
+		if _, err := s.db.Exec(`UPDATE archive_files SET status=?, updated_at=? WHERE id=? AND item_id=?`, ArchiveStatusAccepted, fmtTime(now()), fileID, itemID); err != nil {
+			return ArchiveItem{}, err
+		}
+	}
+	return s.ArchiveItem(itemID)
+}
+
+func (s *Store) TrashArchiveFileByMember(userID, itemID, fileID string) (ArchiveItem, error) {
+	u, err := s.UserByID(userID)
+	if err != nil {
+		return ArchiveItem{}, err
+	}
+	if !RoleCanTrashArchive(u.Role) {
+		return ArchiveItem{}, fmt.Errorf("%w: only an archiver can delete archive items", ErrForbidden)
+	}
+	return s.DeleteArchiveFile(itemID, fileID)
+}
+
+type ArchiveTrashFile struct {
+	ItemID   string          `json:"itemId"`
+	Title    string          `json:"title"`
+	Composer string          `json:"composer,omitempty"`
+	File     ArchiveFileMeta `json:"file"`
+}
+
+func (s *Store) ListArchiveTrash() ([]ArchiveItem, []ArchiveTrashFile, error) {
+	rows, err := s.db.Query(`SELECT id, title, composer, status, created_by, created_at FROM archive_items WHERE status=? ORDER BY title COLLATE NOCASE, created_at`, ArchiveStatusTrashed)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	items := []ArchiveItem{}
+	ids := []string{}
+	for rows.Next() {
+		item, err := scanArchiveItem(rows)
+		if err != nil {
+			return nil, nil, err
+		}
+		items = append(items, item)
+		ids = append(ids, item.ID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+	files, err := s.archiveFileMetas(ids, true)
+	if err != nil {
+		return nil, nil, err
+	}
+	for i := range items {
+		items[i].Files = files[items[i].ID]
+		if items[i].Files == nil {
+			items[i].Files = []ArchiveFileMeta{}
+		}
+	}
+	loose, err := s.db.Query(`
+SELECT a.id, a.title, a.composer, f.id, f.kind, f.role, f.mime, f.name, f.status, f.created_by, f.updated_at, f.url
+FROM archive_files f
+JOIN archive_items a ON a.id = f.item_id
+WHERE f.status=? AND a.status!=?
+ORDER BY a.title COLLATE NOCASE, f.name COLLATE NOCASE`, ArchiveStatusTrashed, ArchiveStatusTrashed)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer loose.Close()
+	outFiles := []ArchiveTrashFile{}
+	for loose.Next() {
+		var row ArchiveTrashFile
+		var updated string
+		if err := loose.Scan(&row.ItemID, &row.Title, &row.Composer, &row.File.ID, &row.File.Kind, &row.File.Role, &row.File.MIME, &row.File.Name, &row.File.Status, &row.File.CreatedBy, &updated, &row.File.URL); err != nil {
+			return nil, nil, err
+		}
+		row.File.UpdatedAt = parseTime(updated)
+		if row.File.Kind != ArchiveKindLink {
+			row.File.URL = ""
+		}
+		outFiles = append(outFiles, row)
+	}
+	return items, outFiles, loose.Err()
 }
 
 func (s *Store) GetArchiveFile(itemID, fileID string) (ArchiveFile, error) {
@@ -591,6 +710,9 @@ func (s *Store) MemberCanDownloadArchiveFile(userID, itemID, fileID string) erro
 	if f.CreatedBy != "" && f.CreatedBy == userID {
 		return nil
 	}
+	if item.Status == ArchiveStatusTrashed || f.Status == ArchiveStatusTrashed {
+		return fmt.Errorf("%w: this archive file is pending", ErrForbidden)
+	}
 	if item.Status == ArchiveStatusAccepted && f.Status == ArchiveStatusAccepted {
 		return nil
 	}
@@ -621,8 +743,12 @@ func (s *Store) MemberCanAccessArchive(userID, itemID string) error {
 	if _, err := s.UserByID(userID); err != nil {
 		return err
 	}
-	if _, err := s.archiveItemRow(itemID); err != nil {
+	item, err := s.archiveItemRow(itemID)
+	if err != nil {
 		return err
+	}
+	if item.Status == ArchiveStatusTrashed {
+		return ErrNotFound
 	}
 	return nil
 }
@@ -777,6 +903,9 @@ ORDER BY t.sort_order, a.title COLLATE NOCASE`, args...)
 		if item.Status == "" {
 			item.Status = ArchiveStatusAccepted
 		}
+		if item.Status == ArchiveStatusTrashed {
+			continue
+		}
 		item.CreatedAt = parseTime(created)
 		item.Files = []ArchiveFileMeta{}
 		pairs = append(pairs, pair{dateID, item})
@@ -788,7 +917,7 @@ ORDER BY t.sort_order, a.title COLLATE NOCASE`, args...)
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	files, err := s.archiveFileMetas(itemIDs)
+	files, err := s.archiveFileMetas(itemIDs, false)
 	if err != nil {
 		return nil, err
 	}
@@ -986,7 +1115,7 @@ func scanArchiveItem(rs rowScanner) (ArchiveItem, error) {
 	return item, nil
 }
 
-func (s *Store) archiveFileMetas(ids []string) (map[string][]ArchiveFileMeta, error) {
+func (s *Store) archiveFileMetas(ids []string, includeTrashed bool) (map[string][]ArchiveFileMeta, error) {
 	out := map[string][]ArchiveFileMeta{}
 	if len(ids) == 0 {
 		return out, nil
@@ -1014,6 +1143,9 @@ ORDER BY kind, role COLLATE NOCASE, name COLLATE NOCASE`, args...)
 		}
 		if f.Status == "" {
 			f.Status = ArchiveStatusAccepted
+		}
+		if !includeTrashed && f.Status == ArchiveStatusTrashed {
+			continue
 		}
 		f.UpdatedAt = parseTime(updated)
 		if f.Kind != ArchiveKindLink {

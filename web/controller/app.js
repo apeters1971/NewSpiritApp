@@ -823,7 +823,11 @@ function proposalVoteCounts(p) {
 }
 
 function archiveItems() {
-  return state.archive || [];
+  return (state.archive || []).filter((item) => item.status !== "trashed");
+}
+
+function archiveTrash() {
+  return state.archiveTrash || { items: [], files: [] };
 }
 
 function archiveByID(id) {
@@ -904,7 +908,30 @@ function renderArchive() {
     </tr>`;
   }).join("");
   renderArchiveFiles();
+  renderArchiveTrash();
   renderDateTitleSelects();
+}
+
+function renderArchiveTrash() {
+  const body = document.getElementById("archive-trash-body");
+  const empty = document.getElementById("archive-trash-empty");
+  if (!body || !empty) return;
+  const bin = archiveTrash();
+  const songs = (bin.items || []).map((item) => `
+    <tr>
+      <td>${escapeHtml(item.title)}${item.composer ? ` <span class="muted">· ${escapeHtml(item.composer)}</span>` : ""}</td>
+      <td data-i18n="archiveTrashSong">${escapeHtml(I18N.t("archiveTrashSong"))}</td>
+      <td><button type="button" class="btn ghost" data-restore-item="${item.id}">${escapeHtml(I18N.t("restore"))}</button></td>
+    </tr>`);
+  const files = (bin.files || []).map((row) => `
+    <tr>
+      <td>${escapeHtml(row.file?.name || row.file?.kind || "")}</td>
+      <td>${escapeHtml(row.title || "")}</td>
+      <td><button type="button" class="btn ghost" data-restore-file="${row.file.id}" data-item="${row.itemId}">${escapeHtml(I18N.t("restore"))}</button></td>
+    </tr>`);
+  const rows = [...songs, ...files];
+  empty.hidden = rows.length > 0;
+  body.innerHTML = rows.join("");
 }
 
 function resetArchiveForm() {
@@ -2841,6 +2868,23 @@ document.getElementById("archive-form").addEventListener("submit", async (e) => 
     fillArchiveForm(data.item);
   } catch (err) {
     showError(errEl, err.message);
+  }
+});
+
+document.getElementById("archive-trash-body")?.addEventListener("click", async (e) => {
+  const itemBtn = e.target.closest("[data-restore-item]");
+  const fileBtn = e.target.closest("[data-restore-file]");
+  try {
+    if (itemBtn) {
+      await api(`/api/controller/archive/${encodeURIComponent(itemBtn.dataset.restoreItem)}/restore`, { method: "POST" });
+    } else if (fileBtn) {
+      await api(`/api/controller/archive/${encodeURIComponent(fileBtn.dataset.item)}/files/${encodeURIComponent(fileBtn.dataset.restoreFile)}/restore`, { method: "POST" });
+    } else {
+      return;
+    }
+    await loadState();
+  } catch (err) {
+    showError(document.getElementById("archive-error"), err.message);
   }
 });
 
