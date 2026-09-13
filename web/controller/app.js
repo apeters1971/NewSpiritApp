@@ -196,10 +196,19 @@ function voteLabel(choice) {
   return I18N.vote(choice || "unknown");
 }
 
+function voteTip(choice) {
+  if (choice === "yes") return I18N.t("voteTipYes");
+  if (choice === "maybe") return I18N.t("voteTipMaybe");
+  if (choice === "no") return I18N.t("voteTipNo");
+  if (choice === "notExpected") return I18N.t("voteTipNotExpected");
+  return I18N.t("voteTipUnknown");
+}
+
 function voteMark(choice) {
   if (choice === "yes") return `<span class="vote-mark yes" aria-hidden="true"></span>`;
   if (choice === "maybe") return `<span class="vote-mark maybe" aria-hidden="true"></span>`;
   if (choice === "no") return `<span class="vote-mark no" aria-hidden="true"></span>`;
+  if (choice === "notExpected") return `<span class="vote-mark notExpected" aria-hidden="true"></span>`;
   return `<span class="vote-mark unknown" aria-hidden="true"></span>`;
 }
 
@@ -222,9 +231,12 @@ function renderVoteSet(date, entry, optionId) {
     return voteBadgeHTML(entry.choice, entry.proxy);
   }
   const opt = optionId ? ` data-option="${optionId}"` : "";
-  const buttons = ["yes", "maybe", "no", "unknown"].map((c) => `
-    <button type="button" class="btn ghost vote-set-btn ${c}${voteOnClass(entry.choice, c, entry.proxy)}" data-set-vote="${entry.userId}" data-choice="${c}"${opt} aria-label="${escapeHtml(voteLabel(c))}">${voteMark(c)}</button>
-  `).join("");
+  const list = optionId ? ["yes", "maybe", "no", "unknown", "notExpected"] : ["yes", "maybe", "no", "unknown"];
+  const buttons = list.map((c) => {
+    const tip = escapeHtml(voteTip(c));
+    return `
+    <button type="button" class="btn ghost vote-set-btn ${c}${voteOnClass(entry.choice, c, entry.proxy)}" data-set-vote="${entry.userId}" data-choice="${c}"${opt} data-tip="${tip}" title="${tip}" aria-label="${tip}">${voteMark(c)}</button>`;
+  }).join("");
   return `<div class="vote-row vote-row-proxy">${buttons}</div>`;
 }
 
@@ -456,11 +468,15 @@ function renderDateDetail() {
   const pie = (d.roles || []).includes("choir") && typeof VoicePie !== "undefined"
     ? VoicePie.html(choirVoiceYes(d), Object.fromEntries(CHOIR_VOICES.map((v) => [v, I18N.subrole(v)])))
     : "";
-  const counts = (d.subroleCounts || []).map((c) => `
-    <div class="count">
+  const counts = (d.subroleCounts || []).map((c) => {
+    const slug = typeof VoicePie !== "undefined" ? VoicePie.SLUGS?.[c.subrole] : "";
+    const voice = slug ? ` voice-slice-${slug}` : "";
+    return `
+    <div class="count${voice}">
       <strong>${escapeHtml(I18N.role(c.role))} · ${escapeHtml(I18N.subrole(c.subrole))}</strong>
       <span>${I18N.t("yes")} ${c.yes} · ${I18N.t("maybe")} ${c.maybe} · ${I18N.t("no")} ${c.no} · ${I18N.t("unknown")} ${c.unknown}</span>
-    </div>`).join("");
+    </div>`;
+  }).join("");
   const rows = (d.roster || []).map((e) => {
     const changed = e.initialChoice && e.initialChoice !== e.choice;
     const vote = `${renderVoteSet(d, e)}${changed ? ` <span class="changed">${I18N.t("firstVote")} ${voteChoiceHTML(e.initialChoice)}</span>` : ""}`;

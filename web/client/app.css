@@ -14,6 +14,9 @@
   --ok: #7fd99a;
   --proxy: #4ea3ff;
   --song: #c4a0ff;
+  --voice-sopran: #7eb8ff;
+  --voice-alt: #c4a0ff;
+  --voice-tenor: #3dcec4;
   --surface: #0f151b;
   --chrome: #152028;
   --deep: #0c141a;
@@ -59,6 +62,9 @@ html[data-theme="light"] {
   --faint: rgba(28, 35, 43, 0.42);
   --faint-strong: rgba(28, 35, 43, 0.55);
   --faint-ink: rgba(28, 35, 43, 0.82);
+  --voice-sopran: #3a7fd6;
+  --voice-alt: #8a56d4;
+  --voice-tenor: #1a8f88;
   --chip: rgba(28, 35, 43, 0.06);
   --track: rgba(28, 35, 43, 0.14);
 }
@@ -2478,6 +2484,7 @@ body.call-fs { overflow: hidden; }
 .fold-roster {
   margin: 0.75rem 0 0;
   background: var(--card);
+  overflow: visible;
 }
 .fold-roster .fold-head { padding: 0.55rem 0.2rem; }
 .fold-roster .fold-body { padding: 0 0 0.15rem; }
@@ -2515,6 +2522,7 @@ p.notes { margin: 0.45rem 0 0; color: var(--muted); white-space: pre-wrap; }
 .badge.maybe { background: rgba(240, 163, 94, 0.18); color: var(--warn); }
 .badge.no { background: rgba(240, 113, 120, 0.16); color: var(--danger); }
 .badge.unknown { background: rgba(255,255,255,0.06); color: var(--muted); }
+.badge.notExpected { background: rgba(255,255,255,0.06); color: var(--muted); }
 
 .vote-block { margin: 0.2rem 0 0.25rem; }
 .vote-block-label {
@@ -2583,15 +2591,28 @@ p.notes { margin: 0.45rem 0 0; color: var(--muted); white-space: pre-wrap; }
   border-radius: 0.2em;
   background: transparent;
 }
+.vote-mark.notExpected {
+  border: 1.5px solid var(--muted);
+  border-radius: 0.2em;
+  background: linear-gradient(
+    to top right,
+    transparent calc(50% - 0.7px),
+    var(--muted) calc(50% - 0.7px),
+    var(--muted) calc(50% + 0.7px),
+    transparent calc(50% + 0.7px)
+  );
+}
 .vote-row button.on.yes { background: rgba(127, 217, 154, 0.18); border-color: var(--ok); color: var(--ok); }
 .vote-row button.on.maybe { background: rgba(240, 163, 94, 0.18); border-color: var(--warn); color: var(--warn); }
 .vote-row button.on.no { background: rgba(240, 113, 120, 0.18); border-color: var(--danger); color: var(--danger); }
 .vote-row button.on.unknown { background: rgba(255,255,255,0.06); border-color: var(--muted); }
+.vote-row button.on.notExpected { background: rgba(255,255,255,0.06); border-color: var(--muted); }
 .vote-row button.on.proxy,
 .vote-row button.on.proxy.yes,
 .vote-row button.on.proxy.maybe,
 .vote-row button.on.proxy.no,
-.vote-row button.on.proxy.unknown {
+.vote-row button.on.proxy.unknown,
+.vote-row button.on.proxy.notExpected {
   background: rgba(78, 163, 255, 0.18);
   border-color: var(--proxy);
   color: var(--proxy);
@@ -2611,12 +2632,45 @@ p.notes { margin: 0.45rem 0 0; color: var(--muted); white-space: pre-wrap; }
   gap: 0.25rem;
 }
 .vote-row.vote-row-proxy button {
+  position: relative;
   width: 2rem;
   height: 2rem;
   padding: 0;
   justify-content: center;
 }
 .vote-row.vote-row-proxy .vote-mark { margin-left: 0; }
+.vote-row.vote-row-proxy button::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 0.38rem);
+  left: 50%;
+  z-index: 40;
+  padding: 0.32rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--tip);
+  color: var(--ink);
+  font-size: 0.72rem;
+  font-weight: 650;
+  line-height: 1.25;
+  width: max-content;
+  max-width: 13rem;
+  white-space: normal;
+  text-align: center;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.38);
+  opacity: 0;
+  transform: translateX(-50%) translateY(0.2rem) scale(0.96);
+  transform-origin: bottom center;
+  pointer-events: none;
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+@media (hover: hover) {
+  .vote-row.vote-row-proxy button:hover::after,
+  .vote-row.vote-row-proxy button:focus-visible::after {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
 
 .counts {
   display: flex;
@@ -2649,6 +2703,9 @@ p.notes { margin: 0.45rem 0 0; color: var(--muted); white-space: pre-wrap; }
   letter-spacing: 0.02em;
 }
 .voice-pie-dot { color: var(--muted); margin: 0 0.12rem; }
+.voice-slice-sopran { color: var(--voice-sopran); fill: var(--voice-sopran); }
+.voice-slice-alt { color: var(--voice-alt); fill: var(--voice-alt); }
+.voice-slice-tenor { color: var(--voice-tenor); fill: var(--voice-tenor); }
 .count {
   border: 1px solid var(--line);
   background: var(--card);
@@ -2656,6 +2713,9 @@ p.notes { margin: 0.45rem 0 0; color: var(--muted); white-space: pre-wrap; }
   font-size: 0.8rem;
 }
 .count strong { display: block; margin-bottom: 0.15rem; }
+.count.voice-slice-sopran strong,
+.count.voice-slice-alt strong,
+.count.voice-slice-tenor strong { color: inherit; }
 .count span { color: var(--muted); }
 
 .roster { width: 100%; border-collapse: collapse; font-size: 0.9rem; }

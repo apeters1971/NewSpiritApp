@@ -1,6 +1,21 @@
 (() => {
   const ENTRIES = [
     {
+      date: "2026-09-13",
+      items: {
+        de: [
+          "Das Kreisdiagramm am Termin und die Kärtchen Chor · Sopran, Chor · Alt und Chor · Tenor/Bass nutzen Blau, Violett und Türkis, nicht mehr die Farben von Ja, Vielleicht und Nein.",
+          "Über den Stimmen-Symbolen steht, was Ja, Vielleicht, Nein, Unbekannt und Nicht erwartet bedeuten.",
+          "In einer Umfrage können Planer und Verwaltung jemanden als nicht erwartet markieren. Die Stimme zählt nicht in der Statistik. Die Person kann trotzdem abstimmen.",
+        ],
+        en: [
+          "The pie chart on a date and the Choir · Soprano, Choir · Alto, and Choir · Tenor/Bass cards use blue, violet, and teal, not the Yes, Maybe, and No colors.",
+          "Hovering a vote icon explains Yes, Maybe, No, Unknown, and Not expected.",
+          "In a poll, planners and the controller can mark someone as not expected. That vote stays out of the statistics. The person can still vote.",
+        ],
+      },
+    },
+    {
       date: "2026-09-12",
       items: {
         de: [

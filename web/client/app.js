@@ -30,6 +30,7 @@ document.querySelectorAll("[data-theme-toggle]").forEach((btn) => {
 applyTheme(currentTheme());
 
 const CHOICES = ["yes", "maybe", "no", "unknown"];
+const POLL_PROXY_CHOICES = ["yes", "maybe", "no", "unknown", "notExpected"];
 const CHOIR_VOICES = ["Sopran", "Alt", "Tenor/Bass"];
 const PLANNER_CATEGORIES = ["concert", "rehearsal", "meeting", "event", "choir-weekend", "concert-tour"];
 
@@ -172,10 +173,19 @@ function voteLabel(choice) {
   return I18N.vote(choice || "unknown");
 }
 
+function voteTip(choice) {
+  if (choice === "yes") return I18N.t("voteTipYes");
+  if (choice === "maybe") return I18N.t("voteTipMaybe");
+  if (choice === "no") return I18N.t("voteTipNo");
+  if (choice === "notExpected") return I18N.t("voteTipNotExpected");
+  return I18N.t("voteTipUnknown");
+}
+
 function voteMark(choice) {
   if (choice === "yes") return `<span class="vote-mark yes" aria-hidden="true"></span>`;
   if (choice === "maybe") return `<span class="vote-mark maybe" aria-hidden="true"></span>`;
   if (choice === "no") return `<span class="vote-mark no" aria-hidden="true"></span>`;
+  if (choice === "notExpected") return `<span class="vote-mark notExpected" aria-hidden="true"></span>`;
   return `<span class="vote-mark unknown" aria-hidden="true"></span>`;
 }
 
@@ -204,9 +214,12 @@ function renderVoteButtons(date, entry, optionId) {
   const proxy = !!(entry ? entry.proxy : date.myProxy);
   const locked = date.status === "cancelled";
   const iconOnly = !!entry;
-  return CHOICES.map((c) => `
-    <button type="button" data-id="${date.id}" data-choice="${c}"${user}${opt} class="${c}${voteOnClass(current, c, proxy)}" ${locked ? "disabled" : ""} aria-label="${escapeHtml(voteLabel(c))}">${iconOnly ? voteMark(c) : voteChoiceHTML(c)}</button>
-  `).join("");
+  const list = optionId ? POLL_PROXY_CHOICES : CHOICES;
+  return list.map((c) => {
+    const tip = escapeHtml(iconOnly ? voteTip(c) : voteLabel(c));
+    return `
+    <button type="button" data-id="${date.id}" data-choice="${c}"${user}${opt} class="${c}${voteOnClass(current, c, proxy)}" ${locked ? "disabled" : ""} data-tip="${tip}" title="${tip}" aria-label="${tip}">${iconOnly ? voteMark(c) : voteChoiceHTML(c)}</button>`;
+  }).join("");
 }
 
 function renderVoteCell(date, entry, optionId) {
@@ -320,10 +333,15 @@ function voicePieHTML(date) {
   return VoicePie.html(choirVoiceYes(date), labels);
 }
 
+function voiceSliceClass(subrole) {
+  const slug = typeof VoicePie !== "undefined" ? VoicePie.SLUGS?.[subrole] : "";
+  return slug ? ` voice-slice-${slug}` : "";
+}
+
 function renderCounts(date) {
   if (!date.subroleCounts?.length) return "";
   return `<div class="counts">${voicePieHTML(date)}${date.subroleCounts.map((c) => `
-    <div class="count">
+    <div class="count${voiceSliceClass(c.subrole)}">
       <strong>${escapeHtml(I18N.role(c.role))} · ${escapeHtml(I18N.subrole(c.subrole))}</strong>
       <span>${I18N.t("yes")} ${c.yes} · ${I18N.t("maybe")} ${c.maybe} · ${I18N.t("no")} ${c.no} · ${I18N.t("unknown")} ${c.unknown}</span>
     </div>`).join("")}</div>`;
@@ -335,7 +353,9 @@ function renderPoll(date) {
   const blocks = options.map((o) => {
     const mine = o.myInitial && o.myInitial !== o.myChoice
       ? `<p class="changed">${I18N.t("yourFirstVote")}: ${voteChoiceHTML(o.myInitial)}</p>`
-      : "";
+      : o.myChoice === "notExpected"
+        ? `<p class="muted">${I18N.t("notExpectedHint")}</p>`
+        : "";
     const buttons = canVote() ? CHOICES.map((c) => `
       <button type="button" data-id="${date.id}" data-option="${o.id}" data-choice="${c}" class="${c}${voteOnClass(o.myChoice, c, o.myProxy)}" ${locked ? "disabled" : ""}>${voteChoiceHTML(c)}</button>
     `).join("") : "";
@@ -564,10 +584,15 @@ function escapeHtml(s) {
   }[ch]));
 }
 
+function pollChoiceAnswered(choice) {
+  return choice === "yes" || choice === "maybe" || choice === "no" || choice === "notExpected";
+}
+
 function overviewPollVote(d) {
   const options = d.options || [];
-  const voted = options.filter((o) => o.myChoice && o.myChoice !== "unknown").length;
-  return `${voted}/${options.length}`;
+  const expected = options.filter((o) => o.myChoice !== "notExpected");
+  const voted = expected.filter((o) => o.myChoice === "yes" || o.myChoice === "maybe" || o.myChoice === "no").length;
+  return `${voted}/${expected.length}`;
 }
 
 function dateIsUpcoming(d) {
@@ -587,7 +612,7 @@ function userParticipates(d) {
 function hasAnswered(d) {
   if (pollOpen(d)) {
     const options = d.options || [];
-    return options.length > 0 && options.every((o) => o.myChoice === "yes" || o.myChoice === "maybe" || o.myChoice === "no");
+    return options.length > 0 && options.every((o) => pollChoiceAnswered(o.myChoice));
   }
   return d.myChoice === "yes" || d.myChoice === "maybe" || d.myChoice === "no";
 }

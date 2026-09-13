@@ -112,6 +112,10 @@ func (s *Store) ChoirRanking(year int) (Ranking, error) {
 			if byUser, ok := attendance[d.ID]; ok {
 				mark = byUser[u.ID]
 			}
+			if choice == VoteNotExpected {
+				e.Events--
+				continue
+			}
 			e.Score += votePoints(choice, initial, mark)
 			switch choice {
 			case VoteYes:
@@ -174,7 +178,10 @@ func (s *Store) ChoirRanking(year int) (Ranking, error) {
 		}
 		out.AvgScore = float64(sum) / float64(out.Members)
 	}
-	denom := out.Members * out.Events
+	denom := 0
+	for _, e := range entries {
+		denom += e.Events
+	}
 	if denom > 0 {
 		out.Participation = float64(out.TotalYes+out.TotalMaybe+out.TotalNo) / float64(denom)
 	}

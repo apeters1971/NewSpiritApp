@@ -20,6 +20,7 @@ const (
 	VoteMaybe       = "maybe"
 	VoteNo          = "no"
 	VoteUnknown     = "unknown"
+	VoteNotExpected = "notExpected"
 	VoteSetByAdmin  = "admin"
 )
 
@@ -140,8 +141,12 @@ func VoteIsProxy(userID, setBy string) bool {
 	return setBy != "" && setBy != userID
 }
 
+func VoteCountsInStats(choice string) bool {
+	return choice != VoteNotExpected
+}
+
 func ValidChoice(choice string) bool {
-	return choice == VoteYes || choice == VoteMaybe || choice == VoteNo || choice == VoteUnknown
+	return choice == VoteYes || choice == VoteMaybe || choice == VoteNo || choice == VoteUnknown || choice == VoteNotExpected
 }
 
 func NormalizeRole(role string) (string, error) {

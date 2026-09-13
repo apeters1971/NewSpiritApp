@@ -1511,6 +1511,9 @@ func countsFor(roles []string, roster []RosterEntry) []SubroleCount {
 		if !ok {
 			continue
 		}
+		if !VoteCountsInStats(e.Choice) {
+			continue
+		}
 		out[i].Total++
 		switch e.Choice {
 		case VoteYes:

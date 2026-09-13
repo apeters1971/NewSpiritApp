@@ -227,6 +227,66 @@ func TestPollFreeze(t *testing.T) {
 	}
 }
 
+func TestPollNotExpected(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "poll-skip.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	ada, err := st.CreateUser("Ada", "ada@example.com", "secret1", RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ben, err := st.CreateUser("Ben", "ben@example.com", "secret1", RoleChoir, "Alt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.SetUserPlanner(ada.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	ada, err = st.UserByID(ada.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sat := time.Date(2026, 11, 7, 18, 0, 0, 0, time.UTC)
+	sun := time.Date(2026, 11, 8, 16, 0, 0, 0, time.UTC)
+	d, err := st.CreateMemberDate(ada, "Poll skip", CategoryConcert, time.Time{}, nil, "", "", "", []string{RoleChoir}, Bring{}, []PollOptionInput{
+		{StartsAt: sat},
+		{StartsAt: sun},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetPollVoteFor(ada.ID, ben.ID, d.ID, d.Options[0].ID, VoteNotExpected); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetPollVote(ada.ID, d.ID, d.Options[0].ID, VoteYes); err != nil {
+		t.Fatal(err)
+	}
+	view, err := st.DateView(d.ID, &ben)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Options[0].MyChoice != VoteNotExpected || !view.Options[0].MyProxy {
+		t.Fatalf("not expected %+v", view.Options[0])
+	}
+	if view.Options[0].Yes != 1 || view.Options[0].Unknown != 0 {
+		t.Fatalf("stats should ignore not expected %+v", view.Options[0])
+	}
+	if err := st.SetPollVote(ben.ID, d.ID, d.Options[0].ID, VoteMaybe); err != nil {
+		t.Fatal(err)
+	}
+	view, err = st.DateView(d.ID, &ben)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Options[0].MyChoice != VoteMaybe || view.Options[0].MyProxy || view.Options[0].Maybe != 1 {
+		t.Fatalf("own vote should count again %+v", view.Options[0])
+	}
+}
+
 func TestChoirRanking(t *testing.T) {
 	st, err := Open(filepath.Join(t.TempDir(), "rank.db"))
 	if err != nil {

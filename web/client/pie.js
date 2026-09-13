@@ -1,9 +1,14 @@
 (() => {
   const VOICES = ["Sopran", "Alt", "Tenor/Bass"];
+  const SLUGS = {
+    Sopran: "sopran",
+    Alt: "alt",
+    "Tenor/Bass": "tenor",
+  };
   const COLORS = {
-    Sopran: "#e28b98",
-    Alt: "#d4b07a",
-    "Tenor/Bass": "#7fd99a",
+    Sopran: "#7eb8ff",
+    Alt: "#c4a0ff",
+    "Tenor/Bass": "#3dcec4",
   };
 
   function escape(s) {
@@ -32,6 +37,7 @@
     const parts = VOICES.map((voice) => ({
       voice,
       n: Math.max(0, Number(counts?.[voice]) || 0),
+      slug: SLUGS[voice],
       color: COLORS[voice],
       label: labels?.[voice] || voice,
     }));
@@ -50,11 +56,11 @@
         const start = angle;
         const end = angle + sweep;
         angle = end;
-        return `<path d="${escape(slicePath(cx, cy, r, start, end))}" fill="${part.color}"></path>`;
+        return `<path class="voice-slice-${part.slug}" d="${escape(slicePath(cx, cy, r, start, end))}" fill="${part.color}"></path>`;
       }).join("");
     }
     const nums = parts.map((part) => (
-      `<span style="color:${part.color}">${part.n}</span>`
+      `<span class="voice-slice-${part.slug}">${part.n}</span>`
     )).join("<span class=\"voice-pie-dot\">·</span>");
     return `<div class="voice-pie" title="${escape(detail)}" role="img" aria-label="${escape(detail)}">
       <svg viewBox="0 0 36 36" width="52" height="52" aria-hidden="true">${slices}</svg>
@@ -62,5 +68,5 @@
     </div>`;
   }
 
-  window.VoicePie = { html, VOICES, COLORS };
+  window.VoicePie = { html, VOICES, COLORS, SLUGS };
 })();

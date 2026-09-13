@@ -238,6 +238,7 @@ func attachPoll(options []PollOption, frozenID string, roster []RosterEntry, vot
 				opt.Maybe++
 			case VoteNo:
 				opt.No++
+			case VoteNotExpected:
 			default:
 				opt.Unknown++
 			}
