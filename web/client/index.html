@@ -490,15 +490,21 @@
       <p class="muted" data-i18n="archiveLede">Audio, Tracks, Texte, Noten und MIDI/MusicXML. Lege Songs an und hänge Dateien an.</p>
       <div id="archive-toolbar" class="archive-toolbar">
         <button type="button" id="archive-new" class="btn" data-i18n="addSong">Song hinzufügen</button>
+        <button type="button" id="archive-auto" class="btn ghost" hidden data-i18n="archiveAuto">Auto</button>
       </div>
       <form id="archive-create" class="info-form archive-create" hidden>
+        <p id="archive-auto-hint" class="muted" hidden data-i18n="archiveAutoHint">Du kannst Name, Autor und Instrument noch ändern.</p>
+        <p id="archive-auto-kind" class="muted" hidden></p>
         <label for="archive-create-title" data-i18n="songName">Songname</label>
         <input id="archive-create-title" required maxlength="200" autocomplete="off" />
-        <label for="archive-create-composer" data-i18n="archiveComposerOpt">Komponist (optional)</label>
+        <label id="archive-create-author-label" for="archive-create-composer" data-i18n="archiveComposerOpt">Komponist (optional)</label>
         <input id="archive-create-composer" maxlength="120" autocomplete="off" />
+        <label id="archive-create-instrument-label" for="archive-create-instrument" hidden data-i18n="archiveAutoInstrument">Instrument</label>
+        <input id="archive-create-instrument" maxlength="40" autocomplete="off" hidden />
         <p id="archive-create-error" class="error" hidden></p>
         <div class="archive-create-actions">
-          <button type="submit" data-i18n="save">Speichern</button>
+          <button type="submit" id="archive-create-save" data-i18n="save">Speichern</button>
+          <button type="submit" id="archive-create-accept" hidden data-i18n="archiveAutoAccept">Übernehmen</button>
           <button type="button" id="archive-create-cancel" class="btn ghost" data-i18n="cancel">Abbrechen</button>
         </div>
       </form>
@@ -508,6 +514,7 @@
       <div id="archive-detail" class="title-detail" hidden></div>
     </div>
     <input id="archive-member-file" type="file" hidden />
+    <input id="archive-auto-file" type="file" hidden accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.mp3,.m4a,.wav,.aac,.ogg,.flac,.aiff,.aif,.caf,application/pdf,image/*,audio/*,text/plain" />
     <button type="button" id="archive-close-bottom" class="btn ghost chat-close-bottom" data-i18n="close">Schließen</button>
   </section>
   <section id="gallery-hub" class="app-pane directory-dialog app-dialog" hidden>

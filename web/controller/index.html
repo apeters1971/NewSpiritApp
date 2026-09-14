@@ -277,14 +277,21 @@
           <input type="hidden" id="archive-id" />
           <label for="archive-title" data-i18n="title">Titel</label>
           <input id="archive-title" required />
-          <label for="archive-composer" data-i18n="archiveComposerOpt">Komponist (optional)</label>
+          <label for="archive-composer" id="archive-author-label" data-i18n="archiveComposerOpt">Komponist (optional)</label>
           <input id="archive-composer" />
+          <p id="archive-auto-hint" class="muted" hidden data-i18n="archiveAutoHint">Du kannst Name, Autor und Instrument noch ändern.</p>
+          <p id="archive-auto-kind" class="muted" hidden></p>
+          <label for="archive-instrument" id="archive-instrument-label" hidden data-i18n="archiveAutoInstrument">Instrument</label>
+          <input id="archive-instrument" maxlength="40" hidden />
           <div id="archive-files" class="archive-files" hidden></div>
           <p id="archive-files-hint" class="muted" data-i18n="archiveSaveFirst">Zuerst speichern, dann Dateien anhängen.</p>
           <input id="archive-file" type="file" hidden />
+          <input id="archive-auto-file" type="file" hidden accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.mp3,.m4a,.wav,.aac,.ogg,.flac,.aiff,.aif,.caf,application/pdf,image/*,audio/*,text/plain" />
           <p id="archive-error" class="error" hidden></p>
           <div class="drawer-actions">
-            <button type="submit" class="btn" data-i18n="save">Speichern</button>
+            <button type="submit" class="btn" id="archive-save" data-i18n="save">Speichern</button>
+            <button type="submit" class="btn" id="archive-accept" hidden data-i18n="archiveAutoAccept">Übernehmen</button>
+            <button type="button" id="btn-archive-auto" class="btn ghost" hidden data-i18n="archiveAuto">Auto</button>
             <button type="button" id="btn-archive-new" class="btn ghost" data-i18n="newItem">Neu</button>
             <button type="button" id="btn-archive-delete" class="btn ghost danger" data-i18n="delete" disabled>Löschen</button>
           </div>

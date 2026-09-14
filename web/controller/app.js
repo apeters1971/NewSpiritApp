@@ -12,6 +12,8 @@ let state = { users: [], dates: [], online: 0, ranking: { entries: [], bySubrole
 let selectedUser = "";
 let selectedDate = "";
 let selectedArchive = "";
+let archiveAutoFile = null;
+let archiveAutoKind = "";
 let dateTitleIDs = [];
 let dateTitleSoloists = {};
 let dateFormClean = "";
@@ -656,6 +658,7 @@ async function loadState() {
   renderRanking();
   renderSoli();
   renderArchive();
+  paintArchiveAuto();
   renderChannels();
   renderProposals();
   fillSettingsForm();
@@ -937,6 +940,51 @@ function renderArchiveTrash() {
   body.innerHTML = rows.join("");
 }
 
+function archiveKindLabel(kind) {
+  if (kind === "audio") return I18N.t("archiveAudio");
+  if (kind === "sheet") return I18N.t("archiveSheet");
+  if (kind === "lyrics") return I18N.t("archiveLyrics");
+  return kind || "";
+}
+
+function paintArchiveAuto() {
+  const btn = document.getElementById("btn-archive-auto");
+  if (btn) btn.hidden = !(state.archiveAuto || catalog.archiveAuto);
+}
+
+function setArchiveAutoReview(on, suggestion) {
+  if (!on) {
+    archiveAutoFile = null;
+    archiveAutoKind = "";
+  } else {
+    archiveAutoKind = suggestion?.kind || archiveAutoKind;
+  }
+  const hint = document.getElementById("archive-auto-hint");
+  const kindEl = document.getElementById("archive-auto-kind");
+  const inst = document.getElementById("archive-instrument");
+  const instLabel = document.getElementById("archive-instrument-label");
+  const authorLabel = document.getElementById("archive-author-label");
+  const save = document.getElementById("archive-save");
+  const accept = document.getElementById("archive-accept");
+  if (hint) hint.hidden = !on;
+  if (kindEl) {
+    kindEl.hidden = !on;
+    kindEl.textContent = on && archiveAutoKind ? `${I18N.t("archiveAutoKind")}: ${archiveKindLabel(archiveAutoKind)}` : "";
+  }
+  if (inst) {
+    inst.hidden = !on;
+    if (on && suggestion) inst.value = suggestion.instrument || inst.value || "";
+    if (!on) inst.value = "";
+  }
+  if (instLabel) instLabel.hidden = !on;
+  if (authorLabel) {
+    authorLabel.setAttribute("data-i18n", on ? "archiveAutoAuthor" : "archiveComposerOpt");
+    authorLabel.textContent = I18N.t(on ? "archiveAutoAuthor" : "archiveComposerOpt");
+  }
+  if (save) save.hidden = on;
+  if (accept) accept.hidden = !on;
+}
+
 function resetArchiveForm() {
   selectedArchive = "";
   document.getElementById("archive-form-title").textContent = I18N.t("newItem");
@@ -944,6 +992,7 @@ function resetArchiveForm() {
   document.getElementById("archive-title").value = "";
   document.getElementById("archive-composer").value = "";
   document.getElementById("btn-archive-delete").disabled = true;
+  setArchiveAutoReview(false);
   showError(document.getElementById("archive-error"), "");
   renderArchive();
 }
@@ -955,6 +1004,7 @@ function fillArchiveForm(item) {
   document.getElementById("archive-title").value = item.title;
   document.getElementById("archive-composer").value = item.composer || "";
   document.getElementById("btn-archive-delete").disabled = false;
+  setArchiveAutoReview(false);
   showError(document.getElementById("archive-error"), "");
   renderArchive();
 }
@@ -2855,6 +2905,43 @@ document.getElementById("archive-body").addEventListener("click", (e) => {
 
 document.getElementById("btn-archive-new").addEventListener("click", resetArchiveForm);
 
+document.getElementById("btn-archive-auto")?.addEventListener("click", () => {
+  const input = document.getElementById("archive-auto-file");
+  if (!input) return;
+  input.value = "";
+  input.click();
+});
+
+document.getElementById("archive-auto-file")?.addEventListener("change", async (e) => {
+  const file = e.target.files?.[0];
+  const errEl = document.getElementById("archive-error");
+  if (!file) return;
+  resetArchiveForm();
+  showError(errEl, "");
+  const hint = document.getElementById("archive-auto-hint");
+  if (hint) {
+    hint.hidden = false;
+    hint.textContent = I18N.t("archiveAutoBusy");
+  }
+  try {
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await fetch("/api/controller/archive/auto", { method: "POST", credentials: "same-origin", body: fd });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(I18N.error(data.error || res.statusText));
+    archiveAutoFile = file;
+    document.getElementById("archive-title").value = data.title || "";
+    document.getElementById("archive-composer").value = data.author || "";
+    setArchiveAutoReview(true, data);
+    document.getElementById("archive-title").focus();
+  } catch (err) {
+    setArchiveAutoReview(false);
+    showError(errEl, err.message);
+  } finally {
+    e.target.value = "";
+  }
+});
+
 document.getElementById("archive-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const errEl = document.getElementById("archive-error");
@@ -2865,11 +2952,21 @@ document.getElementById("archive-form").addEventListener("submit", async (e) => 
     composer: document.getElementById("archive-composer").value,
   };
   try {
+    const pending = archiveAutoFile;
+    const pendingKind = archiveAutoKind;
+    const pendingRole = document.getElementById("archive-instrument")?.value || "";
     const data = id
       ? await api(`/api/controller/archive/${id}`, { method: "PATCH", body: JSON.stringify(body) })
       : await api("/api/controller/archive", { method: "POST", body: JSON.stringify(body) });
     await loadState();
     fillArchiveForm(data.item);
+    if (pending && pendingKind) {
+      archiveAutoFile = pending;
+      archiveAutoKind = pendingKind;
+      await uploadArchiveFile(pending, pendingKind, pendingRole);
+      await loadState();
+      fillArchiveForm(archiveByID(data.item.id) || data.item);
+    }
   } catch (err) {
     showError(errEl, err.message);
   }
@@ -3126,6 +3223,13 @@ document.getElementById("date-titles").addEventListener("click", (e) => {
 
 I18N.onChange(() => {
   I18N.apply();
+  paintArchiveAuto();
+  if (archiveAutoFile) {
+    setArchiveAutoReview(true, {
+      kind: archiveAutoKind,
+      instrument: document.getElementById("archive-instrument")?.value || "",
+    });
+  }
   if (catalog.roles.length) fillRoleSelects();
   const peopleTitle = document.getElementById("people-form-title");
   const dateTitle = document.getElementById("date-form-title");

@@ -5,9 +5,11 @@
       items: {
         de: [
           "Über Licht, Wecker, Aufnahme und Play oben steht, was der Knopf macht.",
+          "Auto im Notenarchiv liest PDF oder MP3 und schlägt Name, Autor und Instrument vor. Du kannst es übernehmen oder ändern.",
         ],
         en: [
           "Hovering the light, alarm, record, and play buttons on top explains what each one does.",
+          "Auto in the music archive reads a PDF or MP3 and suggests name, author, and instrument. You can accept or change them.",
         ],
       },
     },

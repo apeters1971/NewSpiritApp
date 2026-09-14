@@ -3081,7 +3081,7 @@ p.notes { margin: 0.45rem 0 0; color: var(--muted); white-space: pre-wrap; }
 .title-item strong { display: block; }
 .title-item p { margin: 0.15rem 0 0; color: var(--muted); font-size: 0.82rem; }
 .title-item p.title-soloists { color: var(--accent); }
-.archive-toolbar { margin: 0.75rem 0 0.85rem; }
+.archive-toolbar { display: flex; flex-wrap: wrap; gap: 0.45rem; margin: 0.75rem 0 0.85rem; }
 .archive-create { margin: 0.75rem 0 1rem; }
 .archive-create-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.85rem; }
 .archive-manage { display: grid; gap: 0.75rem; margin-top: 0.35rem; padding-top: 0.75rem; border-top: 1px solid var(--line); }

@@ -49,6 +49,9 @@ let ranking = { year: 0, leaders: [] };
 let proposals = [];
 let directory = [];
 let archiveItems = [];
+let archiveAutoOn = false;
+let archiveAutoFile = null;
+let archiveAutoKind = "";
 let commentDateId = "";
 let plannerPollRows = [{ startsAt: "", endsAt: "", autoEnd: "" }, { startsAt: "", endsAt: "", autoEnd: "" }];
 let plannerAutoEnd = "";
@@ -2674,6 +2677,8 @@ async function boot() {
     applyLiveStream(data.stream, false);
     paintNewsTicker(data.newsTicker);
     paintOnline(data.online);
+    archiveAutoOn = !!data.archiveAuto;
+    paintArchiveAuto();
     if (me.mustChangePassword) {
       showGate("password");
       document.getElementById("pw-new").value = "";
@@ -5195,6 +5200,13 @@ I18N.onChange(() => {
   I18N.apply();
   paintNewsTicker();
   paintThemeButtons();
+  paintArchiveAuto();
+  if (archiveAutoFile) {
+    setArchiveAutoReview(true, {
+      kind: archiveAutoKind,
+      instrument: document.getElementById("archive-create-instrument")?.value || "",
+    });
+  }
   paintInstallButtons();
   paintOnline();
   if (me && !me.mustChangePassword) {
@@ -5743,6 +5755,44 @@ async function loadArchive() {
   renderArchive();
 }
 
+function paintArchiveAuto() {
+  const btn = document.getElementById("archive-auto");
+  if (btn) btn.hidden = !archiveAutoOn;
+}
+
+function archiveKindLabel(kind) {
+  if (kind === "audio") return I18N.t("archiveAudio");
+  if (kind === "sheet") return I18N.t("archiveSheet");
+  if (kind === "lyrics") return I18N.t("archiveLyrics");
+  return kind || "";
+}
+
+function setArchiveAutoReview(on, suggestion) {
+  archiveAutoFile = on ? archiveAutoFile : null;
+  archiveAutoKind = on ? (suggestion?.kind || archiveAutoKind) : "";
+  const hint = document.getElementById("archive-auto-hint");
+  const kindEl = document.getElementById("archive-auto-kind");
+  const inst = document.getElementById("archive-create-instrument");
+  const instLabel = document.getElementById("archive-create-instrument-label");
+  const authorLabel = document.getElementById("archive-create-author-label");
+  const save = document.getElementById("archive-create-save");
+  const accept = document.getElementById("archive-create-accept");
+  if (hint) hint.hidden = !on;
+  if (kindEl) {
+    kindEl.hidden = !on;
+    kindEl.textContent = on && archiveAutoKind ? `${I18N.t("archiveAutoKind")}: ${archiveKindLabel(archiveAutoKind)}` : "";
+  }
+  if (inst) {
+    inst.hidden = !on;
+    inst.value = on ? (suggestion?.instrument || inst.value || "") : "";
+  }
+  if (instLabel) instLabel.hidden = !on;
+  if (authorLabel) authorLabel.setAttribute("data-i18n", on ? "archiveAutoAuthor" : "archiveComposerOpt");
+  if (authorLabel) authorLabel.textContent = I18N.t(on ? "archiveAutoAuthor" : "archiveComposerOpt");
+  if (save) save.hidden = on;
+  if (accept) accept.hidden = !on;
+}
+
 function showArchiveCreate(show) {
   document.getElementById("archive-create").hidden = !show;
   document.getElementById("archive-toolbar").hidden = show;
@@ -5753,6 +5803,7 @@ function showArchiveCreate(show) {
     document.getElementById("archive-detail").hidden = true;
     document.getElementById("archive-create-title").value = "";
     document.getElementById("archive-create-composer").value = "";
+    setArchiveAutoReview(false);
     showError(document.getElementById("archive-create-error"), "");
     document.getElementById("archive-create-title").focus();
   }
@@ -5766,6 +5817,8 @@ function showArchiveList() {
   document.getElementById("archive-list").hidden = false;
   document.getElementById("archive-search").hidden = false;
   document.querySelector("label[for=archive-search]").hidden = false;
+  setArchiveAutoReview(false);
+  paintArchiveAuto();
   renderArchive();
 }
 
@@ -5889,6 +5942,45 @@ document.getElementById("archive-detail").addEventListener("click", (e) => {
 
 document.getElementById("archive-new").addEventListener("click", () => showArchiveCreate(true));
 
+document.getElementById("archive-auto")?.addEventListener("click", () => {
+  const input = document.getElementById("archive-auto-file");
+  if (!input) return;
+  input.value = "";
+  input.click();
+});
+
+document.getElementById("archive-auto-file")?.addEventListener("change", async (e) => {
+  const file = e.target.files?.[0];
+  const errEl = document.getElementById("archive-create-error");
+  if (!file) return;
+  showArchiveCreate(true);
+  showError(errEl, "");
+  const hint = document.getElementById("archive-auto-hint");
+  if (hint) {
+    hint.hidden = false;
+    hint.textContent = I18N.t("archiveAutoBusy");
+  }
+  try {
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await fetch("/api/archive/auto", { method: "POST", credentials: "same-origin", body: fd });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(I18N.error(data.error || res.statusText));
+    archiveAutoFile = file;
+    archiveAutoKind = data.kind || "";
+    document.getElementById("archive-create-title").value = data.title || "";
+    document.getElementById("archive-create-composer").value = data.author || "";
+    setArchiveAutoReview(true, data);
+    document.getElementById("archive-create-title").focus();
+  } catch (err) {
+    archiveAutoFile = null;
+    setArchiveAutoReview(false);
+    showError(errEl, err.message);
+  } finally {
+    e.target.value = "";
+  }
+});
+
 document.getElementById("archive-create-cancel").addEventListener("click", () => showArchiveList());
 
 document.getElementById("archive-create").addEventListener("submit", async (e) => {
@@ -5903,6 +5995,22 @@ document.getElementById("archive-create").addEventListener("submit", async (e) =
         composer: document.getElementById("archive-create-composer").value,
       }),
     });
+    if (archiveAutoFile && archiveAutoKind) {
+      const fd = new FormData();
+      fd.append("file", archiveAutoFile);
+      fd.append("kind", archiveAutoKind);
+      const role = document.getElementById("archive-create-instrument")?.value || "";
+      if (role) fd.append("role", role);
+      const res = await fetch(`/api/archive/${encodeURIComponent(data.item.id)}/files`, {
+        method: "POST",
+        credentials: "same-origin",
+        body: fd,
+      });
+      const uploaded = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(I18N.error(uploaded.error || res.statusText));
+    }
+    archiveAutoFile = null;
+    setArchiveAutoReview(false);
     await loadArchive();
     await openArchiveItem(data.item.id);
   } catch (err) {

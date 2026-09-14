@@ -280,6 +280,14 @@
       archiveFileRole: "Rolle",
       archiveRoleHint: "choir, guitar, piano…",
       archiveAddFile: "Datei anhängen",
+      archiveAuto: "Auto",
+      archiveAutoHint: "Du kannst Name, Autor und Instrument noch ändern.",
+      archiveAutoAuthor: "Autor",
+      archiveAutoInstrument: "Instrument",
+      archiveAutoAccept: "Übernehmen",
+      archiveAutoBusy: "Datei wird gelesen…",
+      archiveAutoKind: "Art",
+      errArchiveAuto: "Die Datei konnte nicht gelesen werden",
       errArchiveRoleLong: "Rolle ist zu lang",
       fileReplace: "Ersetzen",
       fileAttach: "Anhängen",
@@ -830,6 +838,14 @@
       archiveFileRole: "Role",
       archiveRoleHint: "choir, guitar, piano…",
       archiveAddFile: "Add file",
+      archiveAuto: "Auto",
+      archiveAutoHint: "You can still change the name, author, and instrument.",
+      archiveAutoAuthor: "Author",
+      archiveAutoInstrument: "Instrument",
+      archiveAutoAccept: "Accept",
+      archiveAutoBusy: "Reading the file…",
+      archiveAutoKind: "Kind",
+      errArchiveAuto: "The file could not be read",
       errArchiveRoleLong: "Role is too long",
       fileReplace: "Replace",
       fileAttach: "Attach",
@@ -1163,6 +1179,7 @@
     "soloist must be a choir member": "errSoloistRole",
     "this archive file is pending": "errArchivePending",
     "only an archiver can delete archive items": "errArchiverOnly",
+    "empty model reply": "errArchiveAuto",
     "you can only delete your own files": "errGalleryOwn",
     "only a yes vote can be marked absent": "errAttendanceYes",
     "invalid attendance": "errAttendance",
@@ -1231,6 +1248,7 @@
     if (raw.includes("this channel is not yours")) return t("errChannelMine");
     if (raw.includes("this archive item is not on your dates")) return t("errArchiveForbidden");
     if (raw.includes("only an archiver can delete archive items")) return t("errArchiverOnly");
+    if (raw.includes("empty model reply") || raw.includes("cloudflare")) return t("errArchiveAuto");
     if (raw.includes("this chat is closed")) return t("errChatClosed");
     if (raw.includes("unknown chat")) return t("errChatRoom");
     if (raw.includes("unknown reaction")) return t("errChatReact");
