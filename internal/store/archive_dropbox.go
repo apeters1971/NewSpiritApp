@@ -200,6 +200,31 @@ func (s *Store) ImportDropbox(id, title, author, instrument string) (ArchiveItem
 	return item, nil
 }
 
+func (s *Store) AttachDropbox(id, itemID, instrument string) (ArchiveItem, error) {
+	drop, err := s.DropboxItem(id)
+	if err != nil {
+		return ArchiveItem{}, err
+	}
+	song, err := s.archiveItemRow(itemID)
+	if err != nil {
+		return ArchiveItem{}, err
+	}
+	if song.Status == ArchiveStatusTrashed {
+		return ArchiveItem{}, ErrNotFound
+	}
+	if instrument == "" {
+		instrument = drop.Instrument
+	}
+	item, err := s.AddArchiveFile(song.ID, drop.Kind, instrument, drop.Name, drop.Data)
+	if err != nil {
+		return ArchiveItem{}, err
+	}
+	if err := s.DeleteDropbox(id); err != nil {
+		return ArchiveItem{}, err
+	}
+	return item, nil
+}
+
 func (s *Store) CanManageDropbox(user User, item ArchiveDropboxItem) bool {
 	return user.Archiver || (item.CreatedBy != "" && item.CreatedBy == user.ID)
 }

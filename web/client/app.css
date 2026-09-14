@@ -3125,6 +3125,31 @@ p.notes { margin: 0.45rem 0 0; color: var(--muted); white-space: pre-wrap; }
 }
 .archive-import-status { color: var(--muted); font-size: 0.8rem; }
 .archive-import-status.is-error { color: var(--danger); }
+.archive-import-attach { margin: 0 0 0.9rem; }
+.archive-import-attach label { display: block; margin: 0 0 0.3rem; }
+.archive-import-attach input[type="search"] { width: 100%; }
+.archive-pick-list {
+  display: grid;
+  gap: 0.3rem;
+  max-height: 12rem;
+  overflow: auto;
+  margin: 0.35rem 0 0.65rem;
+}
+.archive-pick-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  padding: 0.4rem 0.55rem;
+  cursor: pointer;
+  font: inherit;
+}
+.archive-pick-item:hover { background: rgba(61, 214, 198, 0.12); }
+.archive-pick-item.is-on { border-color: var(--accent); background: rgba(61, 214, 198, 0.14); }
+.archive-pick-item strong { display: block; font-size: 0.92rem; }
+.archive-pick-item span { color: var(--muted); font-size: 0.78rem; }
 .archive-dropbox-mine {
   list-style: none;
   margin: 0.7rem 0 0;

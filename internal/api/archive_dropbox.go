@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/apeters/newspirit/internal/hub"
 )
@@ -215,6 +216,48 @@ func (s *Server) importDropbox(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	item, err := s.Store.ImportDropbox(r.PathValue("id"), body.Title, body.Author, body.Instrument)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"item": item})
+}
+
+func (s *Server) handleArchiveDropboxAttach(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if !user.Archiver {
+		writeError(w, http.StatusForbidden, "only an archiver can manage the import queue")
+		return
+	}
+	s.attachDropbox(w, r)
+}
+
+func (s *Server) handleControllerDropboxAttach(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	s.attachDropbox(w, r)
+}
+
+func (s *Server) attachDropbox(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ItemID     string `json:"itemId"`
+		Instrument string `json:"instrument"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if strings.TrimSpace(body.ItemID) == "" {
+		writeError(w, http.StatusBadRequest, "archive item is required")
+		return
+	}
+	item, err := s.Store.AttachDropbox(r.PathValue("id"), body.ItemID, body.Instrument)
 	if err != nil {
 		writeStoreError(w, err)
 		return

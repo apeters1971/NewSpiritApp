@@ -17,6 +17,7 @@ let archiveAutoKind = "";
 let importSelected = new Set();
 let importQueueBusy = false;
 let importLocal = {};
+let importAttachID = "";
 let dateTitleIDs = [];
 let dateTitleSoloists = {};
 let dateFormClean = "";
@@ -1002,9 +1003,13 @@ function paintImportQueueActions() {
   const classify = document.getElementById("archive-import-classify");
   const commit = document.getElementById("archive-import-commit");
   const remove = document.getElementById("archive-import-remove");
+  const attach = document.getElementById("archive-import-attach");
+  const search = document.getElementById("archive-import-song");
   if (classify) classify.disabled = importQueueBusy || !n;
   if (commit) commit.disabled = importQueueBusy || !n;
   if (remove) remove.disabled = importQueueBusy || !n;
+  if (attach) attach.disabled = importQueueBusy || !n || !importAttachID;
+  if (search) search.disabled = importQueueBusy;
   const all = document.getElementById("archive-import-all");
   const items = dropboxItems();
   if (all) {
@@ -1012,6 +1017,43 @@ function paintImportQueueActions() {
     all.checked = items.length > 0 && items.every((item) => importSelected.has(item.id));
     all.indeterminate = n > 0 && n < items.length;
   }
+}
+
+function renderImportSongPick() {
+  const list = document.getElementById("archive-import-song-list");
+  const empty = document.getElementById("archive-import-song-empty");
+  const search = document.getElementById("archive-import-song");
+  if (!list || !empty) return;
+  if (search) search.placeholder = I18N.t("archivePickSearch");
+  const songs = archiveItems();
+  if (importAttachID && !songs.some((item) => item.id === importAttachID)) importAttachID = "";
+  const q = (search?.value || "").trim().toLowerCase();
+  let rows = songs;
+  if (q) {
+    rows = songs.filter((item) => `${item.title} ${item.composer || ""}`.toLowerCase().includes(q));
+  } else if (!importAttachID) {
+    list.innerHTML = "";
+    empty.hidden = false;
+    empty.textContent = I18N.t("archiveImportPickHint");
+    paintImportQueueActions();
+    return;
+  } else {
+    rows = songs.filter((item) => item.id === importAttachID);
+  }
+  if (!rows.length) {
+    list.innerHTML = "";
+    empty.hidden = false;
+    empty.textContent = I18N.t("archiveImportPickEmpty");
+    paintImportQueueActions();
+    return;
+  }
+  empty.hidden = true;
+  list.innerHTML = rows.slice(0, 16).map((item) => `
+    <button type="button" class="archive-pick-item${item.id === importAttachID ? " is-on" : ""}" data-attach-song="${item.id}" aria-pressed="${item.id === importAttachID ? "true" : "false"}">
+      <strong>${escapeHtml(item.title)}</strong>
+      ${item.composer ? `<span>${escapeHtml(item.composer)}</span>` : ""}
+    </button>`).join("");
+  paintImportQueueActions();
 }
 
 function setImportQueueStatus(msg) {
@@ -1041,7 +1083,7 @@ function renderImportQueue() {
       <td class="archive-import-status${local.status === "error" ? " is-error" : ""}">${escapeHtml(importQueueStatusLabel(item))}</td>
     </tr>`;
   }).join("");
-  paintImportQueueActions();
+  renderImportSongPick();
 }
 
 async function addImportQueueFiles(files) {
@@ -1131,6 +1173,47 @@ async function commitSelectedImport() {
           title: item.title.trim(),
           author: item.author.trim(),
           instrument: item.instrument.trim(),
+        }),
+      });
+      importSelected.delete(item.id);
+      delete importLocal[item.id];
+      done += 1;
+      await loadState();
+    } catch (err) {
+      importLocal[item.id] = { status: "error", error: err.message };
+    }
+  }
+  importQueueBusy = false;
+  setImportQueueStatus("");
+  await loadState();
+}
+
+async function attachSelectedImport() {
+  syncImportQueueFromDom();
+  const rows = selectedDropboxItems();
+  const errEl = document.getElementById("archive-import-error");
+  if (!rows.length || importQueueBusy) {
+    showError(errEl, I18N.t("archiveImportNone"));
+    return;
+  }
+  if (!importAttachID) {
+    showError(errEl, I18N.t("archiveImportNeedSong"));
+    return;
+  }
+  importQueueBusy = true;
+  showError(errEl, "");
+  paintImportQueueActions();
+  let done = 0;
+  for (const item of rows) {
+    importLocal[item.id] = { status: "importing", error: "" };
+    renderImportQueue();
+    setImportQueueStatus(`${I18N.t("archiveImportImporting")} ${done + 1}/${rows.length}`);
+    try {
+      await api(`/api/controller/archive/dropbox/${encodeURIComponent(item.id)}/attach`, {
+        method: "POST",
+        body: JSON.stringify({
+          itemId: importAttachID,
+          instrument: (item.instrument || "").trim(),
         }),
       });
       importSelected.delete(item.id);
@@ -3158,7 +3241,15 @@ document.getElementById("archive-import-file")?.addEventListener("change", (e) =
 });
 document.getElementById("archive-import-classify")?.addEventListener("click", () => classifySelectedImport());
 document.getElementById("archive-import-commit")?.addEventListener("click", () => commitSelectedImport());
+document.getElementById("archive-import-attach")?.addEventListener("click", () => attachSelectedImport());
 document.getElementById("archive-import-remove")?.addEventListener("click", () => removeSelectedImport());
+document.getElementById("archive-import-song")?.addEventListener("input", () => renderImportSongPick());
+document.getElementById("archive-import-song-list")?.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-attach-song]");
+  if (!btn || importQueueBusy) return;
+  importAttachID = importAttachID === btn.dataset.attachSong ? "" : btn.dataset.attachSong;
+  renderImportSongPick();
+});
 document.getElementById("archive-import-all")?.addEventListener("change", (e) => {
   if (importQueueBusy) return;
   syncImportQueueFromDom();

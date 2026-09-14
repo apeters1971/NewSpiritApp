@@ -251,7 +251,7 @@
     <div id="tab-archive" class="tab-panel" hidden>
       <section class="archive-import">
         <h2 data-i18n="archiveImport">Import</h2>
-        <p class="lede" data-i18n="archiveImportHint">Viele Dateien ablegen oder aus der Dropbox holen. Erst erkennen, dann Titel prüfen, dann die ausgewählten mit den Angaben importieren. Nichts landet im Archiv, bevor du importierst.</p>
+        <p class="lede" data-i18n="archiveImportHint">Viele Dateien ablegen oder aus der Dropbox holen. Erst erkennen, dann Titel prüfen, dann die ausgewählten importieren oder einem bestehenden Song zuordnen. Nichts landet im Archiv, bevor du das tust.</p>
         <div id="archive-import-drop" class="archive-import-drop" tabindex="0">
           <p data-i18n="archiveImportDrop">Dateien hierher ziehen oder klicken</p>
         </div>
@@ -262,6 +262,13 @@
           <button type="button" id="archive-import-classify" class="btn" disabled data-i18n="archiveImportClassify">Titel erkennen</button>
           <button type="button" id="archive-import-commit" class="btn" disabled data-i18n="archiveImportCommit">Ausgewählte importieren</button>
           <button type="button" id="archive-import-remove" class="btn ghost" disabled data-i18n="archiveImportRemove">Aus Warteschlange entfernen</button>
+        </div>
+        <div id="archive-import-attach-wrap" class="archive-import-attach">
+          <label for="archive-import-song" data-i18n="archiveImportToSong">Zu bestehendem Song</label>
+          <input id="archive-import-song" type="search" autocomplete="off" />
+          <p id="archive-import-song-empty" class="muted" data-i18n="archiveImportPickHint">Tippe einen Titel oder Komponisten.</p>
+          <div id="archive-import-song-list" class="archive-pick-list"></div>
+          <button type="button" id="archive-import-attach" class="btn" disabled data-i18n="archiveImportAttach">Zuordnen</button>
         </div>
         <div class="table-wrap archive-import-table">
           <table>

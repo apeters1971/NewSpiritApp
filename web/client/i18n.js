@@ -288,7 +288,7 @@
       archiveAutoBusy: "Datei wird gelesen…",
       archiveAutoKind: "Art",
       archiveImport: "Import",
-      archiveImportHint: "Viele Dateien ablegen oder aus der Dropbox holen. Erst erkennen, dann Titel prüfen, dann die ausgewählten mit den Angaben importieren. Nichts landet im Archiv, bevor du importierst.",
+      archiveImportHint: "Viele Dateien ablegen oder aus der Dropbox holen. Erst erkennen, dann Titel prüfen, dann die ausgewählten importieren oder einem bestehenden Song zuordnen. Nichts landet im Archiv, bevor du das tust.",
       archiveImportDrop: "Dateien hierher ziehen oder klicken",
       archiveImportClassify: "Titel erkennen",
       archiveImportCommit: "Ausgewählte importieren",
@@ -303,6 +303,12 @@
       archiveImportNeedTitle: "Titel fehlt",
       archiveImportNone: "Keine Datei ausgewählt",
       archiveImportSkipped: "Einige Dateien wurden übersprungen.",
+      archiveImportToSong: "Zu bestehendem Song",
+      archiveImportAttach: "Zuordnen",
+      archiveImportNeedSong: "Wähle einen bestehenden Song",
+      archiveImportPickHint: "Tippe einen Titel oder Komponisten.",
+      archiveImportPickEmpty: "Kein Song gefunden.",
+      errArchiveItemRequired: "Song fehlt",
       archiveImportBy: "Von",
       archiveDropbox: "Dropbox",
       archiveDropboxHint: "Lege Noten oder Audio ab. Archivare holen sie in die Warteschlange.",
@@ -869,7 +875,7 @@
       archiveAutoBusy: "Reading the file…",
       archiveAutoKind: "Kind",
       archiveImport: "Import",
-      archiveImportHint: "Drop many files or take them from the dropbox. Run detection on the ones you pick, check the names, then import the selected rows with that metadata. Nothing is stored until you import.",
+      archiveImportHint: "Drop many files or take them from the dropbox. Run detection on the ones you pick, check the names, then import the selected rows or assign them to an existing song. Nothing is stored until you do that.",
       archiveImportDrop: "Drop files here or click",
       archiveImportClassify: "Detect titles",
       archiveImportCommit: "Import selected",
@@ -884,6 +890,12 @@
       archiveImportNeedTitle: "Title is missing",
       archiveImportNone: "No file selected",
       archiveImportSkipped: "Some files were skipped.",
+      archiveImportToSong: "To an existing song",
+      archiveImportAttach: "Assign",
+      archiveImportNeedSong: "Pick an existing song",
+      archiveImportPickHint: "Type a title or composer.",
+      archiveImportPickEmpty: "No song found.",
+      errArchiveItemRequired: "Song is missing",
       archiveImportBy: "From",
       archiveDropbox: "Dropbox",
       archiveDropboxHint: "Drop sheet music or audio. Archivists pick it up in the import queue.",
@@ -1226,6 +1238,7 @@
     "this archive file is pending": "errArchivePending",
     "only an archiver can delete archive items": "errArchiverOnly",
     "only an archiver can manage the import queue": "errDropboxManage",
+    "archive item is required": "errArchiveItemRequired",
     "empty model reply": "errArchiveAuto",
     "you can only delete your own files": "errGalleryOwn",
     "only a yes vote can be marked absent": "errAttendanceYes",
@@ -1296,6 +1309,7 @@
     if (raw.includes("this archive item is not on your dates")) return t("errArchiveForbidden");
     if (raw.includes("only an archiver can delete archive items")) return t("errArchiverOnly");
     if (raw.includes("only an archiver can manage the import queue")) return t("errDropboxManage");
+    if (raw.includes("archive item is required")) return t("errArchiveItemRequired");
     if (raw.includes("empty model reply") || raw.includes("cloudflare")) return t("errArchiveAuto");
     if (raw.includes("this chat is closed")) return t("errChatClosed");
     if (raw.includes("unknown chat")) return t("errChatRoom");

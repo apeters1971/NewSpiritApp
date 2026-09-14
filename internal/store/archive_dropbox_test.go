@@ -70,3 +70,38 @@ func TestArchiveDropboxImport(t *testing.T) {
 		t.Fatalf("left %d %v", len(left), err)
 	}
 }
+
+func TestArchiveDropboxAttach(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "dropbox-attach.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	ada, err := st.CreateUser("Ada", "ada@example.com", "secret1", RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	song, err := st.CreateArchiveItem("Oh Happy Day", "Edwin Hawkins")
+	if err != nil {
+		t.Fatal(err)
+	}
+	drop, err := st.AddDropboxFile("choir.pdf", ada.ID, []byte("%PDF-1.4 choir"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.UpdateDropboxMeta(drop.ID, "", "", "choir"); err != nil {
+		t.Fatal(err)
+	}
+	item, err := st.AttachDropbox(drop.ID, song.ID, "")
+	if err != nil || item.ID != song.ID || item.Title != "Oh Happy Day" {
+		t.Fatalf("attach %+v %v", item, err)
+	}
+	if len(item.Files) != 1 || item.Files[0].Kind != ArchiveKindSheet || item.Files[0].Role != "choir" || item.Files[0].Name != "choir.pdf" {
+		t.Fatalf("file %+v", item.Files)
+	}
+	left, err := st.ListDropbox(true, "")
+	if err != nil || len(left) != 0 {
+		t.Fatalf("left %d %v", len(left), err)
+	}
+}

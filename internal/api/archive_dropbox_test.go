@@ -136,3 +136,42 @@ func TestControllerDropbox(t *testing.T) {
 		t.Fatalf("ctrl import %d %+v", status, imported)
 	}
 }
+
+func TestControllerDropboxAttach(t *testing.T) {
+	ts, st := plannerTestServer(t)
+	song, err := st.CreateArchiveItem("Oh Happy Day", "Edwin Hawkins")
+	if err != nil {
+		t.Fatal(err)
+	}
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &http.Client{Jar: jar}
+	body, _ := json.Marshal(map[string]string{"secret": "dev-secret"})
+	res, err := c.Post(ts.URL+"/api/controller/login", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("controller login %d", res.StatusCode)
+	}
+	status, created := postDropboxFile(t, c, ts.URL+"/api/controller/archive/dropbox", "choir.txt", []byte("lyrics"))
+	item, _ := created["item"].(map[string]any)
+	if status != http.StatusCreated {
+		t.Fatalf("deposit %d %+v", status, created)
+	}
+	id, _ := item["id"].(string)
+	status, attached := doJSON(t, c, http.MethodPost, ts.URL+"/api/controller/archive/dropbox/"+id+"/attach", map[string]any{
+		"itemId": song.ID, "instrument": "choir",
+	})
+	got, _ := attached["item"].(map[string]any)
+	if status != http.StatusOK || got["title"] != "Oh Happy Day" {
+		t.Fatalf("attach %d %+v", status, attached)
+	}
+	files, _ := got["files"].([]any)
+	if len(files) != 1 {
+		t.Fatalf("files %+v", files)
+	}
+}
