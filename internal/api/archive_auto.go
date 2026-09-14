@@ -233,25 +233,7 @@ func archiveAutoPrompt(filename, text string) string {
 }
 
 func inferArchiveAutoKind(name string, data []byte) string {
-	ext := strings.ToLower(path.Ext(name))
-	detected := http.DetectContentType(data)
-	if i := strings.IndexByte(detected, ';'); i >= 0 {
-		detected = strings.TrimSpace(detected[:i])
-	}
-	switch {
-	case ext == ".pdf" || detected == "application/pdf":
-		return store.ArchiveKindSheet
-	case ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".webp" ||
-		detected == "image/png" || detected == "image/jpeg" || detected == "image/webp":
-		return store.ArchiveKindSheet
-	case ext == ".txt":
-		return store.ArchiveKindLyrics
-	case ext == ".mp3" || ext == ".m4a" || ext == ".wav" || ext == ".ogg" || ext == ".aac" || ext == ".flac" || ext == ".aiff" || ext == ".aif" || ext == ".caf" ||
-		strings.HasPrefix(detected, "audio/"):
-		return store.ArchiveKindAudio
-	default:
-		return ""
-	}
+	return store.InferArchiveKind(name, data)
 }
 
 func filenameArchiveGuess(name, kind string) archiveAutoSuggestion {

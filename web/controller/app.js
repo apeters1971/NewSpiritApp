@@ -14,6 +14,9 @@ let selectedDate = "";
 let selectedArchive = "";
 let archiveAutoFile = null;
 let archiveAutoKind = "";
+let importSelected = new Set();
+let importQueueBusy = false;
+let importLocal = {};
 let dateTitleIDs = [];
 let dateTitleSoloists = {};
 let dateFormClean = "";
@@ -659,6 +662,7 @@ async function loadState() {
   renderSoli();
   renderArchive();
   paintArchiveAuto();
+  renderImportQueue();
   renderChannels();
   renderProposals();
   fillSettingsForm();
@@ -952,6 +956,216 @@ function paintArchiveAuto() {
   if (btn) btn.hidden = !(state.archiveAuto || catalog.archiveAuto);
 }
 
+function dropboxItems() {
+  return state.archiveDropbox || [];
+}
+
+function dropboxByID(id) {
+  return dropboxItems().find((item) => item.id === id);
+}
+
+function dropboxFromName(item) {
+  return item.createdByName || (item.createdBy ? item.createdBy : I18N.t("controller"));
+}
+
+function importQueueStatusLabel(item) {
+  const local = importLocal[item.id] || {};
+  if (local.status === "classifying") return I18N.t("archiveImportReading");
+  if (local.status === "importing") return I18N.t("archiveImportImporting");
+  if (local.status === "error") return local.error || I18N.t("errArchiveAuto");
+  if (item.title) return I18N.t("archiveImportReady");
+  return I18N.t("archiveImportQueued");
+}
+
+function syncImportQueueFromDom() {
+  document.querySelectorAll("#archive-import-body tr[data-id]").forEach((tr) => {
+    const item = dropboxByID(tr.dataset.id);
+    if (!item) return;
+    const local = importLocal[item.id] || {};
+    if (local.status === "classifying" || local.status === "importing") return;
+    if (tr.querySelector("[data-pick]")) {
+      if (tr.querySelector("[data-pick]").checked) importSelected.add(item.id);
+      else importSelected.delete(item.id);
+    }
+    item.title = tr.querySelector("[data-title]")?.value ?? item.title;
+    item.author = tr.querySelector("[data-author]")?.value ?? item.author;
+    item.instrument = tr.querySelector("[data-instrument]")?.value ?? item.instrument;
+  });
+}
+
+function selectedDropboxItems() {
+  return dropboxItems().filter((item) => importSelected.has(item.id));
+}
+
+function paintImportQueueActions() {
+  const n = selectedDropboxItems().length;
+  const classify = document.getElementById("archive-import-classify");
+  const commit = document.getElementById("archive-import-commit");
+  const remove = document.getElementById("archive-import-remove");
+  if (classify) classify.disabled = importQueueBusy || !n;
+  if (commit) commit.disabled = importQueueBusy || !n;
+  if (remove) remove.disabled = importQueueBusy || !n;
+  const all = document.getElementById("archive-import-all");
+  const items = dropboxItems();
+  if (all) {
+    all.disabled = importQueueBusy || !items.length;
+    all.checked = items.length > 0 && items.every((item) => importSelected.has(item.id));
+    all.indeterminate = n > 0 && n < items.length;
+  }
+}
+
+function setImportQueueStatus(msg) {
+  const el = document.getElementById("archive-import-status");
+  if (!el) return;
+  el.hidden = !msg;
+  el.textContent = msg || "";
+}
+
+function renderImportQueue() {
+  const body = document.getElementById("archive-import-body");
+  const empty = document.getElementById("archive-import-empty");
+  if (!body || !empty) return;
+  const items = dropboxItems();
+  empty.hidden = items.length > 0;
+  body.innerHTML = items.map((item) => {
+    const local = importLocal[item.id] || {};
+    const busy = local.status === "classifying" || local.status === "importing";
+    return `<tr data-id="${item.id}">
+      <td><input type="checkbox" data-pick ${importSelected.has(item.id) ? "checked" : ""} ${importQueueBusy ? "disabled" : ""} /></td>
+      <td>${escapeHtml(item.name)}</td>
+      <td>${escapeHtml(dropboxFromName(item))}</td>
+      <td>${escapeHtml(archiveKindLabel(item.kind))}</td>
+      <td><input type="text" data-title value="${escapeHtml(item.title || "")}" maxlength="200" ${busy || importQueueBusy ? "disabled" : ""} /></td>
+      <td><input type="text" data-author value="${escapeHtml(item.author || "")}" maxlength="200" ${busy || importQueueBusy ? "disabled" : ""} /></td>
+      <td><input type="text" data-instrument value="${escapeHtml(item.instrument || "")}" maxlength="40" placeholder="${escapeHtml(I18N.t("archiveRoleHint"))}" ${busy || importQueueBusy ? "disabled" : ""} /></td>
+      <td class="archive-import-status${local.status === "error" ? " is-error" : ""}">${escapeHtml(importQueueStatusLabel(item))}</td>
+    </tr>`;
+  }).join("");
+  paintImportQueueActions();
+}
+
+async function addImportQueueFiles(files) {
+  const errEl = document.getElementById("archive-import-error");
+  let skipped = 0;
+  let added = 0;
+  showError(errEl, "");
+  for (const file of files || []) {
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      const res = await fetch("/api/controller/archive/dropbox", { method: "POST", credentials: "same-origin", body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(I18N.error(data.error || res.statusText));
+      if (data.item?.id) importSelected.add(data.item.id);
+      added += 1;
+    } catch {
+      skipped += 1;
+    }
+  }
+  showError(errEl, skipped ? I18N.t("archiveImportSkipped") : "");
+  setImportQueueStatus("");
+  if (added) await loadState();
+  else renderImportQueue();
+}
+
+async function classifySelectedImport() {
+  syncImportQueueFromDom();
+  const rows = selectedDropboxItems();
+  const errEl = document.getElementById("archive-import-error");
+  if (!rows.length || importQueueBusy) {
+    showError(errEl, I18N.t("archiveImportNone"));
+    return;
+  }
+  importQueueBusy = true;
+  showError(errEl, "");
+  paintImportQueueActions();
+  let done = 0;
+  for (const item of rows) {
+    importLocal[item.id] = { status: "classifying", error: "" };
+    renderImportQueue();
+    setImportQueueStatus(`${I18N.t("archiveImportReading")} ${done + 1}/${rows.length}`);
+    try {
+      const data = await api(`/api/controller/archive/dropbox/${encodeURIComponent(item.id)}/auto`, { method: "POST", body: "{}" });
+      const next = data.item || item;
+      Object.assign(item, next);
+      importLocal[item.id] = { status: "ready", error: "" };
+    } catch (err) {
+      importLocal[item.id] = { status: "error", error: err.message };
+    }
+    done += 1;
+  }
+  importQueueBusy = false;
+  setImportQueueStatus("");
+  await loadState();
+}
+
+async function commitSelectedImport() {
+  syncImportQueueFromDom();
+  const rows = selectedDropboxItems();
+  const errEl = document.getElementById("archive-import-error");
+  if (!rows.length || importQueueBusy) {
+    showError(errEl, I18N.t("archiveImportNone"));
+    return;
+  }
+  const missing = rows.filter((item) => !String(item.title || "").trim());
+  if (missing.length) {
+    missing.forEach((item) => {
+      importLocal[item.id] = { status: "error", error: I18N.t("archiveImportNeedTitle") };
+    });
+    renderImportQueue();
+    showError(errEl, I18N.t("archiveImportNeedTitle"));
+    return;
+  }
+  importQueueBusy = true;
+  showError(errEl, "");
+  paintImportQueueActions();
+  let done = 0;
+  for (const item of rows) {
+    importLocal[item.id] = { status: "importing", error: "" };
+    renderImportQueue();
+    setImportQueueStatus(`${I18N.t("archiveImportImporting")} ${done + 1}/${rows.length}`);
+    try {
+      await api(`/api/controller/archive/dropbox/${encodeURIComponent(item.id)}/import`, {
+        method: "POST",
+        body: JSON.stringify({
+          title: item.title.trim(),
+          author: item.author.trim(),
+          instrument: item.instrument.trim(),
+        }),
+      });
+      importSelected.delete(item.id);
+      delete importLocal[item.id];
+      done += 1;
+      await loadState();
+    } catch (err) {
+      importLocal[item.id] = { status: "error", error: err.message };
+    }
+  }
+  importQueueBusy = false;
+  setImportQueueStatus("");
+  await loadState();
+}
+
+async function removeSelectedImport() {
+  syncImportQueueFromDom();
+  const rows = selectedDropboxItems();
+  if (!rows.length || importQueueBusy) return;
+  importQueueBusy = true;
+  showError(document.getElementById("archive-import-error"), "");
+  for (const item of rows) {
+    try {
+      await api(`/api/controller/archive/dropbox/${encodeURIComponent(item.id)}`, { method: "DELETE" });
+      importSelected.delete(item.id);
+      delete importLocal[item.id];
+    } catch (err) {
+      importLocal[item.id] = { status: "error", error: err.message };
+    }
+  }
+  importQueueBusy = false;
+  setImportQueueStatus("");
+  await loadState();
+}
+
 function setArchiveAutoReview(on, suggestion) {
   if (!on) {
     archiveAutoFile = null;
@@ -1223,12 +1437,12 @@ function renderDateTitles() {
   renderDateTitleSelects();
 }
 
-async function uploadArchiveFile(file, kind, role) {
+async function uploadArchiveFileTo(itemId, file, kind, role) {
   const fd = new FormData();
   fd.append("file", file);
   fd.append("kind", kind);
   if (role) fd.append("role", role);
-  const res = await fetch(`/api/controller/archive/${encodeURIComponent(selectedArchive)}/files`, {
+  const res = await fetch(`/api/controller/archive/${encodeURIComponent(itemId)}/files`, {
     method: "POST",
     credentials: "same-origin",
     body: fd,
@@ -1236,6 +1450,10 @@ async function uploadArchiveFile(file, kind, role) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(I18N.error(data.error || res.statusText));
   return data;
+}
+
+async function uploadArchiveFile(file, kind, role) {
+  return uploadArchiveFileTo(selectedArchive, file, kind, role);
 }
 
 async function saveArchiveFileMeta(fileId, name, role, url) {
@@ -2905,6 +3123,84 @@ document.getElementById("archive-body").addEventListener("click", (e) => {
 
 document.getElementById("btn-archive-new").addEventListener("click", resetArchiveForm);
 
+function openImportQueuePicker() {
+  const input = document.getElementById("archive-import-file");
+  if (!input || importQueueBusy) return;
+  input.value = "";
+  input.click();
+}
+
+document.getElementById("archive-import-drop")?.addEventListener("click", openImportQueuePicker);
+document.getElementById("archive-import-drop")?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" || e.key === " ") {
+    e.preventDefault();
+    openImportQueuePicker();
+  }
+});
+["dragenter", "dragover"].forEach((type) => {
+  document.getElementById("archive-import-drop")?.addEventListener(type, (e) => {
+    e.preventDefault();
+    e.currentTarget.classList.add("drag");
+  });
+});
+document.getElementById("archive-import-drop")?.addEventListener("dragleave", (e) => {
+  e.currentTarget.classList.remove("drag");
+});
+document.getElementById("archive-import-drop")?.addEventListener("drop", (e) => {
+  e.preventDefault();
+  e.currentTarget.classList.remove("drag");
+  if (importQueueBusy) return;
+  addImportQueueFiles(e.dataTransfer?.files);
+});
+document.getElementById("archive-import-file")?.addEventListener("change", (e) => {
+  addImportQueueFiles(e.target.files);
+  e.target.value = "";
+});
+document.getElementById("archive-import-classify")?.addEventListener("click", () => classifySelectedImport());
+document.getElementById("archive-import-commit")?.addEventListener("click", () => commitSelectedImport());
+document.getElementById("archive-import-remove")?.addEventListener("click", () => removeSelectedImport());
+document.getElementById("archive-import-all")?.addEventListener("change", (e) => {
+  if (importQueueBusy) return;
+  syncImportQueueFromDom();
+  dropboxItems().forEach((item) => {
+    if (e.target.checked) importSelected.add(item.id);
+    else importSelected.delete(item.id);
+  });
+  renderImportQueue();
+});
+document.getElementById("archive-import-body")?.addEventListener("change", (e) => {
+  const pick = e.target.closest("[data-pick]");
+  const tr = e.target.closest("tr[data-id]");
+  const item = tr && dropboxByID(tr.dataset.id);
+  if (pick && item) {
+    if (pick.checked) importSelected.add(item.id);
+    else importSelected.delete(item.id);
+  }
+  if (item) {
+    item.title = tr.querySelector("[data-title]")?.value ?? item.title;
+    item.author = tr.querySelector("[data-author]")?.value ?? item.author;
+    item.instrument = tr.querySelector("[data-instrument]")?.value ?? item.instrument;
+  }
+  paintImportQueueActions();
+});
+document.getElementById("archive-import-body")?.addEventListener("input", (e) => {
+  const tr = e.target.closest("tr[data-id]");
+  const item = tr && dropboxByID(tr.dataset.id);
+  if (!item) return;
+  item.title = tr.querySelector("[data-title]")?.value ?? item.title;
+  item.author = tr.querySelector("[data-author]")?.value ?? item.author;
+  item.instrument = tr.querySelector("[data-instrument]")?.value ?? item.instrument;
+});
+document.getElementById("archive-import-body")?.addEventListener("click", (e) => {
+  if (e.target.closest("input")) return;
+  const tr = e.target.closest("tr[data-id]");
+  const item = tr && dropboxByID(tr.dataset.id);
+  if (!item || importQueueBusy) return;
+  if (importSelected.has(item.id)) importSelected.delete(item.id);
+  else importSelected.add(item.id);
+  renderImportQueue();
+});
+
 document.getElementById("btn-archive-auto")?.addEventListener("click", () => {
   const input = document.getElementById("archive-auto-file");
   if (!input) return;
@@ -3224,6 +3520,7 @@ document.getElementById("date-titles").addEventListener("click", (e) => {
 I18N.onChange(() => {
   I18N.apply();
   paintArchiveAuto();
+  renderImportQueue();
   if (archiveAutoFile) {
     setArchiveAutoReview(true, {
       kind: archiveAutoKind,

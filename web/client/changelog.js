@@ -6,10 +6,14 @@
         de: [
           "Über Licht, Wecker, Aufnahme und Play oben steht, was der Knopf macht.",
           "Auto im Notenarchiv liest PDF oder MP3 und schlägt Name, Autor und Instrument vor. Du kannst es übernehmen oder ändern.",
+          "In der Verwaltung kannst du viele Dateien in eine Import-Warteschlange legen, Titel erkennen lassen, die Angaben ändern und dann erst ins Notenarchiv übernehmen.",
+          "Mitglieder legen Noten und Audio in eine Dropbox. Archivare und die Verwaltung sehen die Warteschlange, erkennen Titel und importieren.",
         ],
         en: [
           "Hovering the light, alarm, record, and play buttons on top explains what each one does.",
           "Auto in the music archive reads a PDF or MP3 and suggests name, author, and instrument. You can accept or change them.",
+          "On the controller you can drop many files into an import queue, detect titles, edit the fields, and only then save them to the music archive.",
+          "Members drop sheet music and audio into a dropbox. Archivists and the controller see the queue, detect titles, and import.",
         ],
       },
     },

@@ -488,6 +488,40 @@
     </div>
     <div class="app-dialog-body">
       <p class="muted" data-i18n="archiveLede">Audio, Tracks, Texte, Noten und MIDI/MusicXML. Lege Songs an und hänge Dateien an.</p>
+      <section id="archive-dropbox" class="archive-import" hidden>
+        <h2 id="archive-dropbox-title" data-i18n="archiveDropbox">Dropbox</h2>
+        <p id="archive-dropbox-hint" class="muted" data-i18n="archiveDropboxHint">Lege Noten oder Audio ab. Archivare holen sie in die Warteschlange.</p>
+        <div id="archive-import-drop" class="archive-import-drop" tabindex="0">
+          <p data-i18n="archiveImportDrop">Dateien hierher ziehen oder klicken</p>
+        </div>
+        <input id="archive-import-file" type="file" multiple hidden accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.mp3,.m4a,.wav,.aac,.ogg,.flac,.aiff,.aif,.caf,application/pdf,image/*,audio/*,text/plain" />
+        <p id="archive-import-error" class="error" hidden></p>
+        <p id="archive-import-status" class="muted" hidden></p>
+        <div id="archive-import-toolbar" class="archive-import-toolbar" hidden>
+          <button type="button" id="archive-import-classify" class="btn" disabled data-i18n="archiveImportClassify">Titel erkennen</button>
+          <button type="button" id="archive-import-commit" class="btn" disabled data-i18n="archiveImportCommit">Ausgewählte importieren</button>
+          <button type="button" id="archive-import-remove" class="btn ghost" disabled data-i18n="archiveImportRemove">Aus Warteschlange entfernen</button>
+        </div>
+        <div id="archive-import-table-wrap" class="table-wrap archive-import-table" hidden>
+          <table>
+            <thead>
+              <tr>
+                <th><input type="checkbox" id="archive-import-all" aria-label="Alle" /></th>
+                <th data-i18n="archiveImportFile">Datei</th>
+                <th data-i18n="archiveImportBy">Von</th>
+                <th data-i18n="archiveAutoKind">Art</th>
+                <th data-i18n="title">Titel</th>
+                <th data-i18n="archiveAutoAuthor">Autor</th>
+                <th data-i18n="archiveAutoInstrument">Instrument</th>
+                <th data-i18n="archiveImportStatus">Status</th>
+              </tr>
+            </thead>
+            <tbody id="archive-import-body"></tbody>
+          </table>
+        </div>
+        <ul id="archive-dropbox-mine" class="archive-dropbox-mine" hidden></ul>
+        <p id="archive-import-empty" class="muted" hidden data-i18n="archiveDropboxEmpty">Noch keine Dateien in der Dropbox.</p>
+      </section>
       <div id="archive-toolbar" class="archive-toolbar">
         <button type="button" id="archive-new" class="btn" data-i18n="addSong">Song hinzufügen</button>
         <button type="button" id="archive-auto" class="btn ghost" hidden data-i18n="archiveAuto">Auto</button>

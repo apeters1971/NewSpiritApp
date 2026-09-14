@@ -74,6 +74,28 @@ type ArchiveFile struct {
 	Data []byte
 }
 
+func InferArchiveKind(name string, data []byte) string {
+	ext := strings.ToLower(path.Ext(name))
+	detected := http.DetectContentType(data)
+	if i := strings.IndexByte(detected, ';'); i >= 0 {
+		detected = strings.TrimSpace(detected[:i])
+	}
+	switch {
+	case ext == ".pdf" || detected == "application/pdf":
+		return ArchiveKindSheet
+	case ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".webp" ||
+		detected == "image/png" || detected == "image/jpeg" || detected == "image/webp":
+		return ArchiveKindSheet
+	case ext == ".txt":
+		return ArchiveKindLyrics
+	case ext == ".mp3" || ext == ".m4a" || ext == ".wav" || ext == ".ogg" || ext == ".aac" || ext == ".flac" || ext == ".aiff" || ext == ".aif" || ext == ".caf" ||
+		strings.HasPrefix(detected, "audio/"):
+		return ArchiveKindAudio
+	default:
+		return ""
+	}
+}
+
 func ValidArchiveKind(kind string) bool {
 	for _, k := range ArchiveKinds {
 		if k == kind {
@@ -115,6 +137,9 @@ CREATE INDEX IF NOT EXISTS idx_date_titles_date ON date_titles(date_id, sort_ord
 		return err
 	}
 	if err := s.migrateArchiveFiles(); err != nil {
+		return err
+	}
+	if err := s.migrateArchiveDropbox(); err != nil {
 		return err
 	}
 	_, _ = s.db.Exec(`ALTER TABLE archive_items ADD COLUMN status TEXT NOT NULL DEFAULT 'accepted'`)

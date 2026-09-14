@@ -109,6 +109,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/chats/{room}/messages/{id}", s.handleChatDelete)
 	mux.HandleFunc("GET /api/archive", s.handleArchiveList)
 	mux.HandleFunc("POST /api/archive/auto", s.handleArchiveAuto)
+	mux.HandleFunc("GET /api/archive/dropbox", s.handleArchiveDropboxList)
+	mux.HandleFunc("POST /api/archive/dropbox", s.handleArchiveDropboxAdd)
+	mux.HandleFunc("PATCH /api/archive/dropbox/{id}", s.handleArchiveDropboxPatch)
+	mux.HandleFunc("DELETE /api/archive/dropbox/{id}", s.handleArchiveDropboxDelete)
+	mux.HandleFunc("POST /api/archive/dropbox/{id}/auto", s.handleArchiveDropboxAuto)
+	mux.HandleFunc("POST /api/archive/dropbox/{id}/import", s.handleArchiveDropboxImport)
 	mux.HandleFunc("POST /api/archive", s.handleArchiveCreate)
 	mux.HandleFunc("GET /api/archive/{id}", s.handleArchiveItem)
 	mux.HandleFunc("GET /api/archive/{id}/files/{fileId}", s.handleArchiveFile)
@@ -163,6 +169,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/controller/chats/{room}/messages/{id}", s.handleControllerChatDelete)
 	mux.HandleFunc("GET /api/controller/archive", s.handleControllerArchiveList)
 	mux.HandleFunc("POST /api/controller/archive/auto", s.handleControllerArchiveAuto)
+	mux.HandleFunc("GET /api/controller/archive/dropbox", s.handleControllerDropboxList)
+	mux.HandleFunc("POST /api/controller/archive/dropbox", s.handleControllerDropboxAdd)
+	mux.HandleFunc("PATCH /api/controller/archive/dropbox/{id}", s.handleControllerDropboxPatch)
+	mux.HandleFunc("DELETE /api/controller/archive/dropbox/{id}", s.handleControllerDropboxDelete)
+	mux.HandleFunc("POST /api/controller/archive/dropbox/{id}/auto", s.handleControllerDropboxAuto)
+	mux.HandleFunc("POST /api/controller/archive/dropbox/{id}/import", s.handleControllerDropboxImport)
 	mux.HandleFunc("GET /api/controller/archive/trash", s.handleControllerArchiveTrash)
 	mux.HandleFunc("POST /api/controller/archive/{id}/restore", s.handleControllerArchiveRestore)
 	mux.HandleFunc("POST /api/controller/archive/{id}/files/{fileId}/restore", s.handleControllerArchiveRestoreFile)
@@ -1454,6 +1466,11 @@ func (s *Server) handleControllerState(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	dropbox, err := s.Store.ListDropbox(true, "")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	channels, err := s.Store.ListChannels()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -1482,8 +1499,9 @@ func (s *Server) handleControllerState(w http.ResponseWriter, r *http.Request) {
 		"adminAlias": s.Store.AdminAlias(),
 		"newsTicker": s.Store.NewsTicker(),
 		"archive":      archive,
-		"archiveTrash": map[string]any{"items": trashItems, "files": trashFiles},
-		"archiveAuto":  s.archiveAutoEnabled(),
+		"archiveTrash":   map[string]any{"items": trashItems, "files": trashFiles},
+		"archiveDropbox": dropbox,
+		"archiveAuto":    s.archiveAutoEnabled(),
 		"channels":   channels,
 		"proposals":  proposals,
 		"choirSoli":  choirSoli,

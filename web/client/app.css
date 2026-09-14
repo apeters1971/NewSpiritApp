@@ -3081,6 +3081,67 @@ p.notes { margin: 0.45rem 0 0; color: var(--muted); white-space: pre-wrap; }
 .title-item strong { display: block; }
 .title-item p { margin: 0.15rem 0 0; color: var(--muted); font-size: 0.82rem; }
 .title-item p.title-soloists { color: var(--accent); }
+.archive-import { margin: 0.75rem 0 1.1rem; }
+.archive-import h2 { margin: 0 0 0.3rem; font-size: 1.05rem; }
+.archive-import-drop {
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  padding: 1.1rem 0.9rem;
+  text-align: center;
+  color: var(--muted);
+  background: rgba(16, 22, 28, 0.45);
+  cursor: pointer;
+}
+.archive-import-drop p { margin: 0; }
+.archive-import-drop:hover,
+.archive-import-drop:focus-visible,
+.archive-import-drop.drag {
+  border-color: var(--accent);
+  color: var(--ink);
+  outline: none;
+}
+.archive-import-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 0.7rem 0;
+}
+.archive-import-table { max-height: 18rem; overflow: auto; }
+.archive-import-table table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.archive-import-table th, .archive-import-table td {
+  text-align: left;
+  padding: 0.4rem 0.45rem;
+  border-bottom: 1px solid var(--line);
+}
+.archive-import-table input[type="checkbox"] { width: auto; accent-color: var(--accent); }
+.archive-import-table input[type="text"] {
+  width: 100%;
+  min-width: 6.5rem;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+.archive-import-status { color: var(--muted); font-size: 0.8rem; }
+.archive-import-status.is-error { color: var(--danger); }
+.archive-dropbox-mine {
+  list-style: none;
+  margin: 0.7rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+.archive-dropbox-mine li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.7rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.archive-dropbox-mine strong { flex: 1 1 8rem; }
 .archive-toolbar { display: flex; flex-wrap: wrap; gap: 0.45rem; margin: 0.75rem 0 0.85rem; }
 .archive-create { margin: 0.75rem 0 1rem; }
 .archive-create-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.85rem; }

@@ -52,6 +52,10 @@ let archiveItems = [];
 let archiveAutoOn = false;
 let archiveAutoFile = null;
 let archiveAutoKind = "";
+let archiveDropbox = [];
+let importSelected = new Set();
+let importQueueBusy = false;
+let importLocal = {};
 let commentDateId = "";
 let plannerPollRows = [{ startsAt: "", endsAt: "", autoEnd: "" }, { startsAt: "", endsAt: "", autoEnd: "" }];
 let plannerAutoEnd = "";
@@ -5181,7 +5185,7 @@ function connectWS() {
         loadDates().catch(() => {});
         if (paneVisible("proposals-dialog")) loadProposals().catch(() => {});
         if (paneVisible("directory-dialog")) loadDirectory().catch(() => {});
-        if (paneVisible("archive-dialog")) loadArchive().catch(() => {});
+        if (paneVisible("archive-dialog") && !importQueueBusy) loadArchive().catch(() => {});
         if (paneVisible("gallery-hub")) loadGalleryHub().catch(() => {});
         if (document.getElementById("gallery-dialog").open && galleryDateId) openGallery(galleryDateId).catch(() => {});
         if (document.getElementById("promo-dialog")?.open && promoDateId) openPromo(promoDateId).catch(() => {});
@@ -5245,7 +5249,10 @@ I18N.onChange(() => {
     if (paneVisible("proposals-dialog")) renderProposalList();
     if (document.getElementById("titles-dialog")?.open) showTitlesList();
     if (paneVisible("directory-dialog")) renderDirectory();
-    if (paneVisible("archive-dialog")) renderArchive();
+    if (paneVisible("archive-dialog")) {
+      renderArchive();
+      renderArchiveDropbox();
+    }
     paintHubShare();
     if (paneVisible("gallery-hub")) renderGalleryHub();
     if (document.getElementById("gallery-dialog").open) {
@@ -5753,11 +5760,274 @@ async function loadArchive() {
   const data = await api("/api/archive");
   archiveItems = data.archive || [];
   renderArchive();
+  try {
+    await loadDropbox();
+  } catch {
+    archiveDropbox = [];
+    renderArchiveDropbox();
+  }
 }
 
 function paintArchiveAuto() {
   const btn = document.getElementById("archive-auto");
   if (btn) btn.hidden = !archiveAutoOn;
+}
+
+function dropboxItems() {
+  return archiveDropbox || [];
+}
+
+function dropboxByID(id) {
+  return dropboxItems().find((item) => item.id === id);
+}
+
+function dropboxFromName(item) {
+  return item.createdByName || me?.nickname || "";
+}
+
+function importQueueStatusLabel(item) {
+  const local = importLocal[item.id] || {};
+  if (local.status === "classifying") return I18N.t("archiveImportReading");
+  if (local.status === "importing") return I18N.t("archiveImportImporting");
+  if (local.status === "error") return local.error || I18N.t("errArchiveAuto");
+  if (item.title) return I18N.t("archiveImportReady");
+  return I18N.t("archiveImportQueued");
+}
+
+function syncImportQueueFromDom() {
+  document.querySelectorAll("#archive-import-body tr[data-id]").forEach((tr) => {
+    const item = dropboxByID(tr.dataset.id);
+    if (!item) return;
+    const local = importLocal[item.id] || {};
+    if (local.status === "classifying" || local.status === "importing") return;
+    if (tr.querySelector("[data-pick]")) {
+      if (tr.querySelector("[data-pick]").checked) importSelected.add(item.id);
+      else importSelected.delete(item.id);
+    }
+    item.title = tr.querySelector("[data-title]")?.value ?? item.title;
+    item.author = tr.querySelector("[data-author]")?.value ?? item.author;
+    item.instrument = tr.querySelector("[data-instrument]")?.value ?? item.instrument;
+  });
+}
+
+function selectedDropboxItems() {
+  return dropboxItems().filter((item) => importSelected.has(item.id));
+}
+
+function paintImportQueueActions() {
+  const n = selectedDropboxItems().length;
+  const classify = document.getElementById("archive-import-classify");
+  const commit = document.getElementById("archive-import-commit");
+  const remove = document.getElementById("archive-import-remove");
+  if (classify) classify.disabled = importQueueBusy || !n;
+  if (commit) commit.disabled = importQueueBusy || !n;
+  if (remove) remove.disabled = importQueueBusy || !n;
+  const all = document.getElementById("archive-import-all");
+  const items = dropboxItems();
+  if (all) {
+    all.disabled = importQueueBusy || !items.length;
+    all.checked = items.length > 0 && items.every((item) => importSelected.has(item.id));
+    all.indeterminate = n > 0 && n < items.length;
+  }
+}
+
+function setImportQueueStatus(msg) {
+  const el = document.getElementById("archive-import-status");
+  if (!el) return;
+  el.hidden = !msg;
+  el.textContent = msg || "";
+}
+
+function paintArchiveDropbox() {
+  const box = document.getElementById("archive-dropbox");
+  if (!box) return;
+  const list = document.getElementById("archive-list");
+  const create = document.getElementById("archive-create");
+  const detail = document.getElementById("archive-detail");
+  box.hidden = !me || !list || list.hidden || (create && !create.hidden) || (detail && !detail.hidden);
+  const archiver = canTrashArchive();
+  const title = document.getElementById("archive-dropbox-title");
+  const hint = document.getElementById("archive-dropbox-hint");
+  if (title) {
+    title.setAttribute("data-i18n", archiver ? "archiveImport" : "archiveDropbox");
+    title.textContent = I18N.t(archiver ? "archiveImport" : "archiveDropbox");
+  }
+  if (hint) {
+    hint.setAttribute("data-i18n", archiver ? "archiveImportHint" : "archiveDropboxHint");
+    hint.textContent = I18N.t(archiver ? "archiveImportHint" : "archiveDropboxHint");
+  }
+  const toolbar = document.getElementById("archive-import-toolbar");
+  const table = document.getElementById("archive-import-table-wrap");
+  const mine = document.getElementById("archive-dropbox-mine");
+  if (toolbar) toolbar.hidden = !archiver;
+  if (table) table.hidden = !archiver;
+  if (mine) mine.hidden = archiver;
+}
+
+function renderArchiveDropbox() {
+  paintArchiveDropbox();
+  const empty = document.getElementById("archive-import-empty");
+  const items = dropboxItems();
+  if (empty) {
+    empty.hidden = items.length > 0;
+    empty.setAttribute("data-i18n", canTrashArchive() ? "archiveImportEmpty" : "archiveDropboxEmpty");
+    empty.textContent = I18N.t(canTrashArchive() ? "archiveImportEmpty" : "archiveDropboxEmpty");
+  }
+  if (canTrashArchive()) {
+    const body = document.getElementById("archive-import-body");
+    if (!body) return;
+    body.innerHTML = items.map((item) => {
+      const local = importLocal[item.id] || {};
+      const busy = local.status === "classifying" || local.status === "importing";
+      return `<tr data-id="${item.id}">
+        <td><input type="checkbox" data-pick ${importSelected.has(item.id) ? "checked" : ""} ${importQueueBusy ? "disabled" : ""} /></td>
+        <td>${escapeHtml(item.name)}</td>
+        <td>${escapeHtml(dropboxFromName(item))}</td>
+        <td>${escapeHtml(archiveKindLabel(item.kind))}</td>
+        <td><input type="text" data-title value="${escapeHtml(item.title || "")}" maxlength="200" ${busy || importQueueBusy ? "disabled" : ""} /></td>
+        <td><input type="text" data-author value="${escapeHtml(item.author || "")}" maxlength="200" ${busy || importQueueBusy ? "disabled" : ""} /></td>
+        <td><input type="text" data-instrument value="${escapeHtml(item.instrument || "")}" maxlength="40" placeholder="${escapeHtml(I18N.t("archiveRoleHint"))}" ${busy || importQueueBusy ? "disabled" : ""} /></td>
+        <td class="archive-import-status${local.status === "error" ? " is-error" : ""}">${escapeHtml(importQueueStatusLabel(item))}</td>
+      </tr>`;
+    }).join("");
+    paintImportQueueActions();
+    return;
+  }
+  const mine = document.getElementById("archive-dropbox-mine");
+  if (!mine) return;
+  mine.innerHTML = items.map((item) => `
+    <li data-id="${item.id}">
+      <strong>${escapeHtml(item.name)}</strong>
+      <span class="muted">${escapeHtml(archiveKindLabel(item.kind))} · ${escapeHtml(I18N.t("archiveDropboxWaiting"))}</span>
+      <button type="button" class="btn ghost" data-dropbox-remove="${item.id}">${escapeHtml(I18N.t("archiveDropboxRemove"))}</button>
+    </li>`).join("");
+}
+
+async function loadDropbox() {
+  const data = await api("/api/archive/dropbox");
+  archiveDropbox = data.items || [];
+  renderArchiveDropbox();
+}
+
+async function addImportQueueFiles(files) {
+  const errEl = document.getElementById("archive-import-error");
+  let skipped = 0;
+  let added = 0;
+  showError(errEl, "");
+  for (const file of files || []) {
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      const res = await fetch("/api/archive/dropbox", { method: "POST", credentials: "same-origin", body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(I18N.error(data.error || res.statusText));
+      if (data.item?.id) importSelected.add(data.item.id);
+      added += 1;
+    } catch {
+      skipped += 1;
+    }
+  }
+  showError(errEl, skipped ? I18N.t("archiveImportSkipped") : "");
+  setImportQueueStatus("");
+  if (added) await loadDropbox();
+  else renderArchiveDropbox();
+}
+
+async function classifySelectedImport() {
+  syncImportQueueFromDom();
+  const rows = selectedDropboxItems();
+  const errEl = document.getElementById("archive-import-error");
+  if (!rows.length || importQueueBusy) {
+    showError(errEl, I18N.t("archiveImportNone"));
+    return;
+  }
+  importQueueBusy = true;
+  showError(errEl, "");
+  paintImportQueueActions();
+  let done = 0;
+  for (const item of rows) {
+    importLocal[item.id] = { status: "classifying", error: "" };
+    renderArchiveDropbox();
+    setImportQueueStatus(`${I18N.t("archiveImportReading")} ${done + 1}/${rows.length}`);
+    try {
+      const data = await api(`/api/archive/dropbox/${encodeURIComponent(item.id)}/auto`, { method: "POST", body: "{}" });
+      Object.assign(item, data.item || {});
+      importLocal[item.id] = { status: "ready", error: "" };
+    } catch (err) {
+      importLocal[item.id] = { status: "error", error: err.message };
+    }
+    done += 1;
+  }
+  importQueueBusy = false;
+  setImportQueueStatus("");
+  await loadDropbox();
+}
+
+async function commitSelectedImport() {
+  syncImportQueueFromDom();
+  const rows = selectedDropboxItems();
+  const errEl = document.getElementById("archive-import-error");
+  if (!rows.length || importQueueBusy) {
+    showError(errEl, I18N.t("archiveImportNone"));
+    return;
+  }
+  const missing = rows.filter((item) => !String(item.title || "").trim());
+  if (missing.length) {
+    missing.forEach((item) => {
+      importLocal[item.id] = { status: "error", error: I18N.t("archiveImportNeedTitle") };
+    });
+    renderArchiveDropbox();
+    showError(errEl, I18N.t("archiveImportNeedTitle"));
+    return;
+  }
+  importQueueBusy = true;
+  showError(errEl, "");
+  paintImportQueueActions();
+  let done = 0;
+  for (const item of rows) {
+    importLocal[item.id] = { status: "importing", error: "" };
+    renderArchiveDropbox();
+    setImportQueueStatus(`${I18N.t("archiveImportImporting")} ${done + 1}/${rows.length}`);
+    try {
+      await api(`/api/archive/dropbox/${encodeURIComponent(item.id)}/import`, {
+        method: "POST",
+        body: JSON.stringify({
+          title: item.title.trim(),
+          author: (item.author || "").trim(),
+          instrument: (item.instrument || "").trim(),
+        }),
+      });
+      importSelected.delete(item.id);
+      delete importLocal[item.id];
+      done += 1;
+      await loadArchive();
+    } catch (err) {
+      importLocal[item.id] = { status: "error", error: err.message };
+    }
+  }
+  importQueueBusy = false;
+  setImportQueueStatus("");
+  await loadArchive();
+}
+
+async function removeSelectedImport() {
+  syncImportQueueFromDom();
+  const rows = selectedDropboxItems();
+  if (!rows.length || importQueueBusy) return;
+  importQueueBusy = true;
+  showError(document.getElementById("archive-import-error"), "");
+  for (const item of rows) {
+    try {
+      await api(`/api/archive/dropbox/${encodeURIComponent(item.id)}`, { method: "DELETE" });
+      importSelected.delete(item.id);
+      delete importLocal[item.id];
+    } catch (err) {
+      importLocal[item.id] = { status: "error", error: err.message };
+    }
+  }
+  importQueueBusy = false;
+  setImportQueueStatus("");
+  await loadDropbox();
 }
 
 function archiveKindLabel(kind) {
@@ -5807,6 +6077,7 @@ function showArchiveCreate(show) {
     showError(document.getElementById("archive-create-error"), "");
     document.getElementById("archive-create-title").focus();
   }
+  renderArchiveDropbox();
 }
 
 function showArchiveList() {
@@ -5820,6 +6091,7 @@ function showArchiveList() {
   setArchiveAutoReview(false);
   paintArchiveAuto();
   renderArchive();
+  renderArchiveDropbox();
 }
 
 function renderArchive() {
@@ -5855,6 +6127,7 @@ async function openArchiveItem(itemId) {
     document.getElementById("archive-toolbar").hidden = true;
     document.getElementById("archive-search").hidden = true;
     document.querySelector("label[for=archive-search]").hidden = true;
+    renderArchiveDropbox();
     detail.innerHTML = titleMaterialHTML(data.item, "archive") + archiveManageHTML(data.item);
     for (const el of detail.querySelectorAll("[data-text-src]")) {
       try {
@@ -5941,6 +6214,94 @@ document.getElementById("archive-detail").addEventListener("click", (e) => {
 });
 
 document.getElementById("archive-new").addEventListener("click", () => showArchiveCreate(true));
+
+function openImportQueuePicker() {
+  const input = document.getElementById("archive-import-file");
+  if (!input || importQueueBusy) return;
+  input.value = "";
+  input.click();
+}
+
+document.getElementById("archive-import-drop")?.addEventListener("click", openImportQueuePicker);
+document.getElementById("archive-import-drop")?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" || e.key === " ") {
+    e.preventDefault();
+    openImportQueuePicker();
+  }
+});
+["dragenter", "dragover"].forEach((type) => {
+  document.getElementById("archive-import-drop")?.addEventListener(type, (e) => {
+    e.preventDefault();
+    e.currentTarget.classList.add("drag");
+  });
+});
+document.getElementById("archive-import-drop")?.addEventListener("dragleave", (e) => {
+  e.currentTarget.classList.remove("drag");
+});
+document.getElementById("archive-import-drop")?.addEventListener("drop", (e) => {
+  e.preventDefault();
+  e.currentTarget.classList.remove("drag");
+  if (importQueueBusy) return;
+  addImportQueueFiles(e.dataTransfer?.files);
+});
+document.getElementById("archive-import-file")?.addEventListener("change", (e) => {
+  addImportQueueFiles(e.target.files);
+  e.target.value = "";
+});
+document.getElementById("archive-import-classify")?.addEventListener("click", () => classifySelectedImport());
+document.getElementById("archive-import-commit")?.addEventListener("click", () => commitSelectedImport());
+document.getElementById("archive-import-remove")?.addEventListener("click", () => removeSelectedImport());
+document.getElementById("archive-import-all")?.addEventListener("change", (e) => {
+  if (importQueueBusy) return;
+  syncImportQueueFromDom();
+  dropboxItems().forEach((item) => {
+    if (e.target.checked) importSelected.add(item.id);
+    else importSelected.delete(item.id);
+  });
+  renderArchiveDropbox();
+});
+document.getElementById("archive-import-body")?.addEventListener("change", (e) => {
+  const pick = e.target.closest("[data-pick]");
+  const tr = e.target.closest("tr[data-id]");
+  const item = tr && dropboxByID(tr.dataset.id);
+  if (pick && item) {
+    if (pick.checked) importSelected.add(item.id);
+    else importSelected.delete(item.id);
+  }
+  if (item) {
+    item.title = tr.querySelector("[data-title]")?.value ?? item.title;
+    item.author = tr.querySelector("[data-author]")?.value ?? item.author;
+    item.instrument = tr.querySelector("[data-instrument]")?.value ?? item.instrument;
+  }
+  paintImportQueueActions();
+});
+document.getElementById("archive-import-body")?.addEventListener("input", (e) => {
+  const tr = e.target.closest("tr[data-id]");
+  const item = tr && dropboxByID(tr.dataset.id);
+  if (!item) return;
+  item.title = tr.querySelector("[data-title]")?.value ?? item.title;
+  item.author = tr.querySelector("[data-author]")?.value ?? item.author;
+  item.instrument = tr.querySelector("[data-instrument]")?.value ?? item.instrument;
+});
+document.getElementById("archive-import-body")?.addEventListener("click", (e) => {
+  if (e.target.closest("input")) return;
+  const tr = e.target.closest("tr[data-id]");
+  const item = tr && dropboxByID(tr.dataset.id);
+  if (!item || importQueueBusy) return;
+  if (importSelected.has(item.id)) importSelected.delete(item.id);
+  else importSelected.add(item.id);
+  renderArchiveDropbox();
+});
+document.getElementById("archive-dropbox-mine")?.addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-dropbox-remove]");
+  if (!btn || importQueueBusy) return;
+  try {
+    await api(`/api/archive/dropbox/${encodeURIComponent(btn.dataset.dropboxRemove)}`, { method: "DELETE" });
+    await loadDropbox();
+  } catch (err) {
+    showError(document.getElementById("archive-import-error"), err.message);
+  }
+});
 
 document.getElementById("archive-auto")?.addEventListener("click", () => {
   const input = document.getElementById("archive-auto-file");

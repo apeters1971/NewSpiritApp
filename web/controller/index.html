@@ -249,6 +249,39 @@
     </div>
 
     <div id="tab-archive" class="tab-panel" hidden>
+      <section class="archive-import">
+        <h2 data-i18n="archiveImport">Import</h2>
+        <p class="lede" data-i18n="archiveImportHint">Viele Dateien ablegen oder aus der Dropbox holen. Erst erkennen, dann Titel prüfen, dann die ausgewählten mit den Angaben importieren. Nichts landet im Archiv, bevor du importierst.</p>
+        <div id="archive-import-drop" class="archive-import-drop" tabindex="0">
+          <p data-i18n="archiveImportDrop">Dateien hierher ziehen oder klicken</p>
+        </div>
+        <input id="archive-import-file" type="file" multiple hidden accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.mp3,.m4a,.wav,.aac,.ogg,.flac,.aiff,.aif,.caf,application/pdf,image/*,audio/*,text/plain" />
+        <p id="archive-import-error" class="error" hidden></p>
+        <p id="archive-import-status" class="muted" hidden></p>
+        <div class="archive-import-toolbar">
+          <button type="button" id="archive-import-classify" class="btn" disabled data-i18n="archiveImportClassify">Titel erkennen</button>
+          <button type="button" id="archive-import-commit" class="btn" disabled data-i18n="archiveImportCommit">Ausgewählte importieren</button>
+          <button type="button" id="archive-import-remove" class="btn ghost" disabled data-i18n="archiveImportRemove">Aus Warteschlange entfernen</button>
+        </div>
+        <div class="table-wrap archive-import-table">
+          <table>
+            <thead>
+              <tr>
+                <th><input type="checkbox" id="archive-import-all" aria-label="Alle" /></th>
+                <th data-i18n="archiveImportFile">Datei</th>
+                <th data-i18n="archiveImportBy">Von</th>
+                <th data-i18n="archiveAutoKind">Art</th>
+                <th data-i18n="title">Titel</th>
+                <th data-i18n="archiveAutoAuthor">Autor</th>
+                <th data-i18n="archiveAutoInstrument">Instrument</th>
+                <th data-i18n="archiveImportStatus">Status</th>
+              </tr>
+            </thead>
+            <tbody id="archive-import-body"></tbody>
+          </table>
+          <p id="archive-import-empty" class="muted" data-i18n="archiveImportEmpty">Noch keine Dateien in der Warteschlange.</p>
+        </div>
+      </section>
       <div class="archive-search">
         <label for="archive-search" data-i18n="archiveSearch">Suchen</label>
         <input id="archive-search" type="search" autocomplete="off" />

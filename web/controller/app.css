@@ -858,6 +858,50 @@ button.avatar {
   border: 1px solid var(--line);
   background: rgba(24, 34, 44, 0.9);
 }
+.archive-import { margin: 0 0 1.5rem; }
+.archive-import h2 { margin: 0 0 0.35rem; font-size: 1.1rem; }
+.archive-import-drop {
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  padding: 1.35rem 1rem;
+  text-align: center;
+  color: var(--muted);
+  background: rgba(24, 34, 44, 0.65);
+  cursor: pointer;
+}
+.archive-import-drop p { margin: 0; }
+.archive-import-drop:hover,
+.archive-import-drop:focus-visible,
+.archive-import-drop.drag {
+  border-color: var(--accent);
+  color: var(--ink);
+  background: rgba(61, 214, 198, 0.08);
+  outline: none;
+}
+.archive-import-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+.archive-import-table { max-height: 22rem; }
+.archive-import-table tbody tr { cursor: default; }
+.archive-import-table input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.archive-import-table input[type="text"] {
+  width: 100%;
+  min-width: 7rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--line);
+  background: #0f151b;
+  color: var(--ink);
+  font: inherit;
+}
+.archive-import-status { color: var(--muted); font-size: 0.82rem; }
+.archive-import-status.is-error { color: var(--danger); }
 .archive-trash { margin-top: 1.6rem; }
 .archive-trash h2 { margin: 0 0 0.35rem; font-size: 1.1rem; }
 table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
