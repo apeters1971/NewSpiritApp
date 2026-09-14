@@ -668,6 +668,61 @@ button.avatar {
 .btn.ghost.header-play.live .header-play-icon {
   animation: stream-pulse 1.2s ease-in-out infinite;
 }
+.theme-toggle::after,
+.header-notices::after,
+.header-record::after,
+.header-play::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 0.42rem);
+  left: 50%;
+  z-index: 34;
+  padding: 0.32rem 0.58rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--tip);
+  color: var(--ink);
+  font-size: 0.72rem;
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.38);
+  opacity: 0;
+  transform: translateX(-50%) translateY(0.28rem) scale(0.96);
+  transform-origin: top center;
+  pointer-events: none;
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+.header-record::after,
+.header-play::after {
+  left: auto;
+  right: 0.1rem;
+  transform: translateX(0) translateY(0.28rem) scale(0.96);
+  transform-origin: top right;
+}
+.stream-source:has(.stream-source-menu:not([hidden])) .header-record::after {
+  opacity: 0;
+}
+@media (hover: hover) {
+  .theme-toggle:hover::after,
+  .theme-toggle:focus-visible::after,
+  .header-notices:hover::after,
+  .header-notices:focus-visible::after,
+  .header-record:hover::after,
+  .header-record:focus-visible::after,
+  .header-play:hover::after,
+  .header-play:focus-visible::after {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+  .header-record:hover::after,
+  .header-record:focus-visible::after,
+  .header-play:hover::after,
+  .header-play:focus-visible::after {
+    transform: translateX(0) translateY(0) scale(1);
+  }
+}
 @keyframes stream-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }

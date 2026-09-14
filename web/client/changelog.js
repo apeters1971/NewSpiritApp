@@ -1,6 +1,17 @@
 (() => {
   const ENTRIES = [
     {
+      date: "2026-09-14",
+      items: {
+        de: [
+          "Über Licht, Wecker, Aufnahme und Play oben steht, was der Knopf macht.",
+        ],
+        en: [
+          "Hovering the light, alarm, record, and play buttons on top explains what each one does.",
+        ],
+      },
+    },
+    {
       date: "2026-09-13",
       items: {
         de: [

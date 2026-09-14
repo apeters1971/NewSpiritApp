@@ -10,6 +10,7 @@ function paintThemeButtons() {
   document.querySelectorAll("[data-theme-toggle]").forEach((btn) => {
     btn.setAttribute("aria-pressed", light ? "true" : "false");
     btn.setAttribute("aria-label", label);
+    btn.setAttribute("data-tip", label);
   });
 }
 
@@ -2252,6 +2253,7 @@ function paintNoticesButton() {
   btn.setAttribute("aria-pressed", on ? "true" : "false");
   const label = I18N.t(on ? "noticesOn" : "noticesOff");
   btn.setAttribute("aria-label", label);
+  btn.setAttribute("data-tip", label);
 }
 
 async function enableDesktopNotices() {
@@ -4763,12 +4765,16 @@ function paintStreamButtons() {
   if (!rec || !play) return;
   if (wrap) wrap.hidden = !me?.streamer;
   rec.classList.toggle("on", !!pubStream);
-  rec.setAttribute("aria-label", I18N.t(pubStream ? "streamStop" : "streamStart"));
+  const recLabel = I18N.t(pubStream ? "streamStop" : "streamStart");
+  rec.setAttribute("aria-label", recLabel);
+  rec.setAttribute("data-tip", recLabel);
   rec.setAttribute("aria-pressed", pubStream ? "true" : "false");
   const live = !!liveStream;
   play.disabled = !live;
   play.classList.toggle("live", live);
-  play.setAttribute("aria-label", I18N.t("streamPlay"));
+  const playLabel = I18N.t("streamPlay");
+  play.setAttribute("aria-label", playLabel);
+  play.setAttribute("data-tip", playLabel);
 }
 
 function openStreamDialog(publishing) {

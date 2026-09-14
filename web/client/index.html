@@ -27,7 +27,7 @@
           <button type="button" class="lang-btn" data-lang="de">DE</button>
           <button type="button" class="lang-btn" data-lang="en">EN</button>
         </div>
-        <button type="button" class="btn ghost theme-toggle" data-theme-toggle aria-label="Hellmodus" aria-pressed="false">
+        <button type="button" class="btn ghost theme-toggle" data-theme-toggle aria-label="Hellmodus" data-tip="Hellmodus" aria-pressed="false">
           <span class="theme-toggle-icon" aria-hidden="true"></span>
         </button>
       </div>
@@ -54,7 +54,7 @@
           <button type="button" class="lang-btn" data-lang="de">DE</button>
           <button type="button" class="lang-btn" data-lang="en">EN</button>
         </div>
-        <button type="button" class="btn ghost theme-toggle" data-theme-toggle aria-label="Hellmodus" aria-pressed="false">
+        <button type="button" class="btn ghost theme-toggle" data-theme-toggle aria-label="Hellmodus" data-tip="Hellmodus" aria-pressed="false">
           <span class="theme-toggle-icon" aria-hidden="true"></span>
         </button>
       </div>
@@ -106,14 +106,14 @@
             </button>
             <ul id="online-chip-list" class="online-chip-list"></ul>
           </div>
-          <button type="button" class="btn ghost theme-toggle" data-theme-toggle aria-label="Hellmodus" aria-pressed="false">
+          <button type="button" class="btn ghost theme-toggle" data-theme-toggle aria-label="Hellmodus" data-tip="Hellmodus" aria-pressed="false">
             <span class="theme-toggle-icon" aria-hidden="true"></span>
           </button>
-          <button type="button" id="btn-header-notices" class="btn ghost header-notices on" aria-pressed="true" data-i18n-aria="noticesOn" aria-label="Benachrichtigungen an">
+          <button type="button" id="btn-header-notices" class="btn ghost header-notices on" aria-pressed="true" data-i18n-aria="noticesOn" aria-label="Benachrichtigungen an" data-tip="Benachrichtigungen an">
             <span class="header-notices-icon" aria-hidden="true"></span>
           </button>
           <div id="stream-source" class="stream-source" hidden>
-            <button type="button" id="btn-header-record" class="btn ghost header-stream header-record" aria-haspopup="menu" aria-expanded="false" aria-controls="stream-source-menu" data-i18n-aria="streamStart" aria-label="Live-Stream starten">
+            <button type="button" id="btn-header-record" class="btn ghost header-stream header-record" aria-haspopup="menu" aria-expanded="false" aria-controls="stream-source-menu" data-i18n-aria="streamStart" aria-label="Live-Stream starten" data-tip="Live-Stream starten">
               <span class="header-record-icon" aria-hidden="true"></span>
             </button>
             <div id="stream-source-menu" class="avatar-menu stream-source-menu" hidden role="menu">
@@ -123,7 +123,7 @@
             </div>
             <input id="stream-file" type="file" accept="video/*" hidden />
           </div>
-          <button type="button" id="btn-header-play" class="btn ghost header-stream header-play" disabled data-i18n-aria="streamPlay" aria-label="Live-Stream ansehen">
+          <button type="button" id="btn-header-play" class="btn ghost header-stream header-play" disabled data-i18n-aria="streamPlay" aria-label="Live-Stream ansehen" data-tip="Live-Stream ansehen">
             <span class="header-play-icon" aria-hidden="true"></span>
           </button>
           <button type="button" id="btn-menu" class="btn ghost menu-toggle" aria-expanded="false" aria-controls="top-actions" data-i18n-aria="menu" aria-label="Menü">
