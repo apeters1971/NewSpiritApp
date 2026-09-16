@@ -783,6 +783,59 @@ func (s *Store) ListDirectory() ([]DirectoryEntry, error) {
 	return out, nil
 }
 
+func choirZone() *time.Location {
+	loc, err := time.LoadLocation("Europe/Berlin")
+	if err != nil {
+		return time.Local
+	}
+	return loc
+}
+
+func birthdayKeys(t time.Time) []string {
+	t = t.In(choirZone())
+	md := t.Format("01-02")
+	keys := []string{md}
+	if md == "02-28" {
+		y := t.Year()
+		leap := y%4 == 0 && (y%100 != 0 || y%400 == 0)
+		if !leap {
+			keys = append(keys, "02-29")
+		}
+	}
+	return keys
+}
+
+func (s *Store) BirthdaysToday() ([]OnlinePerson, error) {
+	return s.birthdaysOn(time.Now())
+}
+
+func (s *Store) birthdaysOn(t time.Time) ([]OnlinePerson, error) {
+	keys := birthdayKeys(t)
+	ph := make([]string, len(keys))
+	args := make([]any, len(keys))
+	for i, k := range keys {
+		ph[i] = "?"
+		args[i] = k
+	}
+	rows, err := s.db.Query(
+		`SELECT id, nickname FROM users WHERE birthday != '' AND substr(birthday, 6) IN (`+strings.Join(ph, ",")+`) ORDER BY nickname COLLATE NOCASE`,
+		args...,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []OnlinePerson{}
+	for rows.Next() {
+		var p OnlinePerson
+		if err := rows.Scan(&p.ID, &p.Nickname); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) UserByID(id string) (User, error) {
 	u, err := scanUserRow(s.db.QueryRow(`SELECT id, nickname, email, role, subrole, address, phone, alt_email, birthday, member_since, must_change_password, streamer, planner, archiver, created_at, last_connected_at FROM users WHERE id=?`, id))
 	if err != nil {

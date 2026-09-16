@@ -90,6 +90,61 @@ body {
   gap: 0.75rem;
   min-width: 0;
 }
+.birthday-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.55rem;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 16rem;
+}
+.birthday-sign {
+  display: inline-block;
+  transform: rotate(-5deg);
+  background: linear-gradient(#f7e389, #d4b07a);
+  color: #3a2410;
+  font-weight: 800;
+  font-size: 0.68rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  line-height: 1.15;
+  padding: 0.32rem 0.5rem;
+  border: 2px solid #c49a42;
+  box-shadow: 2px 3px 0 rgba(0, 0, 0, 0.18);
+  white-space: nowrap;
+}
+.birthday-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  min-width: 0;
+}
+.birthday-tag {
+  position: relative;
+  display: inline-block;
+  background: #fff8ee;
+  color: #2a1a16;
+  border: 1px solid #d4b07a;
+  border-radius: 3px;
+  padding: 0.22rem 0.48rem 0.18rem;
+  font-weight: 750;
+  font-size: 0.78rem;
+  line-height: 1.2;
+  box-shadow: 1px 2px 0 rgba(0, 0, 0, 0.12);
+}
+.birthday-tag::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -0.22rem;
+  width: 0.32rem;
+  height: 0.32rem;
+  margin-left: -0.16rem;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #f2f2f2, #8a8a8a);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+}
 .avatar {
   position: relative;
   display: inline-grid;

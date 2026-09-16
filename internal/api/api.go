@@ -318,12 +318,18 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	birthdays, err := s.Store.BirthdaysToday()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"user":        user,
 		"unread":      unread,
 		"stream":      s.Hub.LiveStream(),
 		"newsTicker":  s.Store.NewsTicker(),
 		"online":      s.onlinePeople(),
+		"birthdays":   birthdays,
 		"archiveAuto": s.archiveAutoEnabled(),
 	})
 }
@@ -1493,6 +1499,11 @@ func (s *Server) handleControllerState(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	birthdays, err := s.Store.BirthdaysToday()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"users":      users,
 		"dates":      dates,
@@ -1508,6 +1519,7 @@ func (s *Server) handleControllerState(w http.ResponseWriter, r *http.Request) {
 		"proposals":  proposals,
 		"choirSoli":  choirSoli,
 		"unread":     unread,
+		"birthdays":  birthdays,
 	})
 }
 

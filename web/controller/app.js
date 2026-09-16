@@ -667,6 +667,7 @@ async function loadState() {
   renderChannels();
   renderProposals();
   fillSettingsForm();
+  paintBirthdays();
   paintPersonPhoto();
   paintUserChannels();
   if (document.getElementById("gallery-dialog")?.open && galleryDateId) {
@@ -687,6 +688,22 @@ async function loadState() {
       }).catch(() => {});
     }
   }
+}
+
+function paintBirthdays() {
+  const bar = document.getElementById("birthday-banner");
+  const tags = document.getElementById("birthday-tags");
+  if (!bar || !tags) return;
+  const people = state.birthdays || [];
+  if (!people.length) {
+    bar.hidden = true;
+    tags.innerHTML = "";
+    return;
+  }
+  bar.hidden = false;
+  const names = people.map((p) => p.nickname).filter(Boolean);
+  bar.setAttribute("aria-label", `${I18N.t("birthdaySign")}: ${names.join(", ")}`);
+  tags.innerHTML = people.map((p) => `<span class="birthday-tag">${escapeHtml(p.nickname)}</span>`).join("");
 }
 
 function fillSettingsForm() {
@@ -3610,6 +3627,7 @@ document.getElementById("date-titles").addEventListener("click", (e) => {
 
 I18N.onChange(() => {
   I18N.apply();
+  paintBirthdays();
   paintArchiveAuto();
   renderImportQueue();
   if (archiveAutoFile) {

@@ -556,6 +556,49 @@ func TestDirectory(t *testing.T) {
 	}
 }
 
+func TestBirthdaysOn(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "birthday.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	ada, err := st.CreateUser("Ada", "ada@example.com", "secret1", RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ben, err := st.CreateUser("Ben", "ben@example.com", "secret1", RoleChoir, "Alt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cara, err := st.CreateUser("Cara", "cara@example.com", "secret1", RoleBand, "Drums")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.SetUserInfo(ada.ID, "", "", "1990-05-01", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.SetUserInfo(ben.ID, "", "", "1991-05-02", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.SetUserInfo(cara.ID, "", "", "2000-02-29", "", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := st.birthdaysOn(time.Date(2026, 5, 1, 12, 0, 0, 0, choirZone()))
+	if err != nil || len(got) != 1 || got[0].Nickname != "Ada" {
+		t.Fatalf("may 1 %+v %v", got, err)
+	}
+	none, err := st.birthdaysOn(time.Date(2026, 5, 3, 12, 0, 0, 0, choirZone()))
+	if err != nil || len(none) != 0 {
+		t.Fatalf("empty %+v %v", none, err)
+	}
+	leap, err := st.birthdaysOn(time.Date(2026, 2, 28, 12, 0, 0, 0, choirZone()))
+	if err != nil || len(leap) != 1 || leap[0].Nickname != "Cara" {
+		t.Fatalf("feb 28 %+v %v", leap, err)
+	}
+}
+
 func TestDMRoom(t *testing.T) {
 	if got := DMRoom("b", "a"); got != "dm:a:b" {
 		t.Fatalf("sorted room %q", got)

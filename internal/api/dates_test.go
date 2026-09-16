@@ -234,3 +234,34 @@ func TestTitleOhSchreckAPI(t *testing.T) {
 		t.Fatalf("ada off title %+v", title)
 	}
 }
+
+func TestMemberBirthdays(t *testing.T) {
+	ts, st := plannerTestServer(t)
+	ada, err := st.CreateUser("Ada", "ada@example.com", "secret1", store.RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.ChangeOwnPassword(ada.ID, "secret2"); err != nil {
+		t.Fatal(err)
+	}
+	today := time.Now().In(time.FixedZone("CET", 2*3600)).Format("01-02")
+	if loc, err := time.LoadLocation("Europe/Berlin"); err == nil {
+		today = time.Now().In(loc).Format("01-02")
+	}
+	if _, err := st.SetUserInfo(ada.ID, "", "", "1990-"+today, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	c := memberClient(t, ts, "ada@example.com", "secret2")
+	status, me := doJSON(t, c, http.MethodGet, ts.URL+"/api/me", nil)
+	if status != http.StatusOK {
+		t.Fatalf("me %d %+v", status, me)
+	}
+	list, _ := me["birthdays"].([]any)
+	if len(list) != 1 {
+		t.Fatalf("birthdays %+v", me["birthdays"])
+	}
+	person, _ := list[0].(map[string]any)
+	if person["nickname"] != "Ada" {
+		t.Fatalf("person %+v", person)
+	}
+}

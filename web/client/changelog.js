@@ -1,6 +1,17 @@
 (() => {
   const ENTRIES = [
     {
+      date: "2026-09-16",
+      items: {
+        de: [
+          "Hat jemand im Adressbuch heute Geburtstag, hängt oben ein Happy-Birthday-Schild mit Namensschild.",
+        ],
+        en: [
+          "If someone in the address book has a birthday today, a Happy Birthday sign and name tag appear on the top banner.",
+        ],
+      },
+    },
+    {
       date: "2026-09-14",
       items: {
         de: [

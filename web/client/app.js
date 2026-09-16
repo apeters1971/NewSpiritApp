@@ -48,6 +48,7 @@ let dates = [];
 let ranking = { year: 0, leaders: [] };
 let proposals = [];
 let directory = [];
+let birthdays = [];
 let archiveItems = [];
 let archiveAutoOn = false;
 let archiveAutoFile = null;
@@ -2468,6 +2469,22 @@ function newsTickerMessages(official) {
   return [newsTickerOfficial, vote].filter(Boolean);
 }
 
+function paintBirthdays(list) {
+  if (list) birthdays = Array.isArray(list) ? list : [];
+  const bar = document.getElementById("birthday-banner");
+  const tags = document.getElementById("birthday-tags");
+  if (!bar || !tags) return;
+  if (!birthdays.length) {
+    bar.hidden = true;
+    tags.innerHTML = "";
+    return;
+  }
+  bar.hidden = false;
+  const names = birthdays.map((p) => p.nickname).filter(Boolean);
+  bar.setAttribute("aria-label", `${I18N.t("birthdaySign")}: ${names.join(", ")}`);
+  tags.innerHTML = birthdays.map((p) => `<span class="birthday-tag">${escapeHtml(p.nickname)}</span>`).join("");
+}
+
 function paintNewsTicker(text) {
   const bar = document.getElementById("news-ticker");
   if (!bar) return;
@@ -2605,7 +2622,10 @@ async function enterApp() {
   renderChatTabs();
   paintStreamButtons();
   paintPlannerBar();
-  api("/api/me").then((data) => paintNewsTicker(data.newsTicker)).catch(() => {});
+  api("/api/me").then((data) => {
+    paintNewsTicker(data.newsTicker);
+    paintBirthdays(data.birthdays);
+  }).catch(() => {});
   showTab("home");
   await loadDates();
   await loadMixer().catch(() => {});
@@ -2682,6 +2702,7 @@ async function boot() {
     applyLiveStream(data.stream, false);
     paintNewsTicker(data.newsTicker);
     paintOnline(data.online);
+    paintBirthdays(data.birthdays);
     archiveAutoOn = !!data.archiveAuto;
     paintArchiveAuto();
     if (me.mustChangePassword) {
@@ -5172,6 +5193,7 @@ function connectWS() {
         applyLiveStream(data.stream, false);
         paintNewsTicker(data.newsTicker);
         paintOnline(data.online);
+        paintBirthdays(data.birthdays);
         renderChatTabs();
         if (me.mustChangePassword) {
           showGate("password");
@@ -5203,6 +5225,7 @@ function connectWS() {
 
 I18N.onChange(() => {
   I18N.apply();
+  paintBirthdays();
   paintNewsTicker();
   paintThemeButtons();
   paintArchiveAuto();

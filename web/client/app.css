@@ -2186,6 +2186,68 @@ body.call-fs { overflow: hidden; }
 }
 .top h1 { margin: 0.25rem 0 0; font-size: 1.7rem; }
 .who-channels { margin: 0.25rem 0 0; color: var(--accent); font-size: 0.92rem; font-weight: 650; }
+.birthday-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.55rem;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 16rem;
+}
+.birthday-sign {
+  display: inline-block;
+  transform: rotate(-5deg);
+  background: linear-gradient(#f7e389, #d4b07a);
+  color: #3a2410;
+  font-weight: 800;
+  font-size: 0.68rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  line-height: 1.15;
+  padding: 0.32rem 0.5rem;
+  border: 2px solid #c49a42;
+  box-shadow: 2px 3px 0 rgba(0, 0, 0, 0.18);
+  white-space: nowrap;
+}
+.birthday-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  min-width: 0;
+}
+.birthday-tag {
+  position: relative;
+  display: inline-block;
+  background: #fff8ee;
+  color: #2a1a16;
+  border: 1px solid #d4b07a;
+  border-radius: 3px;
+  padding: 0.22rem 0.48rem 0.18rem;
+  font-weight: 750;
+  font-size: 0.78rem;
+  line-height: 1.2;
+  box-shadow: 1px 2px 0 rgba(0, 0, 0, 0.12);
+}
+.birthday-tag::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -0.22rem;
+  width: 0.32rem;
+  height: 0.32rem;
+  margin-left: -0.16rem;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #f2f2f2, #8a8a8a);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+}
+html[data-theme="light"] .birthday-sign {
+  box-shadow: 2px 3px 0 rgba(40, 28, 16, 0.12);
+}
+html[data-theme="light"] .birthday-tag {
+  background: #fffdf8;
+  box-shadow: 1px 2px 0 rgba(40, 28, 16, 0.08);
+}
 .my-channels {
   margin: 0;
   border: 0;
@@ -3519,7 +3581,12 @@ p.notes { margin: 0.45rem 0 0; color: var(--muted); white-space: pre-wrap; }
     margin-bottom: 0.85rem;
     padding: max(0.15rem, env(safe-area-inset-top, 0px)) 0.9rem 0;
   }
-  .top-brand { align-items: flex-start; }
+  .top-brand { align-items: flex-start; flex-wrap: wrap; }
+  .birthday-banner {
+    flex: 1 1 100%;
+    max-width: none;
+    margin: 0.1rem 0 0.15rem;
+  }
   .logo-bar { width: 44px; height: 44px; }
   .avatar-bar { width: 44px; height: 44px; }
   .top h1 { font-size: 1.25rem; }
