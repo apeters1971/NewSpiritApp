@@ -494,6 +494,16 @@ button.avatar {
   will-change: transform;
 }
 @media (prefers-reduced-motion: reduce) {
+  .top-actions {
+    transition: none;
+    transform: none;
+  }
+  .top-actions:not(.open) { visibility: hidden; }
+  .top-actions.open > * { animation: none; }
+  body::before { transition: none; }
+  .fold > .fold-body,
+  .fold-date > .date-body,
+  .fold-roster > .fold-body { transition: none; }
   .news-ticker-text {
     display: block;
     transform: none;
@@ -919,7 +929,7 @@ button.avatar {
 .menu-head h2 { margin: 0; font-size: 1.25rem; }
 .menu-logout { display: flex; margin-top: 0.75rem; }
 .top-actions {
-  display: none;
+  display: flex;
   position: fixed;
   inset: 0;
   z-index: 40;
@@ -934,8 +944,35 @@ button.avatar {
   padding: max(1rem, env(safe-area-inset-top, 0px)) 1rem max(1.25rem, env(safe-area-inset-bottom, 0px));
   background: var(--menu);
   border-left: 1px solid var(--line);
+  transform: translateX(100%);
+  visibility: hidden;
+  pointer-events: none;
+  transition: transform 0.36s cubic-bezier(0.32, 0.72, 0, 1), visibility 0.36s;
 }
-.top-actions.open { display: flex; }
+.top-actions.open {
+  transform: none;
+  visibility: visible;
+  pointer-events: auto;
+}
+.top-actions.open > * {
+  animation: menuItemIn 0.34s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+.top-actions.open > *:nth-child(1) { animation-delay: 0.02s; }
+.top-actions.open > *:nth-child(2) { animation-delay: 0.04s; }
+.top-actions.open > *:nth-child(3) { animation-delay: 0.06s; }
+.top-actions.open > *:nth-child(4) { animation-delay: 0.08s; }
+.top-actions.open > *:nth-child(5) { animation-delay: 0.1s; }
+.top-actions.open > *:nth-child(6) { animation-delay: 0.12s; }
+.top-actions.open > *:nth-child(7) { animation-delay: 0.14s; }
+.top-actions.open > *:nth-child(8) { animation-delay: 0.16s; }
+.top-actions.open > *:nth-child(9) { animation-delay: 0.18s; }
+.top-actions.open > *:nth-child(10) { animation-delay: 0.2s; }
+.top-actions.open > *:nth-child(11) { animation-delay: 0.22s; }
+.top-actions.open > *:nth-child(12) { animation-delay: 0.24s; }
+@keyframes menuItemIn {
+  from { opacity: 0; transform: translateX(0.7rem); }
+  to { opacity: 1; transform: none; }
+}
 .top-actions .btn,
 .top-actions .chat-tabs { width: 100%; }
 .top-actions .btn {
@@ -968,12 +1005,19 @@ button.avatar {
 .chat-tabs { flex-direction: column; }
 body.menu-open { overflow: hidden; }
 body.menu-open .top { z-index: 36; }
-body.menu-open::before {
+body::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: 35;
   background: var(--overlay);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.28s ease;
+}
+body.menu-open::before {
+  opacity: 1;
+  pointer-events: auto;
 }
 .chat-tabs { display: flex; flex-wrap: wrap; gap: 0.35rem; }
 .chat-unread {
@@ -1895,10 +1939,15 @@ body.call-fs { overflow: hidden; }
   border-right: 2px solid var(--muted);
   border-bottom: 2px solid var(--muted);
   transform: rotate(-45deg);
-  transition: transform 0.15s ease;
+  transition: transform 0.28s ease;
 }
 .fold[open] > .fold-head::after { transform: rotate(45deg); }
 .fold-body { padding: 0 1rem 0.9rem; }
+.fold > .fold-body,
+.fold-date > .date-body,
+.fold-roster > .fold-body {
+  transition: height 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+}
 .planner-tag {
   display: inline-flex;
   align-items: center;
@@ -2331,6 +2380,52 @@ html[data-theme="light"] .birthday-tag {
 .empty { margin-top: 2rem; }
 
 .dates { display: grid; gap: 1rem; }
+.dates.is-flipping {
+  overflow: hidden;
+  perspective: 1400px;
+}
+.dates.is-flipping > .card {
+  grid-area: 1 / 1;
+  transform-origin: 50% 50%;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.dates.is-flipping > .card.date-flip-in { z-index: 1; }
+.dates.is-flipping > .card.date-flip-out { z-index: 0; pointer-events: none; }
+.card.date-flip-out.to-left {
+  animation: dateFlipOutLeft 0.48s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+.card.date-flip-out.to-right {
+  animation: dateFlipOutRight 0.48s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+.card.date-flip-in.from-right {
+  animation: dateFlipInRight 0.48s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+.card.date-flip-in.from-left {
+  animation: dateFlipInLeft 0.48s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+@keyframes dateFlipOutLeft {
+  to { transform: rotateY(-78deg) translateX(-16%) scale(0.94); opacity: 0; }
+}
+@keyframes dateFlipOutRight {
+  to { transform: rotateY(78deg) translateX(16%) scale(0.94); opacity: 0; }
+}
+@keyframes dateFlipInRight {
+  from { transform: rotateY(78deg) translateX(16%) scale(0.94); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes dateFlipInLeft {
+  from { transform: rotateY(-78deg) translateX(-16%) scale(0.94); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card.date-flip-out.to-left,
+  .card.date-flip-out.to-right,
+  .card.date-flip-in.from-right,
+  .card.date-flip-in.from-left {
+    animation: none;
+  }
+}
 .card {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -2538,7 +2633,7 @@ html[data-theme="light"] .birthday-tag {
   border-right: 2px solid var(--muted);
   border-bottom: 2px solid var(--muted);
   transform: rotate(-45deg);
-  transition: transform 0.15s ease;
+  transition: transform 0.28s ease;
 }
 .fold-date[open] > .date-summary::after { transform: rotate(45deg); }
 .date-summary-actions {

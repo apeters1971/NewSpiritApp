@@ -5,9 +5,13 @@
       items: {
         de: [
           "Hat jemand im Adressbuch heute Geburtstag, hängt oben ein Happy-Birthday-Schild mit Namensschild.",
+          "Mit ‹ › dreht sich die Terminkarte zur Seite, statt einfach zu springen.",
+          "Kanäle, Nächster Termin, Meine Termine, Spirit of the Year und das Menü klappen mit einer kurzen Bewegung auf.",
         ],
         en: [
           "If someone in the address book has a birthday today, a Happy Birthday sign and name tag appear on the top banner.",
+          "The ‹ › date switch turns the card aside instead of jumping.",
+          "Channels, Next date, My dates, Spirit of the Year, and the menu open with a short motion.",
         ],
       },
     },

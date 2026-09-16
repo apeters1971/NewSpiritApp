@@ -81,6 +81,7 @@ let chatMessages = [];
 let chatUnread = {};
 let savedChat = null;
 let focusedDateId = "";
+let dateFlip = null;
 let mixer = { channels: [], people: [] };
 let memberWS = null;
 let liveStream = null;
@@ -272,8 +273,81 @@ function renderVoteTable(date, tableHTML) {
   </details>`;
 }
 
+function foldPanel(el) {
+  return el.querySelector(":scope > .fold-body, :scope > .date-body");
+}
+
+function afterFold(el, panel, fn) {
+  el._foldGen = (el._foldGen || 0) + 1;
+  const gen = el._foldGen;
+  const done = (e) => {
+    if (e && e.propertyName && e.propertyName !== "height") return;
+    panel.removeEventListener("transitionend", done);
+    if (el._foldGen === gen) fn();
+  };
+  panel.addEventListener("transitionend", done);
+  window.setTimeout(() => done({ propertyName: "height" }), 420);
+}
+
+function openFold(el, panel) {
+  el.classList.add("is-folding");
+  panel.style.overflow = "hidden";
+  panel.style.height = "0px";
+  el.open = true;
+  const end = panel.scrollHeight;
+  void panel.offsetHeight;
+  panel.style.height = `${end}px`;
+  afterFold(el, panel, () => {
+    panel.style.height = "";
+    panel.style.overflow = "";
+    el.classList.remove("is-folding");
+  });
+}
+
+function closeFold(el, panel) {
+  el.classList.add("is-folding");
+  panel.style.overflow = "hidden";
+  panel.style.height = `${panel.scrollHeight}px`;
+  void panel.offsetHeight;
+  panel.style.height = "0px";
+  afterFold(el, panel, () => {
+    el.open = false;
+    panel.style.height = "";
+    panel.style.overflow = "";
+    el.classList.remove("is-folding");
+  });
+}
+
+function toggleFold(el) {
+  const panel = foldPanel(el);
+  if (!panel) {
+    el.open = !el.open;
+    return;
+  }
+  if (el.open) closeFold(el, panel);
+  else openFold(el, panel);
+}
+
+function bindFoldMotion(el) {
+  if (!el || el.dataset.foldMotion === "1") return;
+  const summary = el.querySelector(":scope > summary");
+  if (!summary || !foldPanel(el)) return;
+  el.dataset.foldMotion = "1";
+  summary.addEventListener("click", (e) => {
+    if (e.target.closest("button, a, .date-summary-actions")) return;
+    if (prefersLessMotion() || el.classList.contains("is-folding")) return;
+    e.preventDefault();
+    toggleFold(el);
+  });
+}
+
+function bindHomeFolds() {
+  document.querySelectorAll("#tab-home > details.fold").forEach(bindFoldMotion);
+}
+
 function bindRosterFolds() {
   datesEl?.querySelectorAll("details[data-roster]").forEach((el) => {
+    bindFoldMotion(el);
     el.addEventListener("toggle", () => {
       if (el.open) rosterOpen.add(el.dataset.roster);
       else rosterOpen.delete(el.dataset.roster);
@@ -283,6 +357,7 @@ function bindRosterFolds() {
 
 function bindDateFolds() {
   datesEl?.querySelectorAll("details[data-date-fold]").forEach((el) => {
+    bindFoldMotion(el);
     el.addEventListener("toggle", () => {
       datesCollapsed = !el.open;
     });
@@ -1151,6 +1226,19 @@ function jumpToDate(id) {
   setTimeout(() => card?.closest(".card")?.classList.remove("flash"), 1600);
 }
 
+function prefersLessMotion() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function finishDateFlip() {
+  if (!dateFlip) return;
+  if (dateFlip.timer) window.clearTimeout(dateFlip.timer);
+  dateFlip.outgoing?.remove();
+  datesEl.classList.remove("is-flipping");
+  datesEl.querySelector(".card.date-flip-in")?.classList.remove("date-flip-in", "from-left", "from-right");
+  dateFlip = null;
+}
+
 function stepFocusedDate(delta) {
   if (!dates.length) return;
   if (!dates.some((d) => d.id === focusedDateId)) {
@@ -1160,7 +1248,38 @@ function stepFocusedDate(delta) {
   if (next < 0 || next >= dates.length) return;
   const top = window.scrollY;
   focusedDateId = dates[next].id;
-  render();
+  renderSpirit();
+  renderNextUp();
+  renderOverview();
+  emptyEl.hidden = true;
+  paintDateNav();
+  if (dateFlip) finishDateFlip();
+  const outgoing = datesEl.querySelector(".card");
+  if (!outgoing || prefersLessMotion()) {
+    renderDates();
+    window.scrollTo(0, top);
+    return;
+  }
+  const wrap = document.createElement("div");
+  wrap.innerHTML = renderDate(dates[next]);
+  const incoming = wrap.firstElementChild;
+  if (!incoming) {
+    renderDates();
+    window.scrollTo(0, top);
+    return;
+  }
+  incoming.classList.add("date-flip-in", delta > 0 ? "from-right" : "from-left");
+  outgoing.classList.add("date-flip-out", delta > 0 ? "to-left" : "to-right");
+  datesEl.classList.add("is-flipping");
+  datesEl.appendChild(incoming);
+  bindDateFolds();
+  bindRosterFolds();
+  const done = () => {
+    if (dateFlip?.outgoing !== outgoing) return;
+    finishDateFlip();
+  };
+  incoming.addEventListener("animationend", done, { once: true });
+  dateFlip = { outgoing, timer: window.setTimeout(done, 520) };
   window.scrollTo(0, top);
 }
 
@@ -1295,31 +1414,40 @@ function renderSpirit() {
     </div>`;
 }
 
-function renderDates() {
+function paintDateNav() {
   const nav = document.getElementById("date-nav");
   const titleEl = document.getElementById("date-nav-title");
   const labelEl = document.getElementById("date-nav-label");
   const prev = document.getElementById("date-prev");
   const next = document.getElementById("date-next");
   if (!dates.length) {
-    focusedDateId = "";
-    datesEl.innerHTML = "";
     if (nav) nav.hidden = true;
     return;
   }
-  if (!dates.some((d) => d.id === focusedDateId)) {
-    focusedDateId = defaultFocusedDateId();
-  }
   const i = focusedDateIndex();
   const d = dates[i];
-  datesEl.innerHTML = renderDate(d);
-  bindDateFolds();
-  bindRosterFolds();
   if (nav) nav.hidden = false;
   if (titleEl) titleEl.textContent = d.title || "";
   if (labelEl) labelEl.textContent = `${i + 1} / ${dates.length}`;
   if (prev) prev.disabled = i <= 0;
   if (next) next.disabled = i >= dates.length - 1;
+}
+
+function renderDates() {
+  finishDateFlip();
+  if (!dates.length) {
+    focusedDateId = "";
+    datesEl.innerHTML = "";
+    paintDateNav();
+    return;
+  }
+  if (!dates.some((d) => d.id === focusedDateId)) {
+    focusedDateId = defaultFocusedDateId();
+  }
+  datesEl.innerHTML = renderDate(dates[focusedDateIndex()]);
+  bindDateFolds();
+  bindRosterFolds();
+  paintDateNav();
 }
 
 function render() {
@@ -2789,6 +2917,7 @@ function setMenuOpen(open) {
   nav.classList.toggle("open", open);
   document.body.classList.toggle("menu-open", open);
   btn.setAttribute("aria-expanded", open ? "true" : "false");
+  if ("inert" in nav) nav.inert = !open;
 }
 
 const TAB_PANES = {
@@ -2960,6 +3089,11 @@ function setStreamSourceOpen(open) {
 document.getElementById("btn-menu").addEventListener("click", () => {
   setMenuOpen(!document.getElementById("top-actions").classList.contains("open"));
 });
+(() => {
+  const nav = document.getElementById("top-actions");
+  if (nav && "inert" in nav) nav.inert = true;
+  bindHomeFolds();
+})();
 document.getElementById("menu-close").addEventListener("click", () => setMenuOpen(false));
 document.getElementById("top-actions").addEventListener("click", (e) => {
   if (e.target.closest("button, a")) setMenuOpen(false);
