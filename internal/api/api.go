@@ -117,6 +117,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/archive/dropbox/{id}/import", s.handleArchiveDropboxImport)
 	mux.HandleFunc("POST /api/archive/dropbox/{id}/attach", s.handleArchiveDropboxAttach)
 	mux.HandleFunc("POST /api/archive", s.handleArchiveCreate)
+	mux.HandleFunc("PATCH /api/archive/{id}", s.handleArchiveUpdate)
 	mux.HandleFunc("GET /api/archive/{id}", s.handleArchiveItem)
 	mux.HandleFunc("GET /api/archive/{id}/files/{fileId}", s.handleArchiveFile)
 	mux.HandleFunc("POST /api/archive/{id}/files", s.handleArchiveUpload)
@@ -1992,6 +1993,34 @@ func (s *Server) handleArchiveCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
 	writeJSON(w, http.StatusCreated, map[string]any{"item": item})
+}
+
+func (s *Server) handleArchiveUpdate(w http.ResponseWriter, r *http.Request) {
+	user, err := s.userFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	id := r.PathValue("id")
+	if err := s.Store.MemberCanAccessArchive(user.ID, id); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	var body struct {
+		Title    string `json:"title"`
+		Composer string `json:"composer"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	item, err := s.Store.UpdateArchiveItem(id, body.Title, body.Composer)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"item": item})
 }
 
 func (s *Server) applyArchiveUpload(w http.ResponseWriter, r *http.Request, id, createdBy string, pending bool) {

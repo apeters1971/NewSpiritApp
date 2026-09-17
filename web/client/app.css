@@ -3164,6 +3164,15 @@ p.notes { margin: 0.45rem 0 0; color: var(--muted); white-space: pre-wrap; }
   background: var(--card);
   color: inherit;
 }
+button.title-item {
+  appearance: none;
+  font: inherit;
+  font-weight: inherit;
+  text-align: left;
+  cursor: pointer;
+  justify-content: flex-start;
+}
+button.title-item > .title-item-text { flex: 1; }
 .title-item-open {
   display: flex;
   justify-content: space-between;
@@ -3327,6 +3336,10 @@ p.notes { margin: 0.45rem 0 0; color: var(--muted); white-space: pre-wrap; }
 .archive-toolbar { display: flex; flex-wrap: wrap; gap: 0.45rem; margin: 0.75rem 0 0.85rem; }
 .archive-create { margin: 0.75rem 0 1rem; }
 .archive-create-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.85rem; }
+.archive-edit { margin: 0; }
+.archive-edit > label:first-of-type { margin-top: 0; }
+.archive-edit-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; }
+.archive-edit-actions .btn { margin-top: 0; }
 .archive-manage { display: grid; gap: 0.75rem; margin-top: 0.35rem; padding-top: 0.75rem; border-top: 1px solid var(--line); }
 .archive-kind { display: grid; gap: 0.4rem; }
 .archive-kind > p { margin: 0; }

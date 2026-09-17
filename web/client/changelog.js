@@ -1,6 +1,19 @@
 (() => {
   const ENTRIES = [
     {
+      date: "2026-09-17",
+      items: {
+        de: [
+          "Im Notenarchiv stehen die Songnamen wieder links, ohne Einrückung.",
+          "Einen Song im Notenarchiv kannst du nachträglich umbenennen, auch den Komponisten.",
+        ],
+        en: [
+          "In the music archive, song names sit on the left again, without an indent.",
+          "You can rename a song in the music archive later, including the composer.",
+        ],
+      },
+    },
+    {
       date: "2026-09-16",
       items: {
         de: [

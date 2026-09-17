@@ -150,7 +150,11 @@ CREATE INDEX IF NOT EXISTS idx_date_titles_date ON date_titles(date_id, sort_ord
 	if err := s.migrateTitleSoloists(); err != nil {
 		return err
 	}
-	return s.migrateTitleOhSchreck()
+	if err := s.migrateTitleOhSchreck(); err != nil {
+		return err
+	}
+	_, _ = s.db.Exec(`UPDATE archive_items SET title=TRIM(title), composer=TRIM(composer) WHERE title!=TRIM(title) OR composer!=TRIM(composer)`)
+	return nil
 }
 
 func (s *Store) migrateTitleOhSchreck() error {
@@ -928,6 +932,8 @@ ORDER BY t.sort_order, a.title COLLATE NOCASE`, args...)
 		if item.Status == "" {
 			item.Status = ArchiveStatusAccepted
 		}
+		item.Title = strings.TrimSpace(item.Title)
+		item.Composer = strings.TrimSpace(item.Composer)
 		if item.Status == ArchiveStatusTrashed {
 			continue
 		}
@@ -1135,6 +1141,8 @@ func scanArchiveItem(rs rowScanner) (ArchiveItem, error) {
 	if item.Status == "" {
 		item.Status = ArchiveStatusAccepted
 	}
+	item.Title = strings.TrimSpace(item.Title)
+	item.Composer = strings.TrimSpace(item.Composer)
 	item.CreatedAt = parseTime(created)
 	item.Files = []ArchiveFileMeta{}
 	return item, nil

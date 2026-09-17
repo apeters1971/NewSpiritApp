@@ -1642,12 +1642,27 @@ function titleMaterialHTML(item, back) {
   const backAttr = back === "archive" ? "data-archive-back" : "data-titles-back";
   const backLabel = back === "archive" ? I18N.t("backToArchive") : I18N.t("backToTitles");
   let html = `
-    <button type="button" class="btn ghost" ${backAttr}>${backLabel}</button>
+    <button type="button" class="btn ghost" ${backAttr}>${backLabel}</button>`;
+  if (back === "archive") {
+    html += `
+    <form class="info-form archive-edit" data-archive-edit="${escapeHtml(item.id)}">
+      <label for="archive-edit-title">${escapeHtml(I18N.t("songName"))}</label>
+      <input id="archive-edit-title" name="title" required maxlength="200" autocomplete="off" value="${escapeHtml(item.title)}" />
+      <label for="archive-edit-composer">${escapeHtml(I18N.t("archiveComposerOpt"))}</label>
+      <input id="archive-edit-composer" name="composer" maxlength="120" autocomplete="off" value="${escapeHtml(item.composer || "")}" />
+      <p class="error" data-archive-edit-error hidden></p>
+      <div class="archive-edit-actions">
+        <button type="submit" class="btn">${escapeHtml(I18N.t("save"))}</button>
+        ${canTrashArchive() ? `<button type="button" class="btn ghost danger" data-archive-trash="${item.id}">${escapeHtml(I18N.t("delete"))}</button>` : ""}
+      </div>
+    </form>`;
+  } else {
+    html += `
     <div>
       <strong>${escapeHtml(item.title)}</strong>
       ${item.composer ? `<p class="muted">${escapeHtml(item.composer)}</p>` : ""}
-      ${canTrashArchive() && back === "archive" ? `<p><button type="button" class="btn ghost danger" data-archive-trash="${item.id}">${escapeHtml(I18N.t("delete"))}</button></p>` : ""}
     </div>`;
+  }
   audios.forEach((audio) => {
     html += `<div><p class="label">${escapeHtml(archiveFileLabel(audio, I18N.t("archiveAudio")))}</p><audio controls src="${archiveFileURL(item.id, audio)}"></audio>${archiveFileToolsHTML(item.id, audio)}</div>`;
   });
@@ -6353,13 +6368,9 @@ function renderArchive() {
     list.innerHTML = `<p class="muted">${I18N.t("archiveNoItems")}</p>`;
     return;
   }
-  list.innerHTML = rows.map((item) => `
-    <button type="button" class="title-item" data-archive-item="${item.id}">
-      <div>
-        <strong>${escapeHtml(item.title)}</strong>
-        ${item.composer ? `<p>${escapeHtml(item.composer)}</p>` : ""}
-      </div>
-    </button>`).join("");
+  list.innerHTML = rows.map((item) =>
+    `<button type="button" class="title-item" data-archive-item="${escapeHtml(item.id)}"><span class="title-item-text"><strong>${escapeHtml(item.title)}</strong>${item.composer ? `<p>${escapeHtml(item.composer)}</p>` : ""}</span></button>`
+  ).join("");
 }
 
 async function openArchiveItem(itemId) {
@@ -6401,6 +6412,27 @@ document.getElementById("archive-list").addEventListener("click", async (e) => {
   const btn = e.target.closest("[data-archive-item]");
   if (!btn) return;
   await openArchiveItem(btn.dataset.archiveItem);
+});
+
+document.getElementById("archive-detail").addEventListener("submit", async (e) => {
+  const form = e.target.closest("[data-archive-edit]");
+  if (!form) return;
+  e.preventDefault();
+  const errEl = form.querySelector("[data-archive-edit-error]");
+  showError(errEl, "");
+  try {
+    const data = await api(`/api/archive/${encodeURIComponent(form.dataset.archiveEdit)}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        title: form.querySelector("#archive-edit-title")?.value || "",
+        composer: form.querySelector("#archive-edit-composer")?.value || "",
+      }),
+    });
+    await loadArchive();
+    await openArchiveItem(data.item.id);
+  } catch (err) {
+    showError(errEl, err.message);
+  }
 });
 
 document.getElementById("archive-detail").addEventListener("click", (e) => {
