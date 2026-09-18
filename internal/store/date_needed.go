@@ -18,6 +18,9 @@ func UserSeesDate(user User, d Date) bool {
 	if user.ID != "" && d.CreatedBy != "" && d.CreatedBy == user.ID {
 		return true
 	}
+	if IsLocationOwner(user.Role) {
+		return OwnsVenue(user, d)
+	}
 	if !RoleSeesDate(user.Role, d.Roles) {
 		return false
 	}

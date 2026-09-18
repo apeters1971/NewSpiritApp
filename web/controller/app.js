@@ -8,7 +8,7 @@ const dateError = document.getElementById("date-error");
 const CHOIR_VOICES = ["Sopran", "Alt", "Tenor/Bass"];
 
 let catalog = { roles: [], categories: [] };
-let state = { users: [], dates: [], online: 0, ranking: { entries: [], bySubrole: [] }, archive: [], channels: [], proposals: [], choirSoli: [] };
+let state = { users: [], dates: [], online: 0, ranking: { entries: [], bySubrole: [] }, archive: [], channels: [], proposals: [], choirSoli: [], locations: [] };
 let selectedUser = "";
 let selectedDate = "";
 const NEEDED_ROLES = ["band", "orchestra"];
@@ -180,6 +180,7 @@ function dateFormSnapshot() {
     category: document.getElementById("date-category").value,
     start: dateStartLocal(),
     end: dateEndLocal(),
+    locationId: document.getElementById("date-location-id")?.value || "",
     location: document.getElementById("date-location").value,
     notes: document.getElementById("date-notes").value,
     schedule: document.getElementById("date-schedule").value,
@@ -335,14 +336,87 @@ function fillRoleSelects() {
   roleSel.innerHTML = catalog.roles.map((r) => `<option value="${r.id}">${I18N.role(r.id)}</option>`).join("");
   if (roleVal) roleSel.value = roleVal;
   fillSubroles();
-  document.getElementById("date-roles").innerHTML = catalog.roles.map((r) => `
+  document.getElementById("date-roles").innerHTML = catalog.roles.filter((r) => r.id !== "location").map((r) => `
     <label><input type="checkbox" name="role" value="${r.id}" ${checkedRoles.includes(r.id) ? "checked" : ""} /> ${I18N.role(r.id)}</label>
   `).join("");
+  fillDateLocationSelect();
   const catSel = document.getElementById("date-category");
   catSel.innerHTML = (catalog.categories || []).map((c) => `<option value="${c.id}">${I18N.category(c.id)}</option>`).join("");
   catSel.value = catVal || catSel.value;
   if (!catSel.value) catSel.value = "event";
   paintDateNeeded();
+}
+
+function locationOwners() {
+  return (state.users || []).filter((u) => u.role === "location")
+    .slice()
+    .sort((a, b) => String(a.nickname || "").localeCompare(String(b.nickname || ""), undefined, { sensitivity: "base" }));
+}
+
+function fillDateLocationSelect(selected) {
+  const sel = document.getElementById("date-location-id");
+  if (!sel) return;
+  const cur = selected !== undefined ? selected : sel.value;
+  sel.innerHTML = `<option value="">${escapeHtml(I18N.t("locationCustom"))}</option>` +
+    (state.locations || []).map((loc) => `<option value="${escapeHtml(loc.id)}">${escapeHtml(loc.name)}${loc.address ? ` · ${escapeHtml(loc.address)}` : ""}</option>`).join("");
+  sel.value = cur || "";
+}
+
+function applyPickedLocation() {
+  const id = document.getElementById("date-location-id")?.value || "";
+  const loc = (state.locations || []).find((l) => l.id === id);
+  const input = document.getElementById("date-location");
+  if (!input || !loc) return;
+  input.value = [loc.name, loc.address].filter(Boolean).join(", ");
+}
+
+function fillLocationOwnerSelect(selected) {
+  const sel = document.getElementById("location-owner");
+  if (!sel) return;
+  const cur = selected !== undefined ? selected : sel.value;
+  sel.innerHTML = `<option value="">${escapeHtml(I18N.t("locationOwnerNone"))}</option>` +
+    locationOwners().map((u) => `<option value="${escapeHtml(u.id)}">${escapeHtml(u.nickname)}</option>`).join("");
+  sel.value = cur || "";
+}
+
+let selectedLocation = "";
+
+function renderLocations() {
+  fillLocationOwnerSelect(document.getElementById("location-owner")?.value || "");
+  const body = document.getElementById("locations-body");
+  if (!body) return;
+  const rows = state.locations || [];
+  body.innerHTML = rows.map((loc) => `
+    <tr data-id="${loc.id}" class="${loc.id === selectedLocation ? "active" : ""}">
+      <td>${escapeHtml(loc.name)}</td>
+      <td>${escapeHtml(loc.address || "—")}</td>
+      <td>${escapeHtml(loc.owner || I18N.t("locationOwnerNone"))}</td>
+    </tr>
+  `).join("") || `<tr><td colspan="3" class="muted">${I18N.t("noLocations")}</td></tr>`;
+}
+
+function resetLocationForm() {
+  selectedLocation = "";
+  document.getElementById("location-form-title").textContent = I18N.t("addLocation");
+  document.getElementById("location-id").value = "";
+  document.getElementById("location-name").value = "";
+  document.getElementById("location-address").value = "";
+  fillLocationOwnerSelect("");
+  document.getElementById("btn-location-delete").disabled = true;
+  renderLocations();
+  showError(document.getElementById("location-error"), "");
+}
+
+function fillLocationForm(loc) {
+  selectedLocation = loc.id;
+  document.getElementById("location-form-title").textContent = I18N.t("editLocation");
+  document.getElementById("location-id").value = loc.id;
+  document.getElementById("location-name").value = loc.name || "";
+  document.getElementById("location-address").value = loc.address || "";
+  fillLocationOwnerSelect(loc.ownerId || "");
+  document.getElementById("btn-location-delete").disabled = false;
+  renderLocations();
+  showError(document.getElementById("location-error"), "");
 }
 
 function fillSubroles() {
@@ -471,6 +545,7 @@ function showTab(name) {
   document.getElementById("tab-people").hidden = name !== "people";
   document.getElementById("tab-contacts").hidden = name !== "contacts";
   document.getElementById("tab-dates").hidden = name !== "dates";
+  document.getElementById("tab-locations").hidden = name !== "locations";
   document.getElementById("tab-archive").hidden = name !== "archive";
   document.getElementById("tab-channels").hidden = name !== "channels";
   document.getElementById("tab-proposals").hidden = name !== "proposals";
@@ -529,6 +604,7 @@ function renderDates() {
       ${moodHTML(d)}
       <span class="badge ${d.status}">${I18N.status(d.status)}</span>
       ${d.pollOpen ? `<span class="badge voting">${I18N.t("pollOpen")}</span>` : d.frozenOptionId ? `<span class="badge accepted">${I18N.t("pollFrozen")}</span>` : ""}
+      ${d.venue?.id ? `<span class="badge ${d.venue.booking || "unknown"}">${escapeHtml(I18N.t("locationBooking"))}: ${voteChoiceHTML(d.venue.booking)}</span>` : ""}
       <h3>${escapeHtml(d.title)}</h3>
       ${d.creator?.id ? `<p class="planner-tag">${Photo.html(d.creator, "sm")}<span><span class="planner-tag-label">${escapeHtml(I18N.t("planner"))}</span> <strong>${escapeHtml(d.creator.nickname)}</strong></span></p>` : ""}
       <p>${escapeHtml(I18N.category(d.category))}${bringList(d.bring).length ? " · " + escapeHtml(bringList(d.bring).join(", ")) : ""}</p>
@@ -674,6 +750,7 @@ function resetDateForm() {
   document.getElementById("date-category").value = "event";
   dateAutoEnd = "";
   setDateWhen("", "");
+  fillDateLocationSelect("");
   document.getElementById("date-location").value = "";
   document.getElementById("date-notes").value = "";
   document.getElementById("date-schedule").value = "";
@@ -702,6 +779,7 @@ function fillDateForm(d) {
   document.getElementById("date-category").value = d.category || "event";
   dateAutoEnd = "";
   setDateWhen(toLocalInput(d.startsAt), toLocalInput(d.endsAt));
+  fillDateLocationSelect(d.locationId || d.venue?.id || "");
   document.getElementById("date-location").value = d.location || "";
   document.getElementById("date-notes").value = d.notes || "";
   document.getElementById("date-schedule").value = d.schedule || "";
@@ -736,6 +814,7 @@ async function loadState() {
   state = await api("/api/controller/state");
   if (selectedUser && !state.users.some((u) => u.id === selectedUser)) resetUserForm();
   if (selectedDate && !state.dates.some((d) => d.id === selectedDate)) resetDateForm();
+  if (selectedLocation && !(state.locations || []).some((l) => l.id === selectedLocation)) resetLocationForm();
   else {
     renderPeople();
     renderDates();
@@ -749,6 +828,8 @@ async function loadState() {
   renderChannels();
   renderProposals();
   fillSettingsForm();
+  renderLocations();
+  fillDateLocationSelect(document.getElementById("date-location-id")?.value || "");
   paintBirthdays();
   paintPersonPhoto();
   paintUserChannels();
@@ -1875,6 +1956,50 @@ document.getElementById("date-list").addEventListener("click", (e) => {
 
 document.getElementById("btn-date-new").addEventListener("click", resetDateForm);
 
+document.getElementById("date-location-id")?.addEventListener("change", applyPickedLocation);
+
+document.getElementById("locations-body")?.addEventListener("click", (e) => {
+  const row = e.target.closest("tr[data-id]");
+  if (!row) return;
+  const loc = (state.locations || []).find((x) => x.id === row.dataset.id);
+  if (loc) fillLocationForm(loc);
+});
+
+document.getElementById("btn-location-new")?.addEventListener("click", resetLocationForm);
+
+document.getElementById("location-form")?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById("location-error");
+  showError(errEl, "");
+  const id = document.getElementById("location-id").value;
+  const body = {
+    name: document.getElementById("location-name").value,
+    address: document.getElementById("location-address").value,
+    ownerId: document.getElementById("location-owner").value,
+  };
+  try {
+    const data = id
+      ? await api(`/api/controller/locations/${id}`, { method: "PATCH", body: JSON.stringify(body) })
+      : await api("/api/controller/locations", { method: "POST", body: JSON.stringify(body) });
+    await loadState();
+    fillLocationForm(data.location);
+  } catch (err) {
+    showError(errEl, err.message);
+  }
+});
+
+document.getElementById("btn-location-delete")?.addEventListener("click", async () => {
+  const id = document.getElementById("location-id").value;
+  if (!id || !confirm(I18N.t("confirmDeleteLocation"))) return;
+  try {
+    await api(`/api/controller/locations/${id}`, { method: "DELETE" });
+    await loadState();
+    resetLocationForm();
+  } catch (err) {
+    showError(document.getElementById("location-error"), err.message);
+  }
+});
+
 document.getElementById("date-start-date")?.addEventListener("change", presetDateEnd);
 document.getElementById("date-start-time")?.addEventListener("change", presetDateEnd);
 When.fillTimeSelect(document.getElementById("date-start-time"), "");
@@ -1893,6 +2018,7 @@ document.getElementById("date-form").addEventListener("submit", async (e) => {
     category: document.getElementById("date-category").value,
     startsAt: toISO(dateStartLocal()),
     endsAt: toISO(dateEndLocal()),
+    locationId: document.getElementById("date-location-id")?.value || "",
     location: document.getElementById("date-location").value,
     notes: document.getElementById("date-notes").value,
     schedule: document.getElementById("date-schedule").value,
@@ -3744,6 +3870,9 @@ I18N.onChange(() => {
     renderPeople();
     renderContacts();
     renderDates();
+    renderLocations();
+    const locTitle = document.getElementById("location-form-title");
+    if (locTitle) locTitle.textContent = selectedLocation ? I18N.t("editLocation") : I18N.t("addLocation");
     renderRanking();
     renderSoli();
     renderArchive();

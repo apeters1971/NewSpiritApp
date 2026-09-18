@@ -12,6 +12,7 @@ const (
 	ChatReadController = "controller"
 	EventRoomPrefix    = "event:"
 	DMRoomPrefix       = "dm:"
+	LeadRoomPrefix     = "lead:"
 	ChatRoomLive       = "live"
 	chatReactionActor  = ""
 )
@@ -52,7 +53,7 @@ func ParseEventRoom(room string) (string, bool) {
 	return id, id != ""
 }
 
-func DMRoom(a, b string) string {
+func pairRoom(prefix, a, b string) string {
 	a, b = strings.TrimSpace(a), strings.TrimSpace(b)
 	if a == "" || b == "" || a == b {
 		return ""
@@ -60,18 +61,44 @@ func DMRoom(a, b string) string {
 	if a > b {
 		a, b = b, a
 	}
-	return DMRoomPrefix + a + ":" + b
+	return prefix + a + ":" + b
 }
 
-func ParseDMRoom(room string) (left, right string, ok bool) {
-	if !strings.HasPrefix(room, DMRoomPrefix) {
+func parsePairRoom(prefix, room string) (left, right string, ok bool) {
+	if !strings.HasPrefix(room, prefix) {
 		return "", "", false
 	}
-	left, right, found := strings.Cut(strings.TrimPrefix(room, DMRoomPrefix), ":")
+	left, right, found := strings.Cut(strings.TrimPrefix(room, prefix), ":")
 	if !found || left == "" || right == "" || strings.Contains(right, ":") {
 		return "", "", false
 	}
 	return left, right, true
+}
+
+func DMRoom(a, b string) string {
+	return pairRoom(DMRoomPrefix, a, b)
+}
+
+func LeadRoom(a, b string) string {
+	return pairRoom(LeadRoomPrefix, a, b)
+}
+
+func ParseLeadRoom(room string) (left, right string, ok bool) {
+	return parsePairRoom(LeadRoomPrefix, room)
+}
+
+func IsLeadRoom(room string) bool {
+	_, _, ok := ParseLeadRoom(room)
+	return ok
+}
+
+type LeadChat struct {
+	Room string       `json:"room"`
+	Peer OnlinePerson `json:"peer"`
+}
+
+func ParseDMRoom(room string) (left, right string, ok bool) {
+	return parsePairRoom(DMRoomPrefix, room)
 }
 
 func DMPeer(room, userID string) (string, bool) {
@@ -199,6 +226,35 @@ func prepareChatText(text string) (string, error) {
 }
 
 func (s *Store) resolveChatRoom(room string, role string, write bool) error {
+	return s.resolveChatAccess(room, role, "", write)
+}
+
+func (s *Store) resolveUserChat(room string, u User, write bool) error {
+	return s.resolveChatAccess(room, u.Role, u.ID, write)
+}
+
+func (s *Store) resolveLeadRoom(left, right, userID string) error {
+	if userID != "" && userID != left && userID != right {
+		return fmt.Errorf("%w: this chat is not for you", ErrForbidden)
+	}
+	a, err := s.UserByID(left)
+	if err != nil {
+		return fmt.Errorf("unknown chat")
+	}
+	b, err := s.UserByID(right)
+	if err != nil {
+		return fmt.Errorf("unknown chat")
+	}
+	if !LeadChatPair(a.Role, b.Role) {
+		return fmt.Errorf("%w: this chat is not for your role", ErrForbidden)
+	}
+	return nil
+}
+
+func (s *Store) resolveChatAccess(room, role, userID string, write bool) error {
+	if left, right, ok := ParseLeadRoom(room); ok {
+		return s.resolveLeadRoom(left, right, userID)
+	}
 	if IsLiveChatRoom(room) {
 		return nil
 	}
@@ -229,6 +285,9 @@ func (s *Store) resolveChatRoom(room string, role string, write bool) error {
 }
 
 func (s *Store) ChatRoomRoles(room string) []string {
+	if IsLeadRoom(room) {
+		return nil
+	}
 	if IsLiveChatRoom(room) {
 		return append([]string{}, Roles...)
 	}
@@ -262,7 +321,7 @@ func (s *Store) AddChatMessage(userID, room, text string) (ChatMessage, error) {
 	if err != nil {
 		return ChatMessage{}, err
 	}
-	if err := s.resolveChatRoom(room, u.Role, true); err != nil {
+	if err := s.resolveUserChat(room, u, true); err != nil {
 		return ChatMessage{}, err
 	}
 	if err := s.guardEventChat(room, u); err != nil {
@@ -346,7 +405,15 @@ func (s *Store) guardEventChat(room string, u User) error {
 }
 
 func (s *Store) ListChatMessages(role, room, viewerID string) ([]ChatMessage, error) {
-	if err := s.resolveChatRoom(room, role, false); err != nil {
+	if viewerID != "" {
+		if u, err := s.UserByID(viewerID); err == nil {
+			if err := s.resolveUserChat(room, u, false); err != nil {
+				return nil, err
+			}
+		} else if err := s.resolveChatRoom(room, role, false); err != nil {
+			return nil, err
+		}
+	} else if err := s.resolveChatRoom(room, role, false); err != nil {
 		return nil, err
 	}
 	if viewerID != "" {
@@ -411,8 +478,10 @@ func (s *Store) DeleteChatMessage(userID, room, messageID string, admin bool) er
 			return err
 		}
 		role = u.Role
-	}
-	if err := s.resolveChatRoom(room, role, true); err != nil {
+		if err := s.resolveUserChat(room, u, true); err != nil {
+			return err
+		}
+	} else if err := s.resolveChatRoom(room, role, true); err != nil {
 		return err
 	}
 	var foundRoom string
@@ -454,8 +523,10 @@ func (s *Store) UpdateChatMessage(userID, room, messageID, text string, admin bo
 		}
 		role = u.Role
 		actor = u.ID
-	}
-	if err := s.resolveChatRoom(room, role, true); err != nil {
+		if err := s.resolveUserChat(room, u, true); err != nil {
+			return ChatMessage{}, err
+		}
+	} else if err := s.resolveChatRoom(room, role, true); err != nil {
 		return ChatMessage{}, err
 	}
 	var foundRoom, kind string
@@ -497,8 +568,10 @@ func (s *Store) ToggleChatReaction(userID, room, messageID, emoji string, admin 
 		}
 		role = u.Role
 		actor = u.ID
-	}
-	if err := s.resolveChatRoom(room, role, true); err != nil {
+		if err := s.resolveUserChat(room, u, true); err != nil {
+			return ChatMessage{}, err
+		}
+	} else if err := s.resolveChatRoom(room, role, true); err != nil {
 		return ChatMessage{}, err
 	}
 	var foundRoom string
@@ -679,7 +752,11 @@ func (s *Store) ChatLastSeen(actor, room string) string {
 }
 
 func (s *Store) MarkChatRead(actor, room, role string) error {
-	if err := s.resolveChatRoom(room, role, false); err != nil {
+	if u, err := s.UserByID(actor); err == nil {
+		if err := s.resolveUserChat(room, u, false); err != nil {
+			return err
+		}
+	} else if err := s.resolveChatRoom(room, role, false); err != nil {
 		return err
 	}
 	_, err := s.db.Exec(`
@@ -689,8 +766,66 @@ ON CONFLICT(actor, room) DO UPDATE SET last_seen=excluded.last_seen`,
 	return err
 }
 
+func (s *Store) usersByRole(role string) ([]User, error) {
+	rows, err := s.db.Query(`SELECT id, nickname, role FROM users WHERE role=? ORDER BY nickname COLLATE NOCASE`, role)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []User{}
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.ID, &u.Nickname, &u.Role); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) LeadChatsFor(u User) ([]LeadChat, error) {
+	var peers []User
+	var err error
+	switch {
+	case IsLocationOwner(u.Role):
+		peers, err = s.usersByRole(RoleChorleiter)
+	case IsChoirDirector(u.Role):
+		peers, err = s.usersByRole(RoleLocation)
+	default:
+		return []LeadChat{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	out := []LeadChat{}
+	for _, peer := range peers {
+		room := LeadRoom(u.ID, peer.ID)
+		if room == "" {
+			continue
+		}
+		out = append(out, LeadChat{Room: room, Peer: OnlinePerson{ID: peer.ID, Nickname: peer.Nickname}})
+	}
+	return out, nil
+}
+
+func (s *Store) ChatRoomsForUser(u User) ([]string, error) {
+	rooms := append([]string{}, ChatRoomsForRole(u.Role)...)
+	leads, err := s.LeadChatsFor(u)
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range leads {
+		rooms = append(rooms, c.Room)
+	}
+	return rooms, nil
+}
+
 func (s *Store) MemberChatUnread(u User) (map[string]int, error) {
-	return s.chatUnreadCounts(u.ID, ChatRoomsForRole(u.Role), u.ID, false)
+	rooms, err := s.ChatRoomsForUser(u)
+	if err != nil {
+		return nil, err
+	}
+	return s.chatUnreadCounts(u.ID, rooms, u.ID, false)
 }
 
 func (s *Store) ControllerChatUnread() (map[string]int, error) {

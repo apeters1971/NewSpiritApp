@@ -128,6 +128,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/proposals", s.handleCreateProposal)
 	mux.HandleFunc("PUT /api/proposals/{id}/vote", s.handleProposalVote)
 	mux.HandleFunc("GET /api/directory", s.handleDirectory)
+	mux.HandleFunc("GET /api/locations", s.handleLocations)
 	mux.HandleFunc("GET /api/me/calendar", s.handleMeCalendar)
 	mux.HandleFunc("GET /api/stream", s.handleStreamStatus)
 	mux.HandleFunc("GET /calendar/{token}", s.handleCalendarFeed)
@@ -143,6 +144,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/controller/users/{id}", s.handleDeleteUser)
 	mux.HandleFunc("POST /api/controller/users/{id}/photo", s.handleControllerPhoto)
 	mux.HandleFunc("DELETE /api/controller/users/{id}/photo", s.handleDeleteControllerPhoto)
+	mux.HandleFunc("POST /api/controller/locations", s.handleCreateLocation)
+	mux.HandleFunc("PATCH /api/controller/locations/{id}", s.handleUpdateLocation)
+	mux.HandleFunc("DELETE /api/controller/locations/{id}", s.handleDeleteLocation)
 	mux.HandleFunc("POST /api/controller/dates", s.handleCreateDate)
 	mux.HandleFunc("PATCH /api/controller/dates/{id}", s.handleUpdateDate)
 	mux.HandleFunc("DELETE /api/controller/dates/{id}", s.handleDeleteDate)
@@ -324,9 +328,15 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	leads, err := s.Store.LeadChatsFor(user)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"user":        user,
 		"unread":      unread,
+		"leadChats":   leads,
 		"stream":      s.Hub.LiveStream(),
 		"newsTicker":  s.Store.NewsTicker(),
 		"online":      s.onlinePeople(),
@@ -659,6 +669,10 @@ func (s *Server) handleMemberCreateDate(w http.ResponseWriter, r *http.Request) 
 		writeStoreError(w, err)
 		return
 	}
+	if err := applyDateVenue(s.Store, d.ID, body.LocationID, body.Location); err != nil {
+		writeStoreError(w, err)
+		return
+	}
 	view, err := s.Store.DateView(d.ID, &user)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -859,6 +873,11 @@ func (s *Server) handleTitleOhSchreck(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) publishChat(room string, env hub.Envelope) {
+	if left, right, ok := store.ParseLeadRoom(room); ok {
+		s.Hub.SendToUser(left, env)
+		s.Hub.SendToUser(right, env)
+		return
+	}
 	s.Hub.BroadcastToRoles(s.Store.ChatRoomRoles(room), env)
 }
 
@@ -1064,7 +1083,7 @@ func (s *Server) handleChatVoiceFile(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	msg, path, err := s.Store.ChatVoiceFile(user.Role, r.PathValue("room"), r.PathValue("id"))
+	msg, path, err := s.Store.ChatVoiceFileForUser(user, r.PathValue("room"), r.PathValue("id"))
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -1100,7 +1119,7 @@ func (s *Server) handleChatMediaFile(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	msg, path, err := s.Store.ChatMediaFile(user.Role, r.PathValue("room"), r.PathValue("id"))
+	msg, path, err := s.Store.ChatMediaFileForUser(user, r.PathValue("room"), r.PathValue("id"))
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -1509,9 +1528,15 @@ func (s *Server) handleControllerState(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	locations, err := s.Store.ListLocations()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"users":      users,
 		"dates":      dates,
+		"locations":  locations,
 		"online":     s.Hub.OnlineCount(),
 		"ranking":    rank,
 		"adminAlias": s.Store.AdminAlias(),
@@ -1693,12 +1718,13 @@ type pollOptionBody struct {
 }
 
 type dateBody struct {
-	Title    string                 `json:"title"`
-	Category string                 `json:"category"`
-	StartsAt string                 `json:"startsAt"`
-	EndsAt   string                 `json:"endsAt"`
-	Location string                 `json:"location"`
-	Notes    string                 `json:"notes"`
+	Title      string                 `json:"title"`
+	Category   string                 `json:"category"`
+	StartsAt   string                 `json:"startsAt"`
+	EndsAt     string                 `json:"endsAt"`
+	Location   string                 `json:"location"`
+	LocationID string                 `json:"locationId"`
+	Notes      string                 `json:"notes"`
 	Schedule string                 `json:"schedule"`
 	Roles    []string               `json:"roles"`
 	Bring    store.Bring            `json:"bring"`
@@ -1718,6 +1744,10 @@ func applyDateNeeded(st *store.Store, dateID string, needed *dateNeededBody) err
 		return nil
 	}
 	return st.SetDateNeeded(dateID, needed.Roles, needed.IDs)
+}
+
+func applyDateVenue(st *store.Store, dateID, locationID, locationText string) error {
+	return st.SetDateVenue(dateID, locationID, locationText)
 }
 
 func dateTitleInputs(body dateBody) []store.DateTitleInput {
@@ -1818,6 +1848,10 @@ func (s *Server) handleCreateDate(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
+	if err := applyDateVenue(s.Store, d.ID, body.LocationID, body.Location); err != nil {
+		writeStoreError(w, err)
+		return
+	}
 	view, err := s.Store.DateView(d.ID, nil)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -1845,6 +1879,10 @@ func (s *Server) handleUpdateDate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := applyDateNeeded(s.Store, r.PathValue("id"), body.Needed); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if err := applyDateVenue(s.Store, r.PathValue("id"), body.LocationID, body.Location); err != nil {
 		writeStoreError(w, err)
 		return
 	}
@@ -2492,6 +2530,73 @@ func (s *Server) handleDirectory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"people": list})
+}
+
+func (s *Server) handleLocations(w http.ResponseWriter, r *http.Request) {
+	if _, err := s.userFromRequest(r); err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	list, err := s.Store.ListLocations()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"locations": list})
+}
+
+type locationBody struct {
+	Name    string `json:"name"`
+	Address string `json:"address"`
+	OwnerID string `json:"ownerId"`
+}
+
+func (s *Server) handleCreateLocation(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	var body locationBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	loc, err := s.Store.CreateLocation(body.Name, body.Address, body.OwnerID)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusCreated, map[string]any{"location": loc})
+}
+
+func (s *Server) handleUpdateLocation(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	var body locationBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	loc, err := s.Store.UpdateLocation(r.PathValue("id"), body.Name, body.Address, body.OwnerID)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"location": loc})
+}
+
+func (s *Server) handleDeleteLocation(w http.ResponseWriter, r *http.Request) {
+	if !s.requireController(w, r) {
+		return
+	}
+	if err := s.Store.DeleteLocation(r.PathValue("id")); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (s *Server) handleProposals(w http.ResponseWriter, r *http.Request) {

@@ -30,7 +30,7 @@ func (s *Store) AddChatMedia(userID, room, filename string, r io.Reader) (ChatMe
 	if err != nil {
 		return ChatMessage{}, err
 	}
-	if err := s.resolveChatRoom(room, u.Role, true); err != nil {
+	if err := s.resolveUserChat(room, u, true); err != nil {
 		return ChatMessage{}, err
 	}
 	return s.addChatMedia(u, room, filename, r)
@@ -123,6 +123,13 @@ func (s *Store) addChatMedia(u User, room, filename string, r io.Reader) (ChatMe
 
 func (s *Store) ChatMediaFile(role, room, messageID string) (ChatMessage, string, error) {
 	if err := s.resolveChatRoom(room, role, false); err != nil {
+		return ChatMessage{}, "", err
+	}
+	return s.chatMediaFile(room, messageID)
+}
+
+func (s *Store) ChatMediaFileForUser(u User, room, messageID string) (ChatMessage, string, error) {
+	if err := s.resolveUserChat(room, u, false); err != nil {
 		return ChatMessage{}, "", err
 	}
 	return s.chatMediaFile(room, messageID)

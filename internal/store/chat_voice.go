@@ -52,7 +52,7 @@ func (s *Store) AddChatVoice(userID, room, filename string, r io.Reader, duratio
 	if err != nil {
 		return ChatMessage{}, err
 	}
-	if err := s.resolveChatRoom(room, u.Role, true); err != nil {
+	if err := s.resolveUserChat(room, u, true); err != nil {
 		return ChatMessage{}, err
 	}
 	return s.addChatVoice(u, room, filename, r, durationMs)
@@ -151,6 +151,13 @@ func (s *Store) addChatVoice(u User, room, filename string, r io.Reader, duratio
 
 func (s *Store) ChatVoiceFile(role, room, messageID string) (ChatMessage, string, error) {
 	if err := s.resolveChatRoom(room, role, false); err != nil {
+		return ChatMessage{}, "", err
+	}
+	return s.chatVoiceFile(room, messageID)
+}
+
+func (s *Store) ChatVoiceFileForUser(u User, room, messageID string) (ChatMessage, string, error) {
+	if err := s.resolveUserChat(room, u, false); err != nil {
 		return ChatMessage{}, "", err
 	}
 	return s.chatVoiceFile(room, messageID)

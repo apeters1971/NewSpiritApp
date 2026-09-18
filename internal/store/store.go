@@ -75,6 +75,8 @@ type Date struct {
 	StartsAt       time.Time    `json:"startsAt"`
 	EndsAt         *time.Time   `json:"endsAt,omitempty"`
 	Location       string       `json:"location,omitempty"`
+	LocationID     string       `json:"locationId,omitempty"`
+	Venue          *DateVenue   `json:"venue,omitempty"`
 	Notes          string       `json:"notes,omitempty"`
 	Schedule       string       `json:"schedule,omitempty"`
 	Status         string       `json:"status"`
@@ -346,6 +348,9 @@ CREATE TABLE IF NOT EXISTS settings (
 		return err
 	}
 	if err := s.migrateDateNeeded(); err != nil {
+		return err
+	}
+	if err := s.migrateLocations(); err != nil {
 		return err
 	}
 	return s.migrateChatVoice()
@@ -1195,15 +1200,19 @@ func (s *Store) setVote(setBy, userID, dateID, choice string) error {
 	if d.Status == StatusCancelled {
 		return fmt.Errorf("%w: voting is locked on cancelled dates", ErrForbidden)
 	}
-	if d.PollOpen {
-		return fmt.Errorf("%w: vote on a poll option instead", ErrForbidden)
-	}
 	u, err := s.UserByID(userID)
 	if err != nil {
 		return err
 	}
-	if !RoleCanVote(u.Role) || !slicesContains(d.Roles, u.Role) || !neededOnRoster(d, u.Role, u.ID) {
-		return fmt.Errorf("%w: this date is not for your role", ErrForbidden)
+	if OwnsVenue(u, d) {
+		// location booking is a date-level vote, also while a time poll is open
+	} else {
+		if d.PollOpen {
+			return fmt.Errorf("%w: vote on a poll option instead", ErrForbidden)
+		}
+		if !RoleCanVote(u.Role) || !slicesContains(d.Roles, u.Role) || !neededOnRoster(d, u.Role, u.ID) {
+			return fmt.Errorf("%w: this date is not for your role", ErrForbidden)
+		}
 	}
 	if setBy == "" {
 		setBy = userID
@@ -1238,7 +1247,7 @@ func (s *Store) AddComment(userID, dateID, text string) (Comment, error) {
 	if err != nil {
 		return Comment{}, err
 	}
-	if !slicesContains(d.Roles, u.Role) || !neededOnRoster(d, u.Role, u.ID) {
+	if !OwnsVenue(u, d) && (!slicesContains(d.Roles, u.Role) || !neededOnRoster(d, u.Role, u.ID)) {
 		return Comment{}, fmt.Errorf("%w: this date is not for your role", ErrForbidden)
 	}
 	c := Comment{
@@ -1390,13 +1399,18 @@ func (s *Store) attachView(d Date, viewer *User, comments []Comment, titles []Ar
 	if err != nil {
 		return DateView{}, err
 	}
-	d.Options = attachPoll(d.Options, d.FrozenOptionID, roster, pollVotes, viewer)
+		d.Options = attachPoll(d.Options, d.FrozenOptionID, roster, pollVotes, viewer)
 	d.PollOpen = pollOpen(d.FrozenOptionID, d.Options)
+	stampVenueBooking(&d, roster)
+	countRoles := append([]string{}, d.Roles...)
+	if d.Venue != nil && d.Venue.OwnerID != "" && !slicesContains(countRoles, RoleLocation) {
+		countRoles = append(countRoles, RoleLocation)
+	}
 	view := DateView{
 		Date:          d,
 		MyChoice:      VoteUnknown,
 		Roster:        roster,
-		SubroleCounts: countsFor(d.Roles, roster),
+		SubroleCounts: countsFor(countRoles, roster),
 		Comments:      comments,
 		ChatOpen:      EventChatIsOpen(d, now()),
 		Titles:        titles,
@@ -1440,7 +1454,7 @@ func (s *Store) dateCreator(userID string) (*DateCreator, error) {
 }
 
 func (s *Store) listDates() ([]Date, error) {
-	rows, err := s.db.Query(`SELECT id, title, category, starts_at, ends_at, location, notes, schedule, status, bring_mic, bring_cable, bring_stand, bring_dress, frozen_option_id, created_by, created_at FROM dates ORDER BY starts_at`)
+	rows, err := s.db.Query(`SELECT id, title, category, starts_at, ends_at, location, notes, schedule, status, bring_mic, bring_cable, bring_stand, bring_dress, frozen_option_id, created_by, created_at, location_id FROM dates ORDER BY starts_at`)
 	if err != nil {
 		return nil, err
 	}
@@ -1466,7 +1480,7 @@ func (s *Store) listDates() ([]Date, error) {
 
 func (s *Store) dateRow(id string) (Date, error) {
 	d, err := scanDateRow(s.db.QueryRow(
-		`SELECT id, title, category, starts_at, ends_at, location, notes, schedule, status, bring_mic, bring_cable, bring_stand, bring_dress, frozen_option_id, created_by, created_at FROM dates WHERE id=?`, id,
+		`SELECT id, title, category, starts_at, ends_at, location, notes, schedule, status, bring_mic, bring_cable, bring_stand, bring_dress, frozen_option_id, created_by, created_at, location_id FROM dates WHERE id=?`, id,
 	))
 	if err != nil {
 		return Date{}, err
@@ -1491,6 +1505,10 @@ func (s *Store) decorateDates(dates []Date, ids []string) error {
 	if err != nil {
 		return err
 	}
+	venues, err := s.venuesForDates(ids)
+	if err != nil {
+		return err
+	}
 	for i := range dates {
 		dates[i].Roles = roleMap[dates[i].ID]
 		if dates[i].Roles == nil {
@@ -1507,6 +1525,10 @@ func (s *Store) decorateDates(dates []Date, ids []string) error {
 		dates[i].NeededRoles = neededRoles[dates[i].ID]
 		if dates[i].NeededRoles == nil {
 			dates[i].NeededRoles = []string{}
+		}
+		dates[i].Venue = venues[dates[i].ID]
+		if dates[i].Venue != nil {
+			dates[i].LocationID = dates[i].Venue.ID
 		}
 		dates[i].PollOpen = pollOpen(dates[i].FrozenOptionID, dates[i].Options)
 	}
@@ -1541,7 +1563,7 @@ func (s *Store) rolesForDates(ids []string) (map[string][]string, error) {
 
 func (s *Store) roster(d Date) ([]RosterEntry, error) {
 	if len(d.Roles) == 0 {
-		return []RosterEntry{}, nil
+		return s.appendVenueOwner(d, []RosterEntry{})
 	}
 	placeholders := strings.Repeat("?,", len(d.Roles))
 	placeholders = placeholders[:len(placeholders)-1]
@@ -1584,7 +1606,10 @@ ORDER BY u.role, u.subrole, u.nickname COLLATE NOCASE`, args...)
 		}
 		out = append(out, e)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return s.appendVenueOwner(d, out)
 }
 
 func countsFor(roles []string, roster []RosterEntry) []SubroleCount {
@@ -1664,7 +1689,7 @@ func scanDate(rs rowScanner) (Date, error) {
 	var starts, created string
 	var ends sql.NullString
 	var mic, cable, stand int
-	if err := rs.Scan(&d.ID, &d.Title, &d.Category, &starts, &ends, &d.Location, &d.Notes, &d.Schedule, &d.Status, &mic, &cable, &stand, &d.Bring.Dress, &d.FrozenOptionID, &d.CreatedBy, &created); err != nil {
+	if err := rs.Scan(&d.ID, &d.Title, &d.Category, &starts, &ends, &d.Location, &d.Notes, &d.Schedule, &d.Status, &mic, &cable, &stand, &d.Bring.Dress, &d.FrozenOptionID, &d.CreatedBy, &created, &d.LocationID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Date{}, ErrNotFound
 		}

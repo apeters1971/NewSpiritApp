@@ -227,6 +227,13 @@
       <summary class="fold-head"><span class="brand" data-i18n="nextUp">Nächster Termin</span></summary>
       <div id="next-up" class="fold-body next-up-body"></div>
     </details>
+    <details id="fold-requests" class="fold fold-requests" open hidden>
+      <summary class="fold-head"><span class="brand" data-i18n="newEventRequests">Neue Anfragen</span></summary>
+      <div class="fold-body">
+        <div id="request-list" class="overview-box"></div>
+        <p id="request-empty" class="muted" hidden data-i18n="noEventRequests">Keine neuen Anfragen.</p>
+      </div>
+    </details>
     <details id="fold-overview" class="fold fold-overview">
       <summary class="fold-head"><span class="brand" data-i18n="myDates">Meine Termine</span></summary>
       <div class="fold-body">
@@ -242,12 +249,12 @@
       <button type="button" id="btn-new-date" class="btn" data-i18n="newDate">Neuer Termin</button>
     </div>
     <nav id="date-nav" class="date-nav" hidden>
-      <button type="button" id="date-prev" class="btn ghost date-nav-btn" data-i18n-aria="datePrev" aria-label="Vorheriger Termin">‹</button>
+      <button type="button" id="date-prev" class="btn ghost date-nav-btn" data-i18n-aria="datePrev" aria-label="Vorheriger Termin" aria-keyshortcuts="ArrowLeft">‹</button>
       <div class="date-nav-meta">
         <p id="date-nav-title" class="date-nav-title"></p>
         <p id="date-nav-label" class="date-nav-label muted"></p>
       </div>
-      <button type="button" id="date-next" class="btn ghost date-nav-btn" data-i18n-aria="dateNext" aria-label="Nächster Termin">›</button>
+      <button type="button" id="date-next" class="btn ghost date-nav-btn" data-i18n-aria="dateNext" aria-label="Nächster Termin" aria-keyshortcuts="ArrowRight">›</button>
     </nav>
     <div id="dates" class="dates"></div>
     <p id="empty" class="lede empty" hidden data-i18n="noDatesRole">Noch keine Termine für deine Rolle.</p>
@@ -297,7 +304,10 @@
       <p class="muted" data-i18n="plannerPollHint">Zwei oder mehr Zeitvorschläge: alle stimmen ab, danach legst du einen fest.</p>
       <div id="planner-poll-options" class="planner-poll-rows"></div>
       <button type="button" id="planner-add-poll" class="btn ghost" data-i18n="addPollOption">Zeitvorschlag hinzufügen</button>
-      <label for="planner-location" data-i18n="location">Ort</label>
+      <label for="planner-location-id" data-i18n="location">Ort</label>
+      <select id="planner-location-id"></select>
+      <p class="muted" data-i18n="locationPickHint">Wähle einen hinterlegten Ort oder tippe eine Adresse.</p>
+      <label for="planner-location" data-i18n="locationAddress">Adresse</label>
       <input id="planner-location" />
       <label for="planner-notes" data-i18n="notes">Notizen</label>
       <textarea id="planner-notes" rows="3"></textarea>

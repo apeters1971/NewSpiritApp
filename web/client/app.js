@@ -48,6 +48,7 @@ let dates = [];
 let ranking = { year: 0, leaders: [] };
 let proposals = [];
 let directory = [];
+let locations = [];
 let birthdays = [];
 let archiveItems = [];
 let archiveAutoOn = false;
@@ -79,6 +80,7 @@ let chatPeer = null;
 let dmIgnoreClose = false;
 let chatMessages = [];
 let chatUnread = {};
+let leadChats = [];
 let savedChat = null;
 let focusedDateId = "";
 let dateFlip = null;
@@ -493,28 +495,33 @@ function renderPollTable(date) {
 }
 
 function renderDate(date) {
-  const isPoll = (date.options || []).length >= 2;
+  const booking = isLocationOwner();
+  const isPoll = !booking && (date.options || []).length >= 2;
   const buttons = canVote() ? renderVoteButtons(date) : "";
   const mine = canVote() && date.myInitial && date.myInitial !== date.myChoice
     ? `<p class="changed">${I18N.t("yourFirstVote")}: ${voteChoiceHTML(date.myInitial)}</p>`
     : "";
-  const ownNote = canVote() ? notExpectedNote(date.myChoice) : "";
+  const ownNote = booking ? "" : canVote() ? notExpectedNote(date.myChoice) : "";
   const notes = date.notes ? `<p class="notes">${escapeHtml(date.notes)}</p>` : "";
-  const when = pollOpen(date)
+  const when = !booking && pollOpen(date)
     ? I18N.t("severalTimes") + (date.location ? " · " + date.location : "")
     : formatRange(date);
   const extraBadge = pollOpen(date)
     ? `<span class="badge voting">${I18N.t("poll")}</span>`
     : date.frozenOptionId ? `<span class="badge accepted">${I18N.t("chosenTime")}</span>` : "";
-  const vote = pollOpen(date) || !(buttons || ownNote) ? "" : `<div class="vote-block">
-      <p class="vote-block-label">${I18N.t("yourVote")}</p>
+  const venueBadge = date.venue?.id
+    ? `<span class="badge ${date.venue.booking || "unknown"}">${escapeHtml(I18N.t("locationBooking"))}: ${voteChoiceHTML(date.venue.booking)}</span>`
+    : "";
+  const vote = (!booking && pollOpen(date)) || !(buttons || ownNote) ? "" : `<div class="vote-block">
+      <p class="vote-block-label">${I18N.t(booking ? "locationBooking" : "yourVote")}</p>
+      <p class="muted">${booking ? escapeHtml(I18N.t("locationBookingHint")) : ""}</p>
       <div class="vote-row">${buttons}${ownNote}</div>
       ${mine}
     </div>`;
-  const table = isPoll ? renderPollTable(date) : pollOpen(date) ? "" : renderRoster(date);
+  const table = booking ? "" : isPoll ? renderPollTable(date) : pollOpen(date) ? "" : renderRoster(date);
   const roles = (date.roles || []).map((r) => I18N.role(r)).join(" · ");
   const open = datesCollapsed ? "" : " open";
-  return `<article class="card${needsVote(date) ? " needs-vote" : ""}">
+  return `<article class="card${needsVote(date) ? " needs-vote" : ""}${locationBookingPending(date) ? " booking-pending" : ""}">
     <details class="fold-date"${open} data-date-fold="${date.id}">
       <summary class="date-summary">
         <div class="date-summary-main">
@@ -533,6 +540,7 @@ function renderDate(date) {
           ${notes}
           <div class="badges">
             ${extraBadge}
+            ${venueBadge}
             <span class="badge ${date.status}">${I18N.status(date.status)}</span>
           </div>
         </div>
@@ -568,9 +576,10 @@ function dateMenuHTML(date) {
   const titleCount = (date.titles || []).length;
   const menuItems = [
     dateMenuItem("data-comments", date.id, I18N.t("comments"), commentCount),
-    dateMenuItem("data-titles", date.id, I18N.t("titles"), titleCount),
-    date.chatOpen ? dateMenuItem("data-event-chat", date.id, I18N.t("eventChat")) : "",
+    isLocationOwner() ? "" : dateMenuItem("data-titles", date.id, I18N.t("titles"), titleCount),
+    !isLocationOwner() && date.chatOpen ? dateMenuItem("data-event-chat", date.id, I18N.t("eventChat")) : "",
     dateMenuItem("data-gallery", date.id, I18N.t("gallery"), date.galleryCount),
+    dateMapQuery(date) ? dateMenuItem("data-map", date.id, I18N.t("directions")) : "",
     date.schedule ? dateMenuItem("data-schedule", date.id, I18N.t("schedule")) : "",
     dateShowsPromo(date) ? dateMenuItem("data-promo", date.id, I18N.t("promo"), date.promoCount) : "",
     plannerMenuItems(date),
@@ -586,8 +595,8 @@ function dateMenuHTML(date) {
 
 function renderCompactVote(date) {
   if (!canVote()) return "";
-  const note = dateShowsNotExpected(date) ? notExpectedNote("notExpected") : "";
-  if (pollOpen(date)) return note ? `<div class="vote-row vote-row-compact">${note}</div>` : "";
+  const note = !isLocationOwner() && dateShowsNotExpected(date) ? notExpectedNote("notExpected") : "";
+  if (pollOpen(date) && !isLocationOwner()) return note ? `<div class="vote-row vote-row-compact">${note}</div>` : "";
   const locked = date.status === "cancelled";
   const buttons = ["yes", "maybe", "no"].map((c) => `
     <button type="button" data-id="${date.id}" data-choice="${c}" class="${c}${voteOnClass(date.myChoice, c, date.myProxy)}" ${locked ? "disabled" : ""}>${voteChoiceHTML(c)}</button>
@@ -600,13 +609,14 @@ function dateToolIcons(date) {
   const titleCount = (date.titles || []).length;
   return [
     dateToolBtn("data-comments", date.id, I18N.t("comments"), "comments", commentCount),
-    dateToolBtn("data-titles", date.id, I18N.t("titles"), "notes", titleCount),
+    isLocationOwner() ? "" : dateToolBtn("data-titles", date.id, I18N.t("titles"), "notes", titleCount),
     dateToolBtn("data-gallery", date.id, I18N.t("gallery"), "gallery", date.galleryCount),
+    dateMapQuery(date) ? dateToolBtn("data-map", date.id, I18N.t("directions"), "map") : "",
   ].join("");
 }
 
 function dateChatTool(date) {
-  return date.chatOpen
+  return !isLocationOwner() && date.chatOpen
     ? dateToolBtn("data-event-chat", date.id, I18N.t("eventChat"), "chat", 0)
     : "";
 }
@@ -708,6 +718,7 @@ function userParticipates(d) {
 }
 
 function hasAnswered(d) {
+  if (isLocationOwner()) return pollChoiceAnswered(d.myChoice);
   if (pollOpen(d)) {
     const options = d.options || [];
     return options.length > 0 && options.every((o) => pollChoiceAnswered(o.myChoice));
@@ -717,6 +728,43 @@ function hasAnswered(d) {
 
 function canVote() {
   return me?.role !== "ehemalige";
+}
+
+function isLocationOwner() {
+  return me?.role === "location";
+}
+
+function isChoirDirector() {
+  return me?.role === "chorleiter";
+}
+
+function isLeadRoom(room) {
+  return typeof room === "string" && room.startsWith("lead:");
+}
+
+function applyLeadChats(list) {
+  leadChats = Array.isArray(list) ? list : [];
+}
+
+function leadChatLabel(c) {
+  return c?.peer?.nickname || I18N.t("chatLeadFallback");
+}
+
+function primaryLeadChat() {
+  if (!leadChats.length) return null;
+  return leadChats.find((c) => unreadCount(c.room)) || leadChats[0];
+}
+
+function locationRequestDates() {
+  return dates.filter((d) => isLocationOwner() && !pollChoiceAnswered(d.myChoice));
+}
+
+function locationMyDates() {
+  return dates.filter((d) => !isLocationOwner() || pollChoiceAnswered(d.myChoice));
+}
+
+function locationBookingPending(d) {
+  return !!(isLocationOwner() && d && d.status !== "cancelled" && !pollChoiceAnswered(d.myChoice));
 }
 
 function isPlanner() {
@@ -729,7 +777,7 @@ function dateIsMine(date) {
 
 function paintPlannerBar() {
   const bar = document.getElementById("planner-bar");
-  if (bar) bar.hidden = !isPlanner();
+  if (bar) bar.hidden = !isPlanner() || isLocationOwner();
 }
 
 function renderPlannerTag(date) {
@@ -890,6 +938,7 @@ function resetPlannerForm() {
   title.value = "";
   plannerAutoEnd = "";
   setPlannerWhen("", "");
+  fillPlannerLocationSelect("");
   document.getElementById("planner-location").value = "";
   document.getElementById("planner-notes").value = "";
   document.getElementById("planner-bring-mic").checked = false;
@@ -915,12 +964,39 @@ async function openPlannerDialog() {
   } catch {
     directory = directory || [];
   }
+  try {
+    await loadLocations();
+  } catch {
+    locations = locations || [];
+  }
   resetPlannerForm();
   document.getElementById("planner-dialog").showModal();
 }
 
+function fillPlannerLocationSelect(selected) {
+  const sel = document.getElementById("planner-location-id");
+  if (!sel) return;
+  const cur = selected !== undefined ? selected : sel.value;
+  sel.innerHTML = `<option value="">${escapeHtml(I18N.t("locationCustom"))}</option>` +
+    (locations || []).map((loc) => `<option value="${escapeHtml(loc.id)}">${escapeHtml(loc.name)}${loc.address ? ` · ${escapeHtml(loc.address)}` : ""}</option>`).join("");
+  sel.value = cur || "";
+}
+
+function applyPlannerLocation() {
+  const id = document.getElementById("planner-location-id")?.value || "";
+  const loc = (locations || []).find((l) => l.id === id);
+  const input = document.getElementById("planner-location");
+  if (!input || !loc) return;
+  input.value = [loc.name, loc.address].filter(Boolean).join(", ");
+}
+
+async function loadLocations() {
+  const data = await api("/api/locations");
+  locations = data.locations || [];
+}
+
 function canUseChatRoom(room) {
-  if (!me || !CHAT_ROOMS.includes(room)) return false;
+  if (!me || isLocationOwner() || !CHAT_ROOMS.includes(room)) return false;
   if (me.role === "chorleiter") return true;
   if (me.role === "ehemalige") return room === "choir";
   return me.role === room;
@@ -1010,6 +1086,7 @@ function dmPeerId(room) {
 }
 
 function primaryChatRoom() {
+  if (isLocationOwner()) return primaryLeadChat()?.room || "";
   return CHAT_ROOMS.find((room) => canUseChatRoom(room)) || "";
 }
 
@@ -1018,6 +1095,10 @@ function needsVote(d) {
 }
 
 function defaultFocusedDateId() {
+  if (isLocationOwner()) {
+    const pending = locationRequestDates()[0];
+    if (pending) return pending.id;
+  }
   const next = dates.find((d) => dateIsUpcoming(d));
   if (next) return next.id;
   return dates.length ? dates[dates.length - 1].id : "";
@@ -1034,6 +1115,21 @@ function nextParticipatingDate() {
 
 function mapsSearchURL(location) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(String(location || "").trim())}`;
+}
+
+function dateMapQuery(date) {
+  const text = String(date?.location || "").trim();
+  if (text) return text;
+  const venue = date?.venue;
+  if (!venue) return "";
+  return [venue.name, venue.address].filter(Boolean).join(", ");
+}
+
+function openDateMap(id) {
+  const date = dates.find((d) => d.id === id);
+  const query = dateMapQuery(date);
+  if (!query) return;
+  window.open(mapsSearchURL(query), "_blank", "noopener,noreferrer");
 }
 
 let showAllChannels = false;
@@ -1315,6 +1411,7 @@ function stepFocusedDate(delta) {
   focusedDateId = dates[next].id;
   renderSpirit();
   renderNextUp();
+  renderRequests();
   renderOverview();
   emptyEl.hidden = true;
   paintDateNav();
@@ -1348,7 +1445,71 @@ function stepFocusedDate(delta) {
   window.scrollTo(0, top);
 }
 
+function overviewRowHTML(d) {
+  const when = pollOpen(d) ? `${formatWhen(d.startsAt)} · ${I18N.t("poll")}` : formatWhen(d.startsAt);
+  const vote = !canVote()
+    ? ""
+    : !isLocationOwner() && pollOpen(d)
+      ? `<span class="badge voting">${escapeHtml(overviewPollVote(d))}</span>`
+      : `<span class="badge ${d.myChoice}">${voteChoiceHTML(d.myChoice)}</span>`;
+  const pending = needsVote(d);
+  const current = d.id === focusedDateId ? " current" : "";
+  return `<button type="button" class="overview-item${pending ? " needs-vote" : ""}${locationBookingPending(d) ? " booking-pending" : ""}${current}" data-jump="${d.id}"${pending ? ` title="${escapeHtml(I18N.t(isLocationOwner() ? "locationBooking" : "voteNeeded"))}"` : ""}>
+    <div>
+      <strong>${escapeHtml(d.title)}</strong>
+      ${renderPlannerTag(d)}
+      <p>${escapeHtml(when)} · ${escapeHtml(I18N.category(d.category))}${d.location ? ` · ${escapeHtml(d.location)}` : ""}</p>
+    </div>
+    <div class="overview-item-meta">
+      ${isLocationOwner() ? "" : moodHTML(d)}
+      <span class="badge ${d.status}">${I18N.status(d.status)}</span>
+      ${vote}
+    </div>
+  </button>`;
+}
+
+function paintLocationHome() {
+  const owner = isLocationOwner();
+  const requests = document.getElementById("fold-requests");
+  if (requests) requests.hidden = !owner;
+  const next = document.getElementById("fold-next");
+  if (next && owner) next.hidden = true;
+  const spirit = document.getElementById("fold-spirit");
+  if (spirit && owner) spirit.hidden = true;
+  const channels = document.getElementById("fold-channels");
+  if (channels && owner) channels.hidden = true;
+  document.querySelectorAll("#app-tabs [data-tab], #top-actions [data-tab]").forEach((btn) => {
+    if (["archive", "gallery", "propose", "proposals"].includes(btn.dataset.tab)) {
+      btn.hidden = owner;
+    }
+  });
+  const chatTabs = document.getElementById("chat-tabs");
+  if (chatTabs && owner && leadChats.length <= 1) chatTabs.hidden = true;
+}
+
+function renderRequests() {
+  const fold = document.getElementById("fold-requests");
+  const list = document.getElementById("request-list");
+  const empty = document.getElementById("request-empty");
+  if (!fold || !list || !empty) return;
+  if (!isLocationOwner()) {
+    fold.hidden = true;
+    list.innerHTML = "";
+    return;
+  }
+  fold.hidden = false;
+  const rows = locationRequestDates();
+  empty.hidden = rows.length > 0;
+  list.hidden = rows.length === 0;
+  list.innerHTML = rows.map(overviewRowHTML).join("");
+}
+
 function renderNextUp() {
+  if (isLocationOwner()) {
+    const fold = document.getElementById("fold-next");
+    if (fold) fold.hidden = true;
+    return;
+  }
   const fold = document.getElementById("fold-next");
   const box = document.getElementById("next-up");
   const next = nextParticipatingDate();
@@ -1389,31 +1550,10 @@ function renderNextUp() {
 function renderOverview() {
   const list = document.getElementById("overview-list");
   const empty = document.getElementById("overview-empty");
-  const rows = dates;
+  const rows = isLocationOwner() ? locationMyDates() : dates;
   empty.hidden = rows.length > 0;
   list.hidden = rows.length === 0;
-  list.innerHTML = rows.map((d) => {
-    const when = pollOpen(d) ? `${formatWhen(d.startsAt)} · ${I18N.t("poll")}` : formatWhen(d.startsAt);
-    const vote = !canVote()
-      ? ""
-      : pollOpen(d)
-        ? `<span class="badge voting">${escapeHtml(overviewPollVote(d))}</span>`
-        : `<span class="badge ${d.myChoice}">${voteChoiceHTML(d.myChoice)}</span>`;
-    const pending = needsVote(d);
-    const current = d.id === focusedDateId ? " current" : "";
-    return `<button type="button" class="overview-item${pending ? " needs-vote" : ""}${current}" data-jump="${d.id}"${pending ? ` title="${escapeHtml(I18N.t("voteNeeded"))}"` : ""}">
-      <div>
-        <strong>${escapeHtml(d.title)}</strong>
-        ${renderPlannerTag(d)}
-        <p>${escapeHtml(when)} · ${escapeHtml(I18N.category(d.category))}</p>
-      </div>
-      <div class="overview-item-meta">
-        ${moodHTML(d)}
-        <span class="badge ${d.status}">${I18N.status(d.status)}</span>
-        ${vote}
-      </div>
-    </button>`;
-  }).join("");
+  list.innerHTML = rows.map(overviewRowHTML).join("");
 }
 
 function spiritLeaders(rank) {
@@ -1521,8 +1661,10 @@ function render() {
   } else if (!dates.some((d) => d.id === focusedDateId)) {
     focusedDateId = defaultFocusedDateId();
   }
+  paintLocationHome();
   renderSpirit();
   renderNextUp();
+  renderRequests();
   renderOverview();
   renderDates();
   emptyEl.hidden = dates.length > 0;
@@ -1811,6 +1953,7 @@ function showTitlesList() {
 }
 
 function openTitles(id) {
+  if (isLocationOwner()) return;
   const date = dates.find((d) => d.id === id);
   if (!date) return;
   titlesDateId = id;
@@ -2544,6 +2687,7 @@ function chatNoticeBody(m) {
 
 function notifyChatMessage(m) {
   if (!m?.room) return;
+  if (isLocationOwner() && !isDMRoom(m.room) && !isLeadRoom(m.room)) return;
   if (me && !m.isAdmin && m.userId === me.id) return;
   const openHere = (paneVisible("chat-dialog") && chatRoom === m.room)
     || (document.getElementById("stream-dialog")?.open && m.room === LIVE_ROOM);
@@ -2831,6 +2975,8 @@ async function enterApp() {
   paintStreamButtons();
   paintPlannerBar();
   api("/api/me").then((data) => {
+    applyLeadChats(data.leadChats);
+    paintHeaderChat();
     paintNewsTicker(data.newsTicker);
     paintBirthdays(data.birthdays);
   }).catch(() => {});
@@ -2907,6 +3053,7 @@ async function boot() {
     const data = await api("/api/me");
     me = data.user;
     applyUnread(data.unread);
+    applyLeadChats(data.leadChats);
     applyLiveStream(data.stream, false);
     paintNewsTicker(data.newsTicker);
     paintOnline(data.online);
@@ -3082,6 +3229,15 @@ async function activateTab(tab) {
       return;
     }
     if (tab === "chat") {
+      if (isLocationOwner()) {
+        const lead = leadChats.find((c) => c.room === chatRoom) || primaryLeadChat();
+        if (lead) {
+          await openChat(lead.room, lead.peer?.nickname);
+          return;
+        }
+        showTab("home");
+        return;
+      }
       if (isDMRoom(chatRoom)) {
         showEphemeralChat(chatRoom, chatPeer, chatMessages);
         return;
@@ -3092,6 +3248,12 @@ async function activateTab(tab) {
       if (room) await openChat(room);
       else showTab("chat");
       return;
+    }
+    if (tab === "gallery" || tab === "archive" || tab === "propose" || tab === "proposals") {
+      if (isLocationOwner()) {
+        showTab("home");
+        return;
+      }
     }
     if (tab === "gallery") {
       showError(document.getElementById("hub-gallery-error"), "");
@@ -3264,7 +3426,16 @@ document.addEventListener("keydown", (e) => {
     setAvatarMenuOpen(false);
     setStreamSourceOpen(false);
     if (!document.querySelector("dialog[open]") && appTab !== "home") showTab("home");
+    return;
   }
+  if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+  if (e.altKey || e.metaKey || e.ctrlKey) return;
+  if (document.querySelector("dialog[open]")) return;
+  if (document.body.classList.contains("menu-open")) return;
+  if (appTab !== "home") return;
+  if (e.target?.closest("input, textarea, select, [contenteditable='true']")) return;
+  e.preventDefault();
+  stepFocusedDate(e.key === "ArrowRight" ? 1 : -1);
 });
 document.addEventListener("pointerdown", (e) => {
   if (document.body.classList.contains("menu-open") && !e.target.closest("#top-actions, #btn-menu")) {
@@ -3416,13 +3587,18 @@ document.getElementById("next-up").addEventListener("click", async (e) => {
     await openGallery(galleryBtn.dataset.gallery);
     return;
   }
+  const mapBtn = e.target.closest("[data-map]");
+  if (mapBtn) {
+    openDateMap(mapBtn.dataset.map);
+    return;
+  }
   const promoBtn = e.target.closest("[data-promo]");
   if (promoBtn) {
     await openPromo(promoBtn.dataset.promo);
     return;
   }
   const eventChat = e.target.closest("[data-event-chat]");
-  if (!eventChat) return;
+  if (!eventChat || isLocationOwner()) return;
   const date = dates.find((d) => d.id === eventChat.dataset.eventChat);
   if (!date) return;
   try {
@@ -3492,6 +3668,11 @@ datesEl.addEventListener("click", async (e) => {
     await openGallery(galleryBtn.dataset.gallery);
     return;
   }
+  const mapBtn = e.target.closest("button[data-map]");
+  if (mapBtn) {
+    openDateMap(mapBtn.dataset.map);
+    return;
+  }
   const promoBtn = e.target.closest("button[data-promo]");
   if (promoBtn) {
     await openPromo(promoBtn.dataset.promo);
@@ -3499,6 +3680,7 @@ datesEl.addEventListener("click", async (e) => {
   }
   const eventChat = e.target.closest("button[data-event-chat]");
   if (eventChat) {
+    if (isLocationOwner()) return;
     const date = dates.find((d) => d.id === eventChat.dataset.eventChat);
     if (!date) return;
     try {
@@ -3665,6 +3847,7 @@ document.getElementById("planner-roles-wrap")?.addEventListener("change", (e) =>
 document.getElementById("planner-form")?.addEventListener("change", (e) => {
   if (e.target.closest("[data-planner-needed]")) syncPlannerNeededFromDom();
 });
+document.getElementById("planner-location-id")?.addEventListener("change", applyPlannerLocation);
 
 document.getElementById("planner-form")?.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -3679,6 +3862,7 @@ document.getElementById("planner-form")?.addEventListener("submit", async (e) =>
     category: document.getElementById("planner-category").value,
     startsAt: options.length >= 2 ? "" : toISO(plannerStartLocal()),
     endsAt: options.length >= 2 ? "" : toISO(plannerEndLocal()),
+    locationId: document.getElementById("planner-location-id")?.value || "",
     location: document.getElementById("planner-location").value,
     notes: document.getElementById("planner-notes").value,
     roles,
@@ -4022,7 +4206,7 @@ function noteChatMessage(m) {
     notifyChatMessage(m);
     return;
   }
-  if (CHAT_ROOMS.includes(m.room)) {
+  if (CHAT_ROOMS.includes(m.room) || isLeadRoom(m.room)) {
     if (chatRoom === m.room) {
       chatUnread[m.room] = 0;
       api(`/api/chats/${encodeURIComponent(m.room)}/read`, { method: "POST" }).catch(() => {});
@@ -4037,9 +4221,10 @@ function noteChatMessage(m) {
 
 function renderChatTabs() {
   const box = document.getElementById("chat-tabs");
+  box.querySelectorAll("[data-lead-chat]").forEach((el) => el.remove());
   let any = false;
   box.querySelectorAll("[data-chat]").forEach((btn) => {
-    const show = canUseChatRoom(btn.dataset.chat);
+    const show = !isLocationOwner() && canUseChatRoom(btn.dataset.chat);
     btn.hidden = !show;
     btn.classList.toggle("on", show && chatRoom === btn.dataset.chat);
     const n = show ? unreadCount(btn.dataset.chat) : 0;
@@ -4048,13 +4233,31 @@ function renderChatTabs() {
     btn.setAttribute("aria-label", n ? `${label}, ${n}` : label);
     if (show) any = true;
   });
+  const leadTabs = isChoirDirector() || (isLocationOwner() && leadChats.length > 1);
+  if (leadTabs) {
+    leadChats.forEach((c) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn ghost chat-tab";
+      btn.dataset.chat = c.room;
+      btn.dataset.leadChat = "1";
+      const n = unreadCount(c.room);
+      const label = leadChatLabel(c);
+      btn.innerHTML = `${escapeHtml(label)}${chatBadge(n)}`;
+      btn.classList.toggle("on", chatRoom === c.room);
+      btn.setAttribute("aria-label", n ? `${label}, ${n}` : label);
+      box.append(btn);
+      any = true;
+    });
+  }
   box.hidden = !any;
   paintMenuUnread();
   paintHeaderChat();
 }
 
 function chatUnreadTotal() {
-  return CHAT_ROOMS.reduce((sum, room) => sum + (canUseChatRoom(room) ? unreadCount(room) : 0), 0);
+  const rooms = CHAT_ROOMS.reduce((sum, room) => sum + (canUseChatRoom(room) ? unreadCount(room) : 0), 0);
+  return rooms + leadChats.reduce((sum, c) => sum + unreadCount(c.room), 0);
 }
 
 function paintUnreadBadge(id, n) {
@@ -4070,11 +4273,18 @@ function paintMenuUnread() {
 
 function paintHeaderChat() {
   const btn = document.getElementById("btn-header-chat");
-  const room = primaryChatRoom();
+  const lead = isLocationOwner() ? primaryLeadChat() : null;
+  const room = lead?.room || primaryChatRoom();
   if (btn) btn.hidden = !room;
-  const n = chatUnreadTotal();
+  const n = isLocationOwner()
+    ? leadChats.reduce((sum, c) => sum + unreadCount(c.room), 0)
+    : chatUnreadTotal();
   paintUnreadBadge("header-chat-unread", n);
-  const label = room ? I18N.t(`chat.${room}`) : I18N.t("chatBrand");
+  const label = lead
+    ? I18N.t("chatLead").replace("{name}", leadChatLabel(lead))
+    : room && CHAT_ROOMS.includes(room)
+      ? I18N.t(`chat.${room}`)
+      : I18N.t("chatBrand");
   if (btn) {
     btn.setAttribute("aria-label", n ? `${label}, ${n}` : label);
     btn.setAttribute("data-tip", label);
@@ -4354,6 +4564,10 @@ function chatEmojiPanelEl() {
 function chatTitle(room, title) {
   if (title) return title;
   if (isDMRoom(room)) return chatPeer?.nickname || I18N.t("chatPrivate");
+  if (isLeadRoom(room)) {
+    const lead = leadChats.find((c) => c.room === room);
+    return leadChatLabel(lead) || chatPeer?.nickname || I18N.t("chatLeadFallback");
+  }
   if (room === LIVE_ROOM) return I18N.t("chat.live");
   if (CHAT_ROOMS.includes(room)) return I18N.t(`chat.${room}`);
   return I18N.t("eventChat");
@@ -4585,12 +4799,13 @@ function receiveDMClose(data) {
 
 async function openChat(room, title) {
   const event = room.startsWith("event:");
-  if (!me || isDMRoom(room) || (!event && !canUseChatRoom(room))) return;
+  const lead = leadChats.find((c) => c.room === room);
+  if (!me || isDMRoom(room) || (!event && !lead && !canUseChatRoom(room))) return;
   if (isDMRoom(chatRoom)) {
     hangupCall(true);
     notifyDMClose(chatRoom);
   }
-  chatPeer = null;
+  chatPeer = lead?.peer || null;
   chatRoom = room;
   renderChatTabs();
   document.getElementById("chat-title").textContent = chatTitle(room, title);
@@ -5420,6 +5635,7 @@ function connectWS() {
       api("/api/me").then((data) => {
         me = data.user;
         applyUnread(data.unread);
+        applyLeadChats(data.leadChats);
         applyLiveStream(data.stream, false);
         paintNewsTicker(data.newsTicker);
         paintOnline(data.online);

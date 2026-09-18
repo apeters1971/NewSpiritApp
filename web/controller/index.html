@@ -66,6 +66,7 @@
       <button type="button" class="tab active" data-tab="people" data-i18n="tabPeople">Personen</button>
       <button type="button" class="tab" data-tab="contacts" data-i18n="tabContacts">Kontakte</button>
       <button type="button" class="tab" data-tab="dates" data-i18n="tabDates">Termine</button>
+      <button type="button" class="tab" data-tab="locations" data-i18n="tabLocations">Orte</button>
       <button type="button" class="tab" data-tab="archive" data-i18n="tabArchive">Notenarchiv</button>
       <button type="button" class="tab" data-tab="channels" data-i18n="tabChannels">Kanäle</button>
       <button type="button" class="tab" data-tab="proposals" data-i18n="tabProposals">Songvorschläge</button>
@@ -193,7 +194,10 @@
           <p class="muted" data-i18n="pollHint">Zwei oder mehr Zeitvorschläge: alle stimmen ab, die Verwaltung legt danach einen fest.</p>
           <div id="poll-options" class="poll-rows"></div>
           <button type="button" id="btn-add-poll" class="btn ghost" data-i18n="addPollOption">Zeitvorschlag hinzufügen</button>
-          <label for="date-location" data-i18n="location">Ort</label>
+          <label for="date-location-id" data-i18n="location">Ort</label>
+          <select id="date-location-id"></select>
+          <p class="muted" data-i18n="locationPickHint">Wähle einen hinterlegten Ort oder tippe eine Adresse.</p>
+          <label for="date-location" data-i18n="locationAddress">Adresse</label>
           <input id="date-location" />
           <label for="date-notes" data-i18n="notes">Notizen</label>
           <textarea id="date-notes" rows="3"></textarea>
@@ -449,6 +453,40 @@
           </thead>
           <tbody id="soli-body"></tbody>
         </table>
+      </div>
+    </div>
+
+    <div id="tab-locations" class="tab-panel" hidden>
+      <div class="layout">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th data-i18n="locationName">Ort</th>
+                <th data-i18n="address">Adresse</th>
+                <th data-i18n="locationOwner">Ortsinhaber</th>
+              </tr>
+            </thead>
+            <tbody id="locations-body"></tbody>
+          </table>
+        </div>
+        <form id="location-form" class="drawer">
+          <h2 id="location-form-title">Ort hinzufügen</h2>
+          <input type="hidden" id="location-id" />
+          <label for="location-name" data-i18n="locationName">Ort</label>
+          <input id="location-name" required maxlength="200" />
+          <label for="location-address" data-i18n="address">Adresse</label>
+          <input id="location-address" maxlength="300" />
+          <label for="location-owner" data-i18n="locationOwner">Ortsinhaber</label>
+          <select id="location-owner"></select>
+          <p class="muted" data-i18n="locationOwnerHint">Nur Personen mit der Rolle Ortsinhaber. Sie sehen Anfragen für diesen Ort und können Ja, Nein oder Vielleicht sagen.</p>
+          <p id="location-error" class="error" hidden></p>
+          <div class="drawer-actions">
+            <button type="submit" class="btn" data-i18n="save">Speichern</button>
+            <button type="button" id="btn-location-new" class="btn ghost" data-i18n="newItem">Neu</button>
+            <button type="button" id="btn-location-delete" class="btn ghost danger" data-i18n="delete" disabled>Löschen</button>
+          </div>
+        </form>
       </div>
     </div>
 

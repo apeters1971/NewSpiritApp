@@ -5,9 +5,13 @@
       items: {
         de: [
           "Für Band und Orchester kannst du pro Termin genau die Personen anhaken, die gebraucht werden. Nur die sehen den Termin.",
+          "In der Verwaltung legst du Orte mit Adresse und Ortsinhaber an. Am Termin wählst du einen Ort oder tippst eine Adresse. Ortsinhaber sehen neue Anfragen und ihre Termine und stimmen mit Ja, Nein oder Vielleicht ab. Chat und Titelliste bleiben aus, außer einem Chat mit dem Chorleiter; offene Anfragen pulsieren sanft orange.",
+          "Termine, zu denen du noch nicht abgestimmt hast, pulsieren ebenfalls sanft orange — für Chor, Band und alle anderen Rollen.",
         ],
         en: [
           "For band and orchestra you can tick exactly who is needed on each date. Only those people see it.",
+          "On the controller you create locations with an address and a location owner. On a date you pick a saved place or type an address. Location owners see new requests and their events and vote Yes, No, or Maybe. Chat and the title list stay hidden except a chat with the choir director; open requests fade through light orange.",
+          "Dates you have not voted on yet also fade through light orange — for choir, band, and every other role.",
         ],
       },
     },

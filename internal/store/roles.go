@@ -12,6 +12,7 @@ const (
 	RoleBand        = "band"
 	RoleOrchestra   = "orchestra"
 	RoleTechnician  = "technician"
+	RoleLocation    = "location"
 	RoleEhemalige   = "ehemalige"
 	StatusVoting    = "voting"
 	StatusAccepted  = "accepted"
@@ -24,7 +25,7 @@ const (
 	VoteSetByAdmin  = "admin"
 )
 
-var Roles = []string{RoleChoir, RoleChorleiter, RoleBand, RoleOrchestra, RoleTechnician, RoleEhemalige}
+var Roles = []string{RoleChoir, RoleChorleiter, RoleBand, RoleOrchestra, RoleTechnician, RoleLocation, RoleEhemalige}
 
 var Subroles = map[string][]string{
 	RoleChoir:       {"Sopran", "Alt", "Tenor/Bass"},
@@ -32,6 +33,7 @@ var Subroles = map[string][]string{
 	RoleBand:        {"Drums", "Percussion", "Guitar", "Hammond", "E-Bass", "Trumpet", "Sax", "Trombone", "Piano"},
 	RoleOrchestra:   {"Strings", "Woodbrass", "Brass", "Percussion", "Harp"},
 	RoleTechnician:  {"Sound", "Light", "Stage"},
+	RoleLocation:    {"Location Owner"},
 	RoleEhemalige:   {"Ehemalige"},
 }
 
@@ -41,6 +43,7 @@ var RoleLabels = map[string]string{
 	RoleBand:        "Band",
 	RoleOrchestra:   "Orchestra",
 	RoleTechnician:  "Technician",
+	RoleLocation:    "Location Owner",
 	RoleEhemalige:   "Alumni",
 }
 
@@ -56,6 +59,22 @@ func RoleSeesDate(role string, dateRoles []string) bool {
 
 func RoleCanVote(role string) bool {
 	return role != RoleEhemalige
+}
+
+func IsLocationOwner(role string) bool {
+	return role == RoleLocation
+}
+
+func IsChoirDirector(role string) bool {
+	return role == RoleChorleiter
+}
+
+func LeadChatPair(a, b string) bool {
+	return (IsLocationOwner(a) && IsChoirDirector(b)) || (IsLocationOwner(b) && IsChoirDirector(a))
+}
+
+func IsDateAudienceRole(role string) bool {
+	return ValidRole(role) && role != RoleLocation
 }
 
 func PlannerCreateRoles(user User, requested []string) ([]string, error) {
@@ -164,6 +183,9 @@ func NormalizeRoles(roles []string) ([]string, error) {
 		role, err := NormalizeRole(role)
 		if err != nil {
 			return nil, err
+		}
+		if !IsDateAudienceRole(role) {
+			continue
 		}
 		if seen[role] {
 			continue

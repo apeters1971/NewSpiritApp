@@ -307,7 +307,7 @@ func (s *Store) setPollVote(setBy, userID, dateID, optionID, choice string) erro
 	if err != nil {
 		return err
 	}
-	if !RoleCanVote(u.Role) || !slicesContains(d.Roles, u.Role) || !neededOnRoster(d, u.Role, u.ID) {
+	if IsLocationOwner(u.Role) || !RoleCanVote(u.Role) || !slicesContains(d.Roles, u.Role) || !neededOnRoster(d, u.Role, u.ID) {
 		return fmt.Errorf("%w: this date is not for your role", ErrForbidden)
 	}
 	if setBy == "" {
