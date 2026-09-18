@@ -4,10 +4,10 @@
       date: "2026-09-19",
       items: {
         de: [
-          "Termine, die vorbei sind, erscheinen nicht mehr in der Liste und blinken nicht mehr zur Abstimmung. Mit „Vergangene Termine“ kannst du sie wieder einblenden; Fotos gehen noch, Abstimmen nicht.",
+          "Termine, die vorbei sind, erscheinen nicht mehr in der Liste, nicht im ‹ ›-Blätterer und blinken nicht mehr zur Abstimmung. Mit „Vergangene Termine“ kannst du sie wieder einblenden; Fotos gehen noch, Abstimmen nicht.",
         ],
         en: [
-          "Dates that are already over no longer appear in the list and no longer pulse for a vote. Turn on “Past dates” to see them again; you can still add photos, but voting stays closed.",
+          "Dates that are already over no longer appear in the list or the ‹ › pager and no longer pulse for a vote. Turn on “Past dates” to see them again; you can still add photos, but voting stays closed.",
         ],
       },
     },

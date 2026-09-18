@@ -750,7 +750,8 @@ function dateIsUpcoming(d) {
 }
 
 function visibleDates() {
-  return (dates || []).filter((d) => showPastDates || dateIsCurrent(d));
+  if (showPastDates) return dates || [];
+  return (dates || []).filter(dateIsUpcoming);
 }
 
 function dateAllowsVote(d) {
