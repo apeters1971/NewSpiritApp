@@ -15,6 +15,9 @@ func startOfChoirDay(t time.Time) time.Time {
 }
 
 func DateIsCurrent(d Date) bool {
+	if d.Status == StatusCancelled {
+		return false
+	}
 	floor := startOfChoirDay(now())
 	if d.PollOpen && len(d.Options) > 0 {
 		for _, o := range d.Options {

@@ -735,7 +735,7 @@ function dateMoment(value) {
 }
 
 function dateIsCurrent(d) {
-  if (!d) return false;
+  if (!d || d.status === "cancelled") return false;
   const start = new Date();
   start.setHours(0, 0, 0, 0);
   const floor = start.getTime();
