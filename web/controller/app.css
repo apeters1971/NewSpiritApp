@@ -999,6 +999,14 @@ tbody tr:hover, tbody tr.active, .date-item.active { background: rgba(61, 214, 1
   margin: 0;
 }
 .checks input { width: auto; }
+.needed-people {
+  margin: 0.55rem 0 0.35rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.needed-people .label { margin: 0 0 0.2rem; }
+.needed-people .muted { margin: 0 0 0.45rem; font-size: 0.82rem; }
 
 .date-item {
   position: relative;

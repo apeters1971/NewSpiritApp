@@ -11,6 +11,8 @@ let catalog = { roles: [], categories: [] };
 let state = { users: [], dates: [], online: 0, ranking: { entries: [], bySubrole: [] }, archive: [], channels: [], proposals: [], choirSoli: [] };
 let selectedUser = "";
 let selectedDate = "";
+const NEEDED_ROLES = ["band", "orchestra"];
+let dateNeeded = { band: [], orchestra: [] };
 let selectedArchive = "";
 let archiveAutoFile = null;
 let archiveAutoKind = "";
@@ -182,6 +184,7 @@ function dateFormSnapshot() {
     notes: document.getElementById("date-notes").value,
     schedule: document.getElementById("date-schedule").value,
     roles: [...document.querySelectorAll("#date-roles input:checked")].map((el) => el.value).sort(),
+    needed: readDateNeeded(),
     bring: readBringForm(),
     options: pollRows.map((r) => ({ id: r.id || "", startsAt: r.startsAt || "", endsAt: r.endsAt || "" })),
     titleIds: dateTitleIDs.slice(),
@@ -339,6 +342,7 @@ function fillRoleSelects() {
   catSel.innerHTML = (catalog.categories || []).map((c) => `<option value="${c.id}">${I18N.category(c.id)}</option>`).join("");
   catSel.value = catVal || catSel.value;
   if (!catSel.value) catSel.value = "event";
+  paintDateNeeded();
 }
 
 function fillSubroles() {
@@ -350,6 +354,80 @@ function fillSubroles() {
 }
 
 document.getElementById("user-role").addEventListener("change", fillSubroles);
+
+function usersForRole(role) {
+  return (state.users || [])
+    .filter((u) => u.role === role)
+    .slice()
+    .sort((a, b) => String(a.nickname || "").localeCompare(String(b.nickname || ""), undefined, { sensitivity: "base" }));
+}
+
+function dateRoleChecked(role) {
+  return !!document.querySelector(`#date-roles input[value="${role}"]:checked`);
+}
+
+function fillDateNeededFrom(d) {
+  const roles = d?.neededRoles || [];
+  const ids = new Set(d?.neededIds || []);
+  dateNeeded = { band: [], orchestra: [] };
+  for (const role of NEEDED_ROLES) {
+    const people = usersForRole(role);
+    if (roles.includes(role)) {
+      dateNeeded[role] = people.filter((u) => ids.has(u.id)).map((u) => u.id);
+    } else {
+      dateNeeded[role] = people.map((u) => u.id);
+    }
+  }
+}
+
+function paintDateNeeded() {
+  for (const role of NEEDED_ROLES) {
+    const box = document.getElementById(`date-needed-${role}`);
+    if (!box) continue;
+    const on = dateRoleChecked(role);
+    box.hidden = !on;
+    if (!on) {
+      box.innerHTML = "";
+      continue;
+    }
+    const selected = new Set(dateNeeded[role] || []);
+    const people = usersForRole(role);
+    const label = role === "band" ? I18N.t("neededBand") : I18N.t("neededOrchestra");
+    box.innerHTML = `<p class="label">${escapeHtml(label)}</p><p class="muted">${escapeHtml(I18N.t("neededHint"))}</p><div class="checks">${
+      people.map((u) => `<label><input type="checkbox" data-needed="${role}" value="${escapeHtml(u.id)}" ${selected.has(u.id) ? "checked" : ""} /> ${escapeHtml(u.nickname)}${u.subrole ? ` · ${escapeHtml(I18N.subrole(u.subrole))}` : ""}</label>`).join("")
+    }</div>`;
+  }
+}
+
+function syncDateNeededFromDom() {
+  for (const role of NEEDED_ROLES) {
+    const box = document.getElementById(`date-needed-${role}`);
+    if (!box || box.hidden) continue;
+    dateNeeded[role] = [...box.querySelectorAll("input[data-needed]:checked")].map((el) => el.value);
+  }
+}
+
+function readDateNeeded() {
+  syncDateNeededFromDom();
+  const roles = NEEDED_ROLES.filter((role) => dateRoleChecked(role));
+  return { roles, ids: roles.flatMap((role) => dateNeeded[role] || []) };
+}
+
+document.getElementById("date-roles")?.addEventListener("change", (e) => {
+  const input = e.target.closest("input[type=checkbox]");
+  if (!input || !NEEDED_ROLES.includes(input.value)) {
+    paintDateNeeded();
+    return;
+  }
+  if (input.checked && !(dateNeeded[input.value] || []).length) {
+    dateNeeded[input.value] = usersForRole(input.value).map((u) => u.id);
+  }
+  paintDateNeeded();
+});
+
+document.getElementById("date-form")?.addEventListener("change", (e) => {
+  if (e.target.closest("[data-needed]")) syncDateNeededFromDom();
+});
 
 function renderPeople() {
   document.getElementById("stat-people").textContent = state.users.length;
@@ -600,6 +678,8 @@ function resetDateForm() {
   document.getElementById("date-notes").value = "";
   document.getElementById("date-schedule").value = "";
   document.querySelectorAll("#date-roles input").forEach((el) => { el.checked = false; });
+  fillDateNeededFrom(null);
+  paintDateNeeded();
   setBringForm();
   setPollRows([], false);
   dateTitleIDs = [];
@@ -628,6 +708,8 @@ function fillDateForm(d) {
   document.querySelectorAll("#date-roles input").forEach((el) => {
     el.checked = (d.roles || []).includes(el.value);
   });
+  fillDateNeededFrom(d);
+  paintDateNeeded();
   setBringForm(d.bring);
   setPollRows(d.options, !d.pollOpen && (d.options || []).length >= 2);
   setDateTitlesFrom(d.titles);
@@ -1815,6 +1897,7 @@ document.getElementById("date-form").addEventListener("submit", async (e) => {
     notes: document.getElementById("date-notes").value,
     schedule: document.getElementById("date-schedule").value,
     roles: [...document.querySelectorAll("#date-roles input:checked")].map((el) => el.value),
+    needed: readDateNeeded(),
     bring: readBringForm(),
     options: readPollRows(),
     titleIds: dateTitleIDs,

@@ -1,6 +1,17 @@
 (() => {
   const ENTRIES = [
     {
+      date: "2026-09-18",
+      items: {
+        de: [
+          "Für Band und Orchester kannst du pro Termin genau die Personen anhaken, die gebraucht werden. Nur die sehen den Termin.",
+        ],
+        en: [
+          "For band and orchestra you can tick exactly who is needed on each date. Only those people see it.",
+        ],
+      },
+    },
+    {
       date: "2026-09-17",
       items: {
         de: [

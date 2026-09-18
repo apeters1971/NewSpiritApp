@@ -85,6 +85,8 @@ type Date struct {
 	Options        []PollOption `json:"options"`
 	CreatedAt      time.Time    `json:"createdAt"`
 	CreatedBy      string       `json:"createdBy,omitempty"`
+	NeededIDs      []string     `json:"neededIds,omitempty"`
+	NeededRoles    []string     `json:"neededRoles,omitempty"`
 }
 
 type Bring struct {
@@ -341,6 +343,9 @@ CREATE TABLE IF NOT EXISTS settings (
 		return err
 	}
 	if err := s.migrateVoteSetBy(); err != nil {
+		return err
+	}
+	if err := s.migrateDateNeeded(); err != nil {
 		return err
 	}
 	return s.migrateChatVoice()
@@ -1197,7 +1202,7 @@ func (s *Store) setVote(setBy, userID, dateID, choice string) error {
 	if err != nil {
 		return err
 	}
-	if !RoleCanVote(u.Role) || !slicesContains(d.Roles, u.Role) {
+	if !RoleCanVote(u.Role) || !slicesContains(d.Roles, u.Role) || !neededOnRoster(d, u.Role, u.ID) {
 		return fmt.Errorf("%w: this date is not for your role", ErrForbidden)
 	}
 	if setBy == "" {
@@ -1233,7 +1238,7 @@ func (s *Store) AddComment(userID, dateID, text string) (Comment, error) {
 	if err != nil {
 		return Comment{}, err
 	}
-	if !slicesContains(d.Roles, u.Role) {
+	if !slicesContains(d.Roles, u.Role) || !neededOnRoster(d, u.Role, u.ID) {
 		return Comment{}, fmt.Errorf("%w: this date is not for your role", ErrForbidden)
 	}
 	c := Comment{
@@ -1325,7 +1330,7 @@ func (s *Store) ListDateViews(viewer *User) ([]DateView, error) {
 	}
 	ids := make([]string, 0, len(dates))
 	for _, d := range dates {
-		if viewer != nil && !RoleSeesDate(viewer.Role, d.Roles) {
+		if viewer != nil && !UserSeesDate(*viewer, d) {
 			continue
 		}
 		ids = append(ids, d.ID)
@@ -1352,7 +1357,7 @@ func (s *Store) ListDateViews(viewer *User) ([]DateView, error) {
 	}
 	out := make([]DateView, 0, len(ids))
 	for _, d := range dates {
-		if viewer != nil && !RoleSeesDate(viewer.Role, d.Roles) {
+		if viewer != nil && !UserSeesDate(*viewer, d) {
 			continue
 		}
 		v, err := s.attachView(d, viewer, commentsByDate[d.ID], titlesByDate[d.ID])
@@ -1482,6 +1487,10 @@ func (s *Store) decorateDates(dates []Date, ids []string) error {
 	if err != nil {
 		return err
 	}
+	neededIDs, neededRoles, err := s.neededForDates(ids)
+	if err != nil {
+		return err
+	}
 	for i := range dates {
 		dates[i].Roles = roleMap[dates[i].ID]
 		if dates[i].Roles == nil {
@@ -1490,6 +1499,14 @@ func (s *Store) decorateDates(dates []Date, ids []string) error {
 		dates[i].Options = optMap[dates[i].ID]
 		if dates[i].Options == nil {
 			dates[i].Options = []PollOption{}
+		}
+		dates[i].NeededIDs = neededIDs[dates[i].ID]
+		if dates[i].NeededIDs == nil {
+			dates[i].NeededIDs = []string{}
+		}
+		dates[i].NeededRoles = neededRoles[dates[i].ID]
+		if dates[i].NeededRoles == nil {
+			dates[i].NeededRoles = []string{}
 		}
 		dates[i].PollOpen = pollOpen(dates[i].FrozenOptionID, dates[i].Options)
 	}
@@ -1561,6 +1578,9 @@ ORDER BY u.role, u.subrole, u.nickname COLLATE NOCASE`, args...)
 		}
 		if VoteIsProxy(e.UserID, setBy.String) {
 			e.Proxy = true
+		}
+		if !neededOnRoster(d, e.Role, e.UserID) {
+			continue
 		}
 		out = append(out, e)
 	}

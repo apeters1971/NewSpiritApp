@@ -300,7 +300,7 @@ func (s *Store) ListGalleryHub(viewer User) ([]GalleryAlbum, error) {
 	ids := make([]string, 0, len(dates))
 	visible := make([]Date, 0, len(dates))
 	for _, d := range dates {
-		if !RoleSeesDate(viewer.Role, d.Roles) {
+		if !UserSeesDate(viewer, d) {
 			continue
 		}
 		visible = append(visible, d)

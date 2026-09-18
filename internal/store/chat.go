@@ -265,6 +265,9 @@ func (s *Store) AddChatMessage(userID, room, text string) (ChatMessage, error) {
 	if err := s.resolveChatRoom(room, u.Role, true); err != nil {
 		return ChatMessage{}, err
 	}
+	if err := s.guardEventChat(room, u); err != nil {
+		return ChatMessage{}, err
+	}
 	msg := ChatMessage{
 		ID:             newID(),
 		Room:           room,
@@ -334,9 +337,24 @@ func (s *Store) SetChatVoiceText(id, text string) (ChatMessage, error) {
 	return s.getChatMessage(id, chatReactionActor, true)
 }
 
+func (s *Store) guardEventChat(room string, u User) error {
+	dateID, ok := ParseEventRoom(room)
+	if !ok {
+		return nil
+	}
+	return s.MemberCanSeeDate(u, dateID)
+}
+
 func (s *Store) ListChatMessages(role, room, viewerID string) ([]ChatMessage, error) {
 	if err := s.resolveChatRoom(room, role, false); err != nil {
 		return nil, err
+	}
+	if viewerID != "" {
+		if u, err := s.UserByID(viewerID); err == nil {
+			if err := s.guardEventChat(room, u); err != nil {
+				return nil, err
+			}
+		}
 	}
 	return s.listChatMessages(room, viewerID, false)
 }

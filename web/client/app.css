@@ -2108,6 +2108,14 @@ body.call-fs { overflow: hidden; }
   margin: 0;
 }
 .planner-checks input { width: auto; margin: 0; }
+.planner-needed {
+  margin: 0.15rem 0 0.35rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.planner-needed .label { margin: 0 0 0.2rem; }
+.planner-needed .muted { margin: 0 0 0.4rem; font-size: 0.82rem; }
 .planner-poll-rows { display: grid; gap: 0.65rem; margin: 0.45rem 0 0.55rem; }
 .planner-poll-row {
   display: grid;

@@ -655,6 +655,10 @@ func (s *Server) handleMemberCreateDate(w http.ResponseWriter, r *http.Request) 
 		writeStoreError(w, err)
 		return
 	}
+	if err := applyDateNeeded(s.Store, d.ID, body.Needed); err != nil {
+		writeStoreError(w, err)
+		return
+	}
 	view, err := s.Store.DateView(d.ID, &user)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -1701,6 +1705,19 @@ type dateBody struct {
 	Options  []pollOptionBody       `json:"options"`
 	TitleIDs []string               `json:"titleIds"`
 	Titles   []store.DateTitleInput `json:"titles"`
+	Needed   *dateNeededBody        `json:"needed"`
+}
+
+type dateNeededBody struct {
+	Roles []string `json:"roles"`
+	IDs   []string `json:"ids"`
+}
+
+func applyDateNeeded(st *store.Store, dateID string, needed *dateNeededBody) error {
+	if needed == nil {
+		return nil
+	}
+	return st.SetDateNeeded(dateID, needed.Roles, needed.IDs)
 }
 
 func dateTitleInputs(body dateBody) []store.DateTitleInput {
@@ -1797,6 +1814,10 @@ func (s *Server) handleCreateDate(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
+	if err := applyDateNeeded(s.Store, d.ID, body.Needed); err != nil {
+		writeStoreError(w, err)
+		return
+	}
 	view, err := s.Store.DateView(d.ID, nil)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -1820,6 +1841,10 @@ func (s *Server) handleUpdateDate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.Store.SetDateTitleInputs(r.PathValue("id"), dateTitleInputs(body)); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if err := applyDateNeeded(s.Store, r.PathValue("id"), body.Needed); err != nil {
 		writeStoreError(w, err)
 		return
 	}
@@ -2443,7 +2468,7 @@ func (s *Server) handleCalendarFeed(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	dates, err := s.Store.ListAcceptedDatesForRole(user.Role)
+	dates, err := s.Store.ListAcceptedDatesForUser(user)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

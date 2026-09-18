@@ -65,13 +65,17 @@ func (s *Store) UserByCalendarToken(token string) (User, error) {
 }
 
 func (s *Store) ListAcceptedDatesForRole(role string) ([]Date, error) {
+	return s.ListAcceptedDatesForUser(User{Role: role})
+}
+
+func (s *Store) ListAcceptedDatesForUser(user User) ([]Date, error) {
 	dates, err := s.listDates()
 	if err != nil {
 		return nil, err
 	}
 	out := []Date{}
 	for _, d := range dates {
-		if d.Status != StatusAccepted || !RoleSeesDate(role, d.Roles) {
+		if d.Status != StatusAccepted || !UserSeesDate(user, d) {
 			continue
 		}
 		out = append(out, d)

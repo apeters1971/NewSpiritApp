@@ -1087,7 +1087,7 @@ func (s *Store) ToggleTitleOhSchreck(userID, dateID, itemID string) (ArchiveItem
 	if err != nil {
 		return ArchiveItem{}, err
 	}
-	if !RoleSeesDate(u.Role, d.Roles) {
+	if !UserSeesDate(u, d) {
 		return ArchiveItem{}, fmt.Errorf("%w: this date is not for your role", ErrForbidden)
 	}
 	var n int

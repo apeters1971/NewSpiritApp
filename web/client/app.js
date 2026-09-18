@@ -826,6 +826,64 @@ function readPlannerPollRows() {
   }).filter((r) => r.startsAt);
 }
 
+const NEEDED_ROLES = ["band", "orchestra"];
+let plannerNeeded = { band: [], orchestra: [] };
+
+function plannerPeopleForRole(role) {
+  return (directory || [])
+    .filter((u) => u.role === role)
+    .slice()
+    .sort((a, b) => String(a.nickname || "").localeCompare(String(b.nickname || ""), undefined, { sensitivity: "base" }));
+}
+
+function plannerRoleOn(role) {
+  if (me?.role === "chorleiter") {
+    return !!document.querySelector(`input[name=planner-role][value="${role}"]:checked`);
+  }
+  return me?.role === role;
+}
+
+function resetPlannerNeeded() {
+  plannerNeeded = { band: [], orchestra: [] };
+  for (const role of NEEDED_ROLES) {
+    plannerNeeded[role] = plannerPeopleForRole(role).map((u) => u.id);
+  }
+}
+
+function paintPlannerNeeded() {
+  for (const role of NEEDED_ROLES) {
+    const box = document.getElementById(`planner-needed-${role}`);
+    if (!box) continue;
+    const on = plannerRoleOn(role);
+    box.hidden = !on;
+    if (!on) {
+      box.innerHTML = "";
+      continue;
+    }
+    const selected = new Set(plannerNeeded[role] || []);
+    const people = plannerPeopleForRole(role);
+    const label = role === "band" ? I18N.t("neededBand") : I18N.t("neededOrchestra");
+    box.innerHTML = `<p class="label">${escapeHtml(label)}</p><p class="muted">${escapeHtml(I18N.t("neededHint"))}</p><div class="planner-checks">${
+      people.map((u) => `<label><input type="checkbox" data-planner-needed="${role}" value="${escapeHtml(u.id)}" ${selected.has(u.id) ? "checked" : ""} /> ${escapeHtml(u.nickname)}${u.subrole ? ` · ${escapeHtml(I18N.subrole(u.subrole))}` : ""}</label>`).join("")
+    }</div>`;
+  }
+}
+
+function syncPlannerNeededFromDom() {
+  for (const role of NEEDED_ROLES) {
+    const box = document.getElementById(`planner-needed-${role}`);
+    if (!box || box.hidden) continue;
+    plannerNeeded[role] = [...box.querySelectorAll("input[data-planner-needed]:checked")].map((el) => el.value);
+  }
+}
+
+function readPlannerNeeded() {
+  syncPlannerNeededFromDom();
+  const roles = NEEDED_ROLES.filter((role) => plannerRoleOn(role));
+  if (!roles.length) return null;
+  return { roles, ids: roles.flatMap((role) => plannerNeeded[role] || []) };
+}
+
 function resetPlannerForm() {
   const title = document.getElementById("planner-title");
   if (!title) return;
@@ -843,13 +901,20 @@ function resetPlannerForm() {
     el.checked = el.value === "choir";
   });
   document.getElementById("planner-roles-wrap").hidden = me?.role !== "chorleiter";
+  resetPlannerNeeded();
+  paintPlannerNeeded();
   plannerPollRows = [{ startsAt: "", endsAt: "", autoEnd: "" }, { startsAt: "", endsAt: "", autoEnd: "" }];
   fillPlannerCategories();
   renderPlannerPollRows();
   showError(document.getElementById("planner-error"), "");
 }
 
-function openPlannerDialog() {
+async function openPlannerDialog() {
+  try {
+    await loadDirectory();
+  } catch {
+    directory = directory || [];
+  }
   resetPlannerForm();
   document.getElementById("planner-dialog").showModal();
 }
@@ -3586,6 +3651,21 @@ document.getElementById("planner-start-time")?.addEventListener("change", preset
 When.fillTimeSelect(document.getElementById("planner-start-time"), "");
 When.fillTimeSelect(document.getElementById("planner-end-time"), "");
 
+document.getElementById("planner-roles-wrap")?.addEventListener("change", (e) => {
+  const input = e.target.closest("input[name=planner-role]");
+  if (!input || !NEEDED_ROLES.includes(input.value)) {
+    paintPlannerNeeded();
+    return;
+  }
+  if (input.checked && !(plannerNeeded[input.value] || []).length) {
+    plannerNeeded[input.value] = plannerPeopleForRole(input.value).map((u) => u.id);
+  }
+  paintPlannerNeeded();
+});
+document.getElementById("planner-form")?.addEventListener("change", (e) => {
+  if (e.target.closest("[data-planner-needed]")) syncPlannerNeededFromDom();
+});
+
 document.getElementById("planner-form")?.addEventListener("submit", async (e) => {
   e.preventDefault();
   const errEl = document.getElementById("planner-error");
@@ -3602,6 +3682,7 @@ document.getElementById("planner-form")?.addEventListener("submit", async (e) =>
     location: document.getElementById("planner-location").value,
     notes: document.getElementById("planner-notes").value,
     roles,
+    needed: readPlannerNeeded(),
     bring: {
       mic: document.getElementById("planner-bring-mic").checked,
       cable: document.getElementById("planner-bring-cable").checked,
