@@ -232,6 +232,8 @@ button.avatar { cursor: pointer; appearance: none; }
 }
 .info-form textarea { resize: vertical; }
 .info-form button { margin-top: 0.9rem; }
+#info-bank-wrap { margin-top: 0.35rem; }
+#info-iban, #info-bic { text-transform: uppercase; letter-spacing: 0.04em; }
 .avatar-bar { width: 64px; height: 64px; font-size: 1.1rem; }
 .avatar-sm { width: 32px; height: 32px; font-size: 0.7rem; }
 .avatar-form { width: 96px; height: 96px; font-size: 1.4rem; margin: 0 auto 0.35rem; }
@@ -2757,6 +2759,36 @@ html[data-theme="light"] .birthday-tag {
   margin: 0.25rem 0 0;
   color: var(--muted);
   font-size: 0.8rem;
+}
+.date-fee {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.35rem 0 0;
+  color: var(--ok);
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+.date-fee-icon {
+  display: grid;
+  place-items: center;
+  width: 1.2rem;
+  height: 1.2rem;
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+}
+.date-fee-icon::before { content: "€"; }
+.date-fee-compact {
+  margin: 0;
+  font-size: 0.82rem;
+}
+.date-fee-compact .date-fee-icon {
+  width: 1rem;
+  height: 1rem;
+  font-size: 0.62rem;
 }
 p.notes { margin: 0.45rem 0 0; color: var(--muted); white-space: pre-wrap; }
 .bring { margin: 0.45rem 0 0; display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }

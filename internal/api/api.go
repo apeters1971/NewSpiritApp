@@ -366,18 +366,20 @@ func (s *Server) handleMePassword(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"user": user})
 }
 
-func readUserInfo(r *http.Request) (address, phone, birthday, altEmail, memberSince string, err error) {
+func readUserInfo(r *http.Request) (address, phone, birthday, altEmail, memberSince, iban, bic string, err error) {
 	var body struct {
 		Address     string `json:"address"`
 		Phone       string `json:"phone"`
 		Birthday    string `json:"birthday"`
 		AltEmail    string `json:"altEmail"`
 		MemberSince string `json:"memberSince"`
+		IBAN        string `json:"iban"`
+		BIC         string `json:"bic"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		return "", "", "", "", "", err
+		return "", "", "", "", "", "", "", err
 	}
-	return body.Address, body.Phone, body.Birthday, body.AltEmail, body.MemberSince, nil
+	return body.Address, body.Phone, body.Birthday, body.AltEmail, body.MemberSince, body.IBAN, body.BIC, nil
 }
 
 func (s *Server) handleMeInfo(w http.ResponseWriter, r *http.Request) {
@@ -386,12 +388,17 @@ func (s *Server) handleMeInfo(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	address, phone, birthday, altEmail, memberSince, err := readUserInfo(r)
+	address, phone, birthday, altEmail, memberSince, iban, bic, err := readUserInfo(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
 	user, err = s.Store.SetUserInfo(user.ID, address, phone, birthday, altEmail, memberSince)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	user, err = s.Store.SetUserBank(user.ID, iban, bic)
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -670,6 +677,14 @@ func (s *Server) handleMemberCreateDate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err := applyDateVenue(s.Store, d.ID, body.LocationID, body.Location); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if err := applyDateFee(s.Store, d.ID, body.FeeCents); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if err := applyDateFeeOverrides(s.Store, d.ID, body.FeeOverrides); err != nil {
 		writeStoreError(w, err)
 		return
 	}
@@ -1594,6 +1609,8 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		Birthday    string `json:"birthday"`
 		AltEmail    string `json:"altEmail"`
 		MemberSince string `json:"memberSince"`
+		IBAN        string `json:"iban"`
+		BIC         string `json:"bic"`
 		Streamer    bool   `json:"streamer"`
 		Planner     bool   `json:"planner"`
 		Archiver    bool   `json:"archiver"`
@@ -1609,6 +1626,13 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Address != "" || body.Phone != "" || body.Birthday != "" || body.AltEmail != "" || body.MemberSince != "" {
 		user, err = s.Store.SetUserInfo(user.ID, body.Address, body.Phone, body.Birthday, body.AltEmail, body.MemberSince)
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+	}
+	if body.IBAN != "" || body.BIC != "" {
+		user, err = s.Store.SetUserBank(user.ID, body.IBAN, body.BIC)
 		if err != nil {
 			writeStoreError(w, err)
 			return
@@ -1685,12 +1709,17 @@ func (s *Server) handleControllerUserInfo(w http.ResponseWriter, r *http.Request
 	if !s.requireController(w, r) {
 		return
 	}
-	address, phone, birthday, altEmail, memberSince, err := readUserInfo(r)
+	address, phone, birthday, altEmail, memberSince, iban, bic, err := readUserInfo(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
 	user, err := s.Store.SetUserInfo(r.PathValue("id"), address, phone, birthday, altEmail, memberSince)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	user, err = s.Store.SetUserBank(user.ID, iban, bic)
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -1731,7 +1760,9 @@ type dateBody struct {
 	Options  []pollOptionBody       `json:"options"`
 	TitleIDs []string               `json:"titleIds"`
 	Titles   []store.DateTitleInput `json:"titles"`
-	Needed   *dateNeededBody        `json:"needed"`
+	Needed       *dateNeededBody `json:"needed"`
+	FeeCents     *int            `json:"feeCents"`
+	FeeOverrides *map[string]int `json:"feeOverrides"`
 }
 
 type dateNeededBody struct {
@@ -1748,6 +1779,20 @@ func applyDateNeeded(st *store.Store, dateID string, needed *dateNeededBody) err
 
 func applyDateVenue(st *store.Store, dateID, locationID, locationText string) error {
 	return st.SetDateVenue(dateID, locationID, locationText)
+}
+
+func applyDateFee(st *store.Store, dateID string, feeCents *int) error {
+	if feeCents == nil {
+		return nil
+	}
+	return st.SetDateFee(dateID, *feeCents)
+}
+
+func applyDateFeeOverrides(st *store.Store, dateID string, overrides *map[string]int) error {
+	if overrides == nil {
+		return nil
+	}
+	return st.SetDateFeeOverrides(dateID, *overrides)
 }
 
 func dateTitleInputs(body dateBody) []store.DateTitleInput {
@@ -1852,6 +1897,14 @@ func (s *Server) handleCreateDate(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
+	if err := applyDateFee(s.Store, d.ID, body.FeeCents); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if err := applyDateFeeOverrides(s.Store, d.ID, body.FeeOverrides); err != nil {
+		writeStoreError(w, err)
+		return
+	}
 	view, err := s.Store.DateView(d.ID, nil)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -1883,6 +1936,14 @@ func (s *Server) handleUpdateDate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := applyDateVenue(s.Store, r.PathValue("id"), body.LocationID, body.Location); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if err := applyDateFee(s.Store, r.PathValue("id"), body.FeeCents); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if err := applyDateFeeOverrides(s.Store, r.PathValue("id"), body.FeeOverrides); err != nil {
 		writeStoreError(w, err)
 		return
 	}

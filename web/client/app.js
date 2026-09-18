@@ -494,6 +494,30 @@ function renderPollTable(date) {
   </table>`);
 }
 
+function dateFeeCents(d) {
+  return Math.max(0, Number(d?.feeCents || 0));
+}
+
+function dateShowsFee(d) {
+  if (dateFeeCents(d) <= 0) return false;
+  return me?.role === "band" || me?.role === "orchestra" || me?.role === "chorleiter";
+}
+
+function formatFee(cents) {
+  const c = dateFeeCents({ feeCents: cents });
+  return new Intl.NumberFormat(I18N.locale(), {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: c % 100 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(c / 100);
+}
+
+function feeHTML(d, extraClass = "") {
+  if (!dateShowsFee(d)) return "";
+  return `<span class="date-fee${extraClass ? ` ${extraClass}` : ""}" title="${escapeHtml(I18N.t("dateFee"))}"><span class="date-fee-icon" aria-hidden="true"></span>${escapeHtml(formatFee(dateFeeCents(d)))}</span>`;
+}
+
 function renderDate(date) {
   const booking = isLocationOwner();
   const isPoll = !booking && (date.options || []).length >= 2;
@@ -528,6 +552,7 @@ function renderDate(date) {
           <h2 id="date-${date.id}">${escapeHtml(date.title)}</h2>
           <p class="when">${escapeHtml(when)}</p>
           <p class="card-meta">${escapeHtml(I18N.category(date.category))}</p>
+          ${feeHTML(date)}
         </div>
         ${moodHTML(date, "date-summary-mood")}
         ${renderDateSummaryActions(date)}
@@ -1462,6 +1487,7 @@ function overviewRowHTML(d) {
     </div>
     <div class="overview-item-meta">
       ${isLocationOwner() ? "" : moodHTML(d)}
+      ${feeHTML(d, "date-fee-compact")}
       <span class="badge ${d.status}">${I18N.status(d.status)}</span>
       ${vote}
     </div>
@@ -6063,8 +6089,17 @@ document.getElementById("stream-chat-list").addEventListener("submit", onChatLis
 document.getElementById("chat-list").addEventListener("click", onChatListClick);
 document.getElementById("stream-chat-list").addEventListener("click", onChatListClick);
 
+function roleAllowsBank(role) {
+  return role === "band" || role === "orchestra" || role === "technician";
+}
+
+function paintBankFields(role) {
+  const wrap = document.getElementById("info-bank-wrap");
+  if (wrap) wrap.hidden = !roleAllowsBank(role);
+}
+
 function hasInfo(user) {
-  return !!(user?.address || user?.phone || user?.birthday || user?.altEmail || user?.memberSince);
+  return !!(user?.address || user?.phone || user?.birthday || user?.altEmail || user?.memberSince || user?.iban || user?.bic);
 }
 
 function paintInfoButton(btn, user) {
@@ -6079,16 +6114,22 @@ function fillInfoForm(user = {}) {
   document.getElementById("info-alt-email").value = user.altEmail || "";
   document.getElementById("info-birthday").value = user.birthday || "";
   document.getElementById("info-member-since").value = user.memberSince || "";
+  document.getElementById("info-iban").value = user.iban || "";
+  document.getElementById("info-bic").value = user.bic || "";
+  paintBankFields(user.role);
   showError(document.getElementById("info-error"), "");
 }
 
 function readInfoForm() {
+  const allow = roleAllowsBank(me?.role);
   return {
     address: document.getElementById("info-address").value,
     phone: document.getElementById("info-phone").value,
     altEmail: document.getElementById("info-alt-email").value,
     birthday: document.getElementById("info-birthday").value,
     memberSince: document.getElementById("info-member-since").value,
+    iban: allow ? document.getElementById("info-iban").value : "",
+    bic: allow ? document.getElementById("info-bic").value : "",
   };
 }
 

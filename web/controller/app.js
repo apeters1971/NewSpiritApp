@@ -13,6 +13,7 @@ let selectedUser = "";
 let selectedDate = "";
 const NEEDED_ROLES = ["band", "orchestra"];
 let dateNeeded = { band: [], orchestra: [] };
+let dateFeeOverrides = {};
 let selectedArchive = "";
 let archiveAutoFile = null;
 let archiveAutoKind = "";
@@ -28,7 +29,7 @@ let pollFrozen = false;
 let dateAutoEnd = "";
 let pendingPhoto = null;
 let pendingPhotoURL = "";
-let pendingInfo = { address: "", phone: "", birthday: "", altEmail: "", memberSince: "" };
+let pendingInfo = { address: "", phone: "", birthday: "", altEmail: "", memberSince: "", iban: "", bic: "" };
 let chatRoom = "";
 let chatMessages = [];
 let chatUnread = {};
@@ -59,8 +60,17 @@ function currentPerson() {
   };
 }
 
+function roleAllowsBank(role) {
+  return role === "band" || role === "orchestra" || role === "technician";
+}
+
+function paintBankFields(role) {
+  const wrap = document.getElementById("info-bank-wrap");
+  if (wrap) wrap.hidden = !roleAllowsBank(role);
+}
+
 function hasInfo(user) {
-  return !!(user?.address || user?.phone || user?.birthday || user?.altEmail || user?.memberSince);
+  return !!(user?.address || user?.phone || user?.birthday || user?.altEmail || user?.memberSince || user?.iban || user?.bic);
 }
 
 function paintInfoButton(btn, user) {
@@ -90,16 +100,22 @@ function fillInfoForm(user = {}) {
   document.getElementById("info-alt-email").value = user.altEmail || "";
   document.getElementById("info-birthday").value = user.birthday || "";
   document.getElementById("info-member-since").value = user.memberSince || "";
+  document.getElementById("info-iban").value = user.iban || "";
+  document.getElementById("info-bic").value = user.bic || "";
+  paintBankFields(user.role || document.getElementById("user-role")?.value);
   showError(document.getElementById("info-error"), "");
 }
 
 function readInfoForm() {
+  const allow = roleAllowsBank(document.getElementById("user-role")?.value);
   return {
     address: document.getElementById("info-address").value,
     phone: document.getElementById("info-phone").value,
     altEmail: document.getElementById("info-alt-email").value,
     birthday: document.getElementById("info-birthday").value,
     memberSince: document.getElementById("info-member-since").value,
+    iban: allow ? document.getElementById("info-iban").value : "",
+    bic: allow ? document.getElementById("info-bic").value : "",
   };
 }
 
@@ -186,6 +202,8 @@ function dateFormSnapshot() {
     schedule: document.getElementById("date-schedule").value,
     roles: [...document.querySelectorAll("#date-roles input:checked")].map((el) => el.value).sort(),
     needed: readDateNeeded(),
+    feeCents: readFeeCents(),
+    feeOverrides: readFeeOverrides(),
     bring: readBringForm(),
     options: pollRows.map((r) => ({ id: r.id || "", startsAt: r.startsAt || "", endsAt: r.endsAt || "" })),
     titleIds: dateTitleIDs.slice(),
@@ -344,7 +362,9 @@ function fillRoleSelects() {
   catSel.innerHTML = (catalog.categories || []).map((c) => `<option value="${c.id}">${I18N.category(c.id)}</option>`).join("");
   catSel.value = catVal || catSel.value;
   if (!catSel.value) catSel.value = "event";
+  syncFeeOverridesFromDom();
   paintDateNeeded();
+  paintDateFee();
 }
 
 function locationOwners() {
@@ -425,6 +445,7 @@ function fillSubroles() {
   const cur = sel.value;
   sel.innerHTML = subrolesFor(role).map((s) => `<option value="${s}">${I18N.subrole(s)}</option>`).join("");
   if (cur) sel.value = cur;
+  paintBankFields(role);
 }
 
 document.getElementById("user-role").addEventListener("change", fillSubroles);
@@ -444,6 +465,7 @@ function fillDateNeededFrom(d) {
   const roles = d?.neededRoles || [];
   const ids = new Set(d?.neededIds || []);
   dateNeeded = { band: [], orchestra: [] };
+  dateFeeOverrides = { ...(d?.feeOverrides || {}) };
   for (const role of NEEDED_ROLES) {
     const people = usersForRole(role);
     if (roles.includes(role)) {
@@ -454,7 +476,49 @@ function fillDateNeededFrom(d) {
   }
 }
 
+function dateAllowsFee() {
+  return NEEDED_ROLES.some((role) => dateRoleChecked(role));
+}
+
+function feeInputValue(cents) {
+  const c = Number(cents || 0);
+  if (c <= 0) return "";
+  return c % 100 === 0 ? String(c / 100) : (c / 100).toFixed(2);
+}
+
+function readFeeCents() {
+  if (!dateAllowsFee()) return 0;
+  const raw = String(document.getElementById("date-fee")?.value || "").trim().replace(",", ".");
+  if (!raw) return 0;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.round(n * 100);
+}
+
+function paintDateFee() {
+  const wrap = document.getElementById("date-fee-wrap");
+  if (wrap) wrap.hidden = !dateAllowsFee();
+}
+
+function formatFee(cents) {
+  const c = Number(cents || 0);
+  return new Intl.NumberFormat(I18N.locale(), {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: c % 100 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(c / 100);
+}
+
+function feeHTML(d) {
+  const c = Number(d?.feeCents || 0);
+  if (c <= 0) return "";
+  return `<span class="date-fee"><span class="fee-mark" aria-hidden="true">€</span>${escapeHtml(formatFee(c))}</span>`;
+}
+
 function paintDateNeeded() {
+  const allowFee = dateAllowsFee();
+  const placeholder = feeInputValue(readFeeCents()) || "0";
   for (const role of NEEDED_ROLES) {
     const box = document.getElementById(`date-needed-${role}`);
     if (!box) continue;
@@ -467,8 +531,17 @@ function paintDateNeeded() {
     const selected = new Set(dateNeeded[role] || []);
     const people = usersForRole(role);
     const label = role === "band" ? I18N.t("neededBand") : I18N.t("neededOrchestra");
-    box.innerHTML = `<p class="label">${escapeHtml(label)}</p><p class="muted">${escapeHtml(I18N.t("neededHint"))}</p><div class="checks">${
-      people.map((u) => `<label><input type="checkbox" data-needed="${role}" value="${escapeHtml(u.id)}" ${selected.has(u.id) ? "checked" : ""} /> ${escapeHtml(u.nickname)}${u.subrole ? ` · ${escapeHtml(I18N.subrole(u.subrole))}` : ""}</label>`).join("")
+    const hint = allowFee ? `${I18N.t("neededHint")} ${I18N.t("dateFeeOverrideHint")}` : I18N.t("neededHint");
+    box.innerHTML = `<p class="label">${escapeHtml(label)}</p><p class="muted">${escapeHtml(hint)}</p><div class="needed-list">${
+      people.map((u) => {
+        const onPerson = selected.has(u.id);
+        const override = Object.prototype.hasOwnProperty.call(dateFeeOverrides, u.id);
+        const feeVal = override ? (Number(dateFeeOverrides[u.id]) > 0 ? feeInputValue(dateFeeOverrides[u.id]) : "0") : "";
+        const fee = allowFee
+          ? `<label class="needed-fee"><span class="fee-mark" aria-hidden="true">€</span><input type="number" min="0" step="0.01" inputmode="decimal" data-fee-override="${escapeHtml(u.id)}" value="${escapeHtml(feeVal)}" placeholder="${escapeHtml(placeholder)}" ${onPerson ? "" : "disabled"} aria-label="${escapeHtml(I18N.t("dateFeeOverride"))}" /></label>`
+          : "";
+        return `<div class="needed-row"><label class="needed-name"><input type="checkbox" data-needed="${role}" value="${escapeHtml(u.id)}" ${onPerson ? "checked" : ""} /> ${escapeHtml(u.nickname)}${u.subrole ? ` · ${escapeHtml(I18N.subrole(u.subrole))}` : ""}</label>${fee}</div>`;
+      }).join("")
     }</div>`;
   }
 }
@@ -487,20 +560,63 @@ function readDateNeeded() {
   return { roles, ids: roles.flatMap((role) => dateNeeded[role] || []) };
 }
 
+function syncFeeOverridesFromDom() {
+  document.querySelectorAll("[data-fee-override]").forEach((el) => {
+    const id = el.getAttribute("data-fee-override");
+    if (!id) return;
+    const raw = String(el.value || "").trim().replace(",", ".");
+    if (!raw) {
+      delete dateFeeOverrides[id];
+      return;
+    }
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0) return;
+    dateFeeOverrides[id] = Math.round(n * 100);
+  });
+}
+
+function readFeeOverrides() {
+  syncFeeOverridesFromDom();
+  const needed = new Set(readDateNeeded().ids);
+  const out = {};
+  for (const [id, cents] of Object.entries(dateFeeOverrides)) {
+    if (!needed.has(id)) continue;
+    const n = Number(cents);
+    if (!Number.isFinite(n) || n < 0) continue;
+    out[id] = Math.round(n);
+  }
+  return out;
+}
+
 document.getElementById("date-roles")?.addEventListener("change", (e) => {
   const input = e.target.closest("input[type=checkbox]");
+  syncFeeOverridesFromDom();
   if (!input || !NEEDED_ROLES.includes(input.value)) {
     paintDateNeeded();
+    paintDateFee();
     return;
   }
   if (input.checked && !(dateNeeded[input.value] || []).length) {
     dateNeeded[input.value] = usersForRole(input.value).map((u) => u.id);
   }
   paintDateNeeded();
+  paintDateFee();
 });
 
 document.getElementById("date-form")?.addEventListener("change", (e) => {
-  if (e.target.closest("[data-needed]")) syncDateNeededFromDom();
+  if (e.target.closest("[data-needed]")) {
+    syncDateNeededFromDom();
+    const fee = e.target.closest(".needed-row")?.querySelector("[data-fee-override]");
+    if (fee) fee.disabled = !e.target.checked;
+  }
+  if (e.target.closest("[data-fee-override]")) syncFeeOverridesFromDom();
+});
+
+document.getElementById("date-fee")?.addEventListener("input", () => {
+  const placeholder = feeInputValue(readFeeCents()) || "0";
+  document.querySelectorAll("[data-fee-override]").forEach((el) => {
+    el.placeholder = placeholder;
+  });
 });
 
 function renderPeople() {
@@ -605,6 +721,7 @@ function renderDates() {
       <span class="badge ${d.status}">${I18N.status(d.status)}</span>
       ${d.pollOpen ? `<span class="badge voting">${I18N.t("pollOpen")}</span>` : d.frozenOptionId ? `<span class="badge accepted">${I18N.t("pollFrozen")}</span>` : ""}
       ${d.venue?.id ? `<span class="badge ${d.venue.booking || "unknown"}">${escapeHtml(I18N.t("locationBooking"))}: ${voteChoiceHTML(d.venue.booking)}</span>` : ""}
+      ${feeHTML(d)}
       <h3>${escapeHtml(d.title)}</h3>
       ${d.creator?.id ? `<p class="planner-tag">${Photo.html(d.creator, "sm")}<span><span class="planner-tag-label">${escapeHtml(I18N.t("planner"))}</span> <strong>${escapeHtml(d.creator.nickname)}</strong></span></p>` : ""}
       <p>${escapeHtml(I18N.category(d.category))}${bringList(d.bring).length ? " · " + escapeHtml(bringList(d.bring).join(", ")) : ""}</p>
@@ -698,7 +815,7 @@ function clearPendingPhoto() {
 
 function resetUserForm() {
   selectedUser = "";
-  pendingInfo = { address: "", phone: "", birthday: "", altEmail: "", memberSince: "" };
+  pendingInfo = { address: "", phone: "", birthday: "", altEmail: "", memberSince: "", iban: "", bic: "" };
   clearPendingPhoto();
   document.getElementById("people-form-title").textContent = I18N.t("addPerson");
   document.getElementById("user-id").value = "";
@@ -721,7 +838,7 @@ function resetUserForm() {
 
 function fillUserForm(u) {
   selectedUser = u.id;
-  pendingInfo = { address: u.address || "", phone: u.phone || "", birthday: u.birthday || "", altEmail: u.altEmail || "", memberSince: u.memberSince || "" };
+  pendingInfo = { address: u.address || "", phone: u.phone || "", birthday: u.birthday || "", altEmail: u.altEmail || "", memberSince: u.memberSince || "", iban: u.iban || "", bic: u.bic || "" };
   clearPendingPhoto();
   document.getElementById("people-form-title").textContent = I18N.t("editPerson");
   document.getElementById("user-id").value = u.id;
@@ -757,6 +874,9 @@ function resetDateForm() {
   document.querySelectorAll("#date-roles input").forEach((el) => { el.checked = false; });
   fillDateNeededFrom(null);
   paintDateNeeded();
+  const fee = document.getElementById("date-fee");
+  if (fee) fee.value = "";
+  paintDateFee();
   setBringForm();
   setPollRows([], false);
   dateTitleIDs = [];
@@ -787,6 +907,9 @@ function fillDateForm(d) {
     el.checked = (d.roles || []).includes(el.value);
   });
   fillDateNeededFrom(d);
+  const fee = document.getElementById("date-fee");
+  if (fee) fee.value = feeInputValue(d.feeCents);
+  paintDateFee();
   paintDateNeeded();
   setBringForm(d.bring);
   setPollRows(d.options, !d.pollOpen && (d.options || []).length >= 2);
@@ -2024,6 +2147,8 @@ document.getElementById("date-form").addEventListener("submit", async (e) => {
     schedule: document.getElementById("date-schedule").value,
     roles: [...document.querySelectorAll("#date-roles input:checked")].map((el) => el.value),
     needed: readDateNeeded(),
+    feeCents: readFeeCents(),
+    feeOverrides: readFeeOverrides(),
     bring: readBringForm(),
     options: readPollRows(),
     titleIds: dateTitleIDs,

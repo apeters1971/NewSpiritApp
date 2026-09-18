@@ -218,6 +218,14 @@
           </div>
           <p class="label" data-i18n="rolesForDate">Rollen, die diesen Termin sehen</p>
           <div id="date-roles" class="checks"></div>
+          <div id="date-fee-wrap" hidden>
+            <label for="date-fee" data-i18n="dateFee">Gage pro Person (€)</label>
+            <div class="fee-input">
+              <span class="fee-mark" aria-hidden="true">€</span>
+              <input id="date-fee" type="number" min="0" step="0.01" inputmode="decimal" />
+            </div>
+            <p class="muted" data-i18n="dateFeeHint">Gilt für alle, sofern unten nichts anderes steht. 0 erscheint nicht.</p>
+          </div>
           <div id="date-needed-band" class="needed-people" hidden></div>
           <div id="date-needed-orchestra" class="needed-people" hidden></div>
           <div class="title-list-head">
@@ -663,6 +671,13 @@
       <input id="info-birthday" type="date" />
       <label for="info-member-since" data-i18n="memberSince">Mitglied seit</label>
       <input id="info-member-since" type="number" inputmode="numeric" min="1900" max="2100" step="1" placeholder="2018" />
+      <div id="info-bank-wrap" hidden>
+        <label for="info-iban" data-i18n="iban">IBAN</label>
+        <input id="info-iban" type="text" maxlength="42" autocomplete="off" spellcheck="false" autocapitalize="characters" />
+        <label for="info-bic" data-i18n="bic">BIC</label>
+        <input id="info-bic" type="text" maxlength="15" autocomplete="off" spellcheck="false" autocapitalize="characters" />
+        <p class="muted" data-i18n="bankHint">Optional. Nur für Band, Orchester und Technik. Steht nicht im Adressbuch.</p>
+      </div>
       <p id="info-error" class="error" hidden></p>
       <button type="submit" data-i18n="save">Speichern</button>
     </form>

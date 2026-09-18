@@ -196,6 +196,8 @@ button.avatar { cursor: pointer; appearance: none; }
 }
 .info-form textarea { resize: vertical; }
 .info-form button { margin-top: 0.9rem; }
+#info-bank-wrap { margin-top: 0.35rem; }
+#info-iban, #info-bic { text-transform: uppercase; letter-spacing: 0.04em; }
 .avatar-bar { width: 64px; height: 64px; font-size: 1.1rem; }
 .avatar-sm { width: 32px; height: 32px; font-size: 0.7rem; }
 .avatar-form { width: 96px; height: 96px; font-size: 1.4rem; margin: 0.15rem auto 0.2rem; display: grid; }
@@ -1007,6 +1009,49 @@ tbody tr:hover, tbody tr.active, .date-item.active { background: rgba(61, 214, 1
 }
 .needed-people .label { margin: 0 0 0.2rem; }
 .needed-people .muted { margin: 0 0 0.45rem; font-size: 0.82rem; }
+.needed-list { display: grid; gap: 0.35rem; }
+.needed-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+}
+.needed-name { flex: 1 1 auto; min-width: 0; }
+.needed-fee {
+  display: flex;
+  align-items: center;
+  gap: 0.28rem;
+  margin: 0;
+  flex: 0 0 auto;
+}
+.drawer .needed-fee input {
+  width: 5.2rem;
+  padding: 0.28rem 0.4rem;
+}
+.needed-fee input:disabled {
+  opacity: 0.45;
+}
+#date-fee-wrap { margin: 0.65rem 0 0.35rem; }
+.fee-input {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.fee-mark {
+  display: grid;
+  place-items: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-weight: 700;
+}
+.date-fee {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  font-weight: 650;
+}
 
 .date-item {
   position: relative;

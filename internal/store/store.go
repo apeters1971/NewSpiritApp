@@ -40,6 +40,8 @@ type User struct {
 	AltEmail           string     `json:"altEmail,omitempty"`
 	Birthday           string     `json:"birthday"`
 	MemberSince        string     `json:"memberSince,omitempty"`
+	IBAN               string     `json:"iban,omitempty"`
+	BIC                string     `json:"bic,omitempty"`
 	HasPhoto           bool       `json:"hasPhoto"`
 	PhotoUpdatedAt     *time.Time `json:"photoUpdatedAt,omitempty"`
 	Channels           []Channel  `json:"channels,omitempty"`
@@ -89,6 +91,8 @@ type Date struct {
 	CreatedBy      string       `json:"createdBy,omitempty"`
 	NeededIDs      []string     `json:"neededIds,omitempty"`
 	NeededRoles    []string     `json:"neededRoles,omitempty"`
+	FeeCents       int            `json:"feeCents,omitempty"`
+	FeeOverrides   map[string]int `json:"feeOverrides,omitempty"`
 }
 
 type Bring struct {
@@ -353,6 +357,12 @@ CREATE TABLE IF NOT EXISTS settings (
 	if err := s.migrateLocations(); err != nil {
 		return err
 	}
+	if err := s.migrateDateFee(); err != nil {
+		return err
+	}
+	if err := s.migrateUserBank(); err != nil {
+		return err
+	}
 	return s.migrateChatVoice()
 }
 
@@ -541,6 +551,9 @@ func (s *Store) UpdateUser(id, nickname, email, password, role, subrole string) 
 		if err := s.ClearChannelsForUser(id); err != nil {
 			return User{}, err
 		}
+	}
+	if err := s.clearUserBankIfNeeded(id, role); err != nil {
+		return User{}, err
 	}
 	return s.UserByID(id)
 }
@@ -734,7 +747,7 @@ func (s *Store) TouchLastConnected(id string) error {
 }
 
 func (s *Store) ListUsers() ([]User, error) {
-	rows, err := s.db.Query(`SELECT id, nickname, email, role, subrole, address, phone, alt_email, birthday, member_since, must_change_password, streamer, planner, archiver, created_at, last_connected_at FROM users ORDER BY nickname COLLATE NOCASE`)
+	rows, err := s.db.Query(`SELECT id, nickname, email, role, subrole, address, phone, alt_email, birthday, member_since, must_change_password, streamer, planner, archiver, created_at, last_connected_at, iban, bic FROM users ORDER BY nickname COLLATE NOCASE`)
 	if err != nil {
 		return nil, err
 	}
@@ -847,7 +860,7 @@ func (s *Store) birthdaysOn(t time.Time) ([]OnlinePerson, error) {
 }
 
 func (s *Store) UserByID(id string) (User, error) {
-	u, err := scanUserRow(s.db.QueryRow(`SELECT id, nickname, email, role, subrole, address, phone, alt_email, birthday, member_since, must_change_password, streamer, planner, archiver, created_at, last_connected_at FROM users WHERE id=?`, id))
+	u, err := scanUserRow(s.db.QueryRow(`SELECT id, nickname, email, role, subrole, address, phone, alt_email, birthday, member_since, must_change_password, streamer, planner, archiver, created_at, last_connected_at, iban, bic FROM users WHERE id=?`, id))
 	if err != nil {
 		return User{}, err
 	}
@@ -869,9 +882,9 @@ func (s *Store) Login(email, password string) (User, string, error) {
 	var hash, created string
 	var mustChange, streamer, planner, archiver int
 	err := s.db.QueryRow(
-		`SELECT id, nickname, email, password_hash, role, subrole, address, phone, alt_email, birthday, member_since, must_change_password, streamer, planner, archiver, created_at FROM users WHERE email=?`,
+		`SELECT id, nickname, email, password_hash, role, subrole, address, phone, alt_email, birthday, member_since, must_change_password, streamer, planner, archiver, created_at, iban, bic FROM users WHERE email=?`,
 		email,
-	).Scan(&u.ID, &u.Nickname, &u.Email, &hash, &u.Role, &u.Subrole, &u.Address, &u.Phone, &u.AltEmail, &u.Birthday, &u.MemberSince, &mustChange, &streamer, &planner, &archiver, &created)
+	).Scan(&u.ID, &u.Nickname, &u.Email, &hash, &u.Role, &u.Subrole, &u.Address, &u.Phone, &u.AltEmail, &u.Birthday, &u.MemberSince, &mustChange, &streamer, &planner, &archiver, &created, &u.IBAN, &u.BIC)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, "", ErrUnauthorized
 	}
@@ -904,7 +917,7 @@ func (s *Store) UserBySession(sessionID string) (User, error) {
 		return User{}, ErrUnauthorized
 	}
 	u, err := scanUserRow(s.db.QueryRow(`
-SELECT u.id, u.nickname, u.email, u.role, u.subrole, u.address, u.phone, u.alt_email, u.birthday, u.member_since, u.must_change_password, u.streamer, u.planner, u.archiver, u.created_at, u.last_connected_at
+SELECT u.id, u.nickname, u.email, u.role, u.subrole, u.address, u.phone, u.alt_email, u.birthday, u.member_since, u.must_change_password, u.streamer, u.planner, u.archiver, u.created_at, u.last_connected_at, u.iban, u.bic
 FROM sessions s
 JOIN users u ON u.id = s.user_id
 WHERE s.id=? AND s.revoked_at IS NULL`, sessionID))
@@ -1381,6 +1394,7 @@ func (s *Store) ListDateViews(viewer *User) ([]DateView, error) {
 }
 
 func (s *Store) attachView(d Date, viewer *User, comments []Comment, titles []ArchiveItem) (DateView, error) {
+	applyViewerFee(&d, viewer)
 	roster, err := s.roster(d)
 	if err != nil {
 		return DateView{}, err
@@ -1454,7 +1468,7 @@ func (s *Store) dateCreator(userID string) (*DateCreator, error) {
 }
 
 func (s *Store) listDates() ([]Date, error) {
-	rows, err := s.db.Query(`SELECT id, title, category, starts_at, ends_at, location, notes, schedule, status, bring_mic, bring_cable, bring_stand, bring_dress, frozen_option_id, created_by, created_at, location_id FROM dates ORDER BY starts_at`)
+	rows, err := s.db.Query(`SELECT id, title, category, starts_at, ends_at, location, notes, schedule, status, bring_mic, bring_cable, bring_stand, bring_dress, frozen_option_id, created_by, created_at, location_id, fee_cents FROM dates ORDER BY starts_at`)
 	if err != nil {
 		return nil, err
 	}
@@ -1480,7 +1494,7 @@ func (s *Store) listDates() ([]Date, error) {
 
 func (s *Store) dateRow(id string) (Date, error) {
 	d, err := scanDateRow(s.db.QueryRow(
-		`SELECT id, title, category, starts_at, ends_at, location, notes, schedule, status, bring_mic, bring_cable, bring_stand, bring_dress, frozen_option_id, created_by, created_at, location_id FROM dates WHERE id=?`, id,
+		`SELECT id, title, category, starts_at, ends_at, location, notes, schedule, status, bring_mic, bring_cable, bring_stand, bring_dress, frozen_option_id, created_by, created_at, location_id, fee_cents FROM dates WHERE id=?`, id,
 	))
 	if err != nil {
 		return Date{}, err
@@ -1509,6 +1523,10 @@ func (s *Store) decorateDates(dates []Date, ids []string) error {
 	if err != nil {
 		return err
 	}
+	fees, err := s.feesForDates(ids)
+	if err != nil {
+		return err
+	}
 	for i := range dates {
 		dates[i].Roles = roleMap[dates[i].ID]
 		if dates[i].Roles == nil {
@@ -1530,6 +1548,7 @@ func (s *Store) decorateDates(dates []Date, ids []string) error {
 		if dates[i].Venue != nil {
 			dates[i].LocationID = dates[i].Venue.ID
 		}
+		dates[i].FeeOverrides = fees[dates[i].ID]
 		dates[i].PollOpen = pollOpen(dates[i].FrozenOptionID, dates[i].Options)
 	}
 	return nil
@@ -1667,7 +1686,7 @@ func scanUser(rs rowScanner) (User, error) {
 	var u User
 	var created, lastConnected string
 	var mustChange, streamer, planner, archiver int
-	if err := rs.Scan(&u.ID, &u.Nickname, &u.Email, &u.Role, &u.Subrole, &u.Address, &u.Phone, &u.AltEmail, &u.Birthday, &u.MemberSince, &mustChange, &streamer, &planner, &archiver, &created, &lastConnected); err != nil {
+	if err := rs.Scan(&u.ID, &u.Nickname, &u.Email, &u.Role, &u.Subrole, &u.Address, &u.Phone, &u.AltEmail, &u.Birthday, &u.MemberSince, &mustChange, &streamer, &planner, &archiver, &created, &lastConnected, &u.IBAN, &u.BIC); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return User{}, ErrNotFound
 		}
@@ -1689,7 +1708,7 @@ func scanDate(rs rowScanner) (Date, error) {
 	var starts, created string
 	var ends sql.NullString
 	var mic, cable, stand int
-	if err := rs.Scan(&d.ID, &d.Title, &d.Category, &starts, &ends, &d.Location, &d.Notes, &d.Schedule, &d.Status, &mic, &cable, &stand, &d.Bring.Dress, &d.FrozenOptionID, &d.CreatedBy, &created, &d.LocationID); err != nil {
+	if err := rs.Scan(&d.ID, &d.Title, &d.Category, &starts, &ends, &d.Location, &d.Notes, &d.Schedule, &d.Status, &mic, &cable, &stand, &d.Bring.Dress, &d.FrozenOptionID, &d.CreatedBy, &created, &d.LocationID, &d.FeeCents); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Date{}, ErrNotFound
 		}

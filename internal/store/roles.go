@@ -65,6 +65,10 @@ func IsLocationOwner(role string) bool {
 	return role == RoleLocation
 }
 
+func CanHaveBankDetails(role string) bool {
+	return role == RoleBand || role == RoleOrchestra || role == RoleTechnician
+}
+
 func IsChoirDirector(role string) bool {
 	return role == RoleChorleiter
 }
