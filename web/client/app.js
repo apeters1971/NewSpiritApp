@@ -45,6 +45,7 @@ const emptyEl = document.getElementById("empty");
 
 let me = null;
 let dates = [];
+let showPastDates = false;
 let ranking = { year: 0, leaders: [] };
 let proposals = [];
 let directory = [];
@@ -228,7 +229,7 @@ function voteOnClass(current, choice, proxy) {
 }
 
 function canSetVoteFor(date) {
-  return isPlanner() && dateIsMine(date) && date?.status !== "cancelled";
+  return isPlanner() && dateIsMine(date) && dateAllowsVote(date);
 }
 
 function renderVoteButtons(date, entry, optionId) {
@@ -236,7 +237,7 @@ function renderVoteButtons(date, entry, optionId) {
   const user = entry?.userId ? ` data-user="${entry.userId}"` : "";
   const current = entry ? (entry.choice || "unknown") : date.myChoice;
   const proxy = !!(entry ? entry.proxy : date.myProxy);
-  const locked = date.status === "cancelled";
+  const locked = !dateAllowsVote(date);
   const iconOnly = !!entry;
   const list = iconOnly ? POLL_PROXY_CHOICES : CHOICES;
   return list.map((c) => {
@@ -250,7 +251,7 @@ function renderVoteCell(date, entry, optionId) {
   const changed = firstVoteChanged(entry)
     ? ` <span class="changed">${I18N.t("firstVote")} ${voteChoiceHTML(entry.initialChoice)}</span>`
     : "";
-  if (!canSetVoteFor(date) || date.status === "cancelled") {
+  if (!canSetVoteFor(date)) {
     return `${voteBadgeHTML(entry.choice, entry.proxy)}${changed}`;
   }
   if (optionId ? !pollOpen(date) : pollOpen(date)) {
@@ -446,17 +447,17 @@ function renderCounts(date) {
 }
 
 function renderPoll(date) {
-  const locked = date.status === "cancelled" || !date.pollOpen;
+  const locked = !dateAllowsVote(date) || !date.pollOpen;
   const options = date.options || [];
   const blocks = options.map((o) => {
     const mine = o.myInitial && o.myInitial !== o.myChoice
       ? `<p class="changed">${I18N.t("yourFirstVote")}: ${voteChoiceHTML(o.myInitial)}</p>`
       : "";
-    const buttons = canVote() ? CHOICES.map((c) => `
+    const buttons = canVote() && dateAllowsVote(date) ? CHOICES.map((c) => `
       <button type="button" data-id="${date.id}" data-option="${o.id}" data-choice="${c}" class="${c}${voteOnClass(o.myChoice, c, o.myProxy)}" ${locked ? "disabled" : ""}>${voteChoiceHTML(c)}</button>
     `).join("") : "";
-    const note = canVote() ? notExpectedNote(o.myChoice) : "";
-    const freeze = dateIsMine(date) && date.pollOpen
+    const note = canVote() && dateAllowsVote(date) ? notExpectedNote(o.myChoice) : "";
+    const freeze = dateIsMine(date) && date.pollOpen && dateAllowsVote(date)
       ? `<button type="button" class="btn" data-planner-freeze="${date.id}" data-option="${o.id}">${I18N.t("freezePoll")}</button>`
       : "";
     return `<div class="poll-option ${o.frozen ? "frozen" : ""}">
@@ -521,8 +522,8 @@ function feeHTML(d, extraClass = "") {
 function renderDate(date) {
   const booking = isLocationOwner();
   const isPoll = !booking && (date.options || []).length >= 2;
-  const buttons = canVote() ? renderVoteButtons(date) : "";
-  const mine = canVote() && date.myInitial && date.myInitial !== date.myChoice
+  const buttons = canVote() && dateAllowsVote(date) ? renderVoteButtons(date) : "";
+  const mine = canVote() && dateAllowsVote(date) && date.myInitial && date.myInitial !== date.myChoice
     ? `<p class="changed">${I18N.t("yourFirstVote")}: ${voteChoiceHTML(date.myInitial)}</p>`
     : "";
   const ownNote = booking ? "" : canVote() ? notExpectedNote(date.myChoice) : "";
@@ -619,10 +620,10 @@ function dateMenuHTML(date) {
 }
 
 function renderCompactVote(date) {
-  if (!canVote()) return "";
+  if (!canVote() || !dateAllowsVote(date)) return "";
   const note = !isLocationOwner() && dateShowsNotExpected(date) ? notExpectedNote("notExpected") : "";
   if (pollOpen(date) && !isLocationOwner()) return note ? `<div class="vote-row vote-row-compact">${note}</div>` : "";
-  const locked = date.status === "cancelled";
+  const locked = !dateAllowsVote(date);
   const buttons = ["yes", "maybe", "no"].map((c) => `
     <button type="button" data-id="${date.id}" data-choice="${c}" class="${c}${voteOnClass(date.myChoice, c, date.myProxy)}" ${locked ? "disabled" : ""}>${voteChoiceHTML(c)}</button>
   `).join("");
@@ -728,11 +729,32 @@ function overviewPollVote(d) {
   return `${voted}/${expected.length}`;
 }
 
-function dateIsUpcoming(d) {
-  if (!d || d.status === "cancelled") return false;
+function dateMoment(value) {
+  const t = new Date(value).getTime();
+  return Number.isFinite(t) ? t : 0;
+}
+
+function dateIsCurrent(d) {
+  if (!d) return false;
   const start = new Date();
   start.setHours(0, 0, 0, 0);
-  return new Date(d.startsAt) >= start;
+  const floor = start.getTime();
+  if (d.pollOpen && (d.options || []).length) {
+    return d.options.some((o) => dateMoment(o.endsAt || o.startsAt) >= floor);
+  }
+  return dateMoment(d.endsAt || d.startsAt) >= floor;
+}
+
+function dateIsUpcoming(d) {
+  return !!(d && d.status !== "cancelled" && dateIsCurrent(d));
+}
+
+function visibleDates() {
+  return (dates || []).filter((d) => showPastDates || dateIsCurrent(d));
+}
+
+function dateAllowsVote(d) {
+  return !!(d && d.status !== "cancelled" && dateIsCurrent(d));
 }
 
 function userParticipates(d) {
@@ -781,15 +803,15 @@ function primaryLeadChat() {
 }
 
 function locationRequestDates() {
-  return dates.filter((d) => isLocationOwner() && !pollChoiceAnswered(d.myChoice));
+  return visibleDates().filter((d) => isLocationOwner() && !pollChoiceAnswered(d.myChoice));
 }
 
 function locationMyDates() {
-  return dates.filter((d) => !isLocationOwner() || pollChoiceAnswered(d.myChoice));
+  return visibleDates().filter((d) => !isLocationOwner() || pollChoiceAnswered(d.myChoice));
 }
 
 function locationBookingPending(d) {
-  return !!(isLocationOwner() && d && d.status !== "cancelled" && !pollChoiceAnswered(d.myChoice));
+  return !!(isLocationOwner() && dateIsCurrent(d) && d.status !== "cancelled" && !pollChoiceAnswered(d.myChoice));
 }
 
 function isPlanner() {
@@ -1116,21 +1138,23 @@ function primaryChatRoom() {
 }
 
 function needsVote(d) {
-  return !!(canVote() && d && d.status !== "cancelled" && !hasAnswered(d));
+  return !!(canVote() && dateIsCurrent(d) && d.status !== "cancelled" && !hasAnswered(d));
 }
 
 function defaultFocusedDateId() {
+  const shown = visibleDates();
   if (isLocationOwner()) {
     const pending = locationRequestDates()[0];
     if (pending) return pending.id;
   }
-  const next = dates.find((d) => dateIsUpcoming(d));
+  const next = shown.find((d) => dateIsUpcoming(d));
   if (next) return next.id;
-  return dates.length ? dates[dates.length - 1].id : "";
+  return shown.length ? shown[0].id : "";
 }
 
 function focusedDateIndex() {
-  const i = dates.findIndex((d) => d.id === focusedDateId);
+  const shown = visibleDates();
+  const i = shown.findIndex((d) => d.id === focusedDateId);
   return i >= 0 ? i : 0;
 }
 
@@ -1401,7 +1425,7 @@ async function saveMixerChannel(number, v48) {
 }
 
 function jumpToDate(id) {
-  if (!dates.some((d) => d.id === id)) return;
+  if (!visibleDates().some((d) => d.id === id)) return;
   focusedDateId = id;
   render();
   const nav = document.getElementById("date-nav");
@@ -1426,14 +1450,15 @@ function finishDateFlip() {
 }
 
 function stepFocusedDate(delta) {
-  if (!dates.length) return;
-  if (!dates.some((d) => d.id === focusedDateId)) {
+  const shown = visibleDates();
+  if (!shown.length) return;
+  if (!shown.some((d) => d.id === focusedDateId)) {
     focusedDateId = defaultFocusedDateId();
   }
   const next = focusedDateIndex() + delta;
-  if (next < 0 || next >= dates.length) return;
+  if (next < 0 || next >= shown.length) return;
   const top = window.scrollY;
-  focusedDateId = dates[next].id;
+  focusedDateId = shown[next].id;
   renderSpirit();
   renderNextUp();
   renderRequests();
@@ -1448,7 +1473,7 @@ function stepFocusedDate(delta) {
     return;
   }
   const wrap = document.createElement("div");
-  wrap.innerHTML = renderDate(dates[next]);
+  wrap.innerHTML = renderDate(shown[next]);
   const incoming = wrap.firstElementChild;
   if (!incoming) {
     renderDates();
@@ -1576,8 +1601,10 @@ function renderNextUp() {
 function renderOverview() {
   const list = document.getElementById("overview-list");
   const empty = document.getElementById("overview-empty");
-  const rows = isLocationOwner() ? locationMyDates() : dates;
+  const rows = isLocationOwner() ? locationMyDates() : visibleDates();
   empty.hidden = rows.length > 0;
+  empty.setAttribute("data-i18n", showPastDates ? "noDatesYet" : "noUpcoming");
+  empty.textContent = I18N.t(showPastDates ? "noDatesYet" : "noUpcoming");
   list.hidden = rows.length === 0;
   list.innerHTML = rows.map(overviewRowHTML).join("");
 }
@@ -1651,40 +1678,43 @@ function paintDateNav() {
   const labelEl = document.getElementById("date-nav-label");
   const prev = document.getElementById("date-prev");
   const next = document.getElementById("date-next");
-  if (!dates.length) {
+  const shown = visibleDates();
+  if (!shown.length) {
     if (nav) nav.hidden = true;
     return;
   }
   const i = focusedDateIndex();
-  const d = dates[i];
+  const d = shown[i];
   if (nav) nav.hidden = false;
   if (titleEl) titleEl.textContent = d.title || "";
-  if (labelEl) labelEl.textContent = `${i + 1} / ${dates.length}`;
+  if (labelEl) labelEl.textContent = `${i + 1} / ${shown.length}`;
   if (prev) prev.disabled = i <= 0;
-  if (next) next.disabled = i >= dates.length - 1;
+  if (next) next.disabled = i >= shown.length - 1;
 }
 
 function renderDates() {
   finishDateFlip();
-  if (!dates.length) {
+  const shown = visibleDates();
+  if (!shown.length) {
     focusedDateId = "";
     datesEl.innerHTML = "";
     paintDateNav();
     return;
   }
-  if (!dates.some((d) => d.id === focusedDateId)) {
+  if (!shown.some((d) => d.id === focusedDateId)) {
     focusedDateId = defaultFocusedDateId();
   }
-  datesEl.innerHTML = renderDate(dates[focusedDateIndex()]);
+  datesEl.innerHTML = renderDate(shown[focusedDateIndex()]);
   bindDateFolds();
   bindRosterFolds();
   paintDateNav();
 }
 
 function render() {
-  if (!dates.length) {
+  const shown = visibleDates();
+  if (!shown.length) {
     focusedDateId = "";
-  } else if (!dates.some((d) => d.id === focusedDateId)) {
+  } else if (!shown.some((d) => d.id === focusedDateId)) {
     focusedDateId = defaultFocusedDateId();
   }
   paintLocationHome();
@@ -1693,7 +1723,7 @@ function render() {
   renderRequests();
   renderOverview();
   renderDates();
-  emptyEl.hidden = dates.length > 0;
+  emptyEl.hidden = shown.length > 0;
   if (commentDateId && document.getElementById("comment-dialog").open) {
     fillCommentDialog(dates.find((d) => d.id === commentDateId));
   }
@@ -2733,7 +2763,7 @@ function notifyChatMessage(m) {
 }
 
 function notifyNewDate(d) {
-  if (!d) return;
+  if (!dateIsCurrent(d)) return;
   showDesktopNotice(I18N.t("newDate"), [d.title, formatWhen(d.startsAt)].filter(Boolean).join(" · "), {
     kind: "date",
     dateId: d.id,
@@ -2822,7 +2852,7 @@ function newsTickerReminders() {
 
 function pendingVoteDates() {
   if (!canVote() || !me || me.mustChangePassword) return [];
-  return (dates || []).filter((d) => needsVote(d) && dateIsUpcoming(d));
+  return visibleDates().filter((d) => needsVote(d));
 }
 
 function newsTickerVoteReminder() {
@@ -3578,6 +3608,14 @@ document.getElementById("my-channels").addEventListener("click", async (e) => {
   }
 });
 
+document.getElementById("show-past-dates")?.addEventListener("change", (e) => {
+  showPastDates = !!e.target.checked;
+  if (!showPastDates && focusedDateId && !visibleDates().some((d) => d.id === focusedDateId)) {
+    focusedDateId = defaultFocusedDateId();
+  }
+  render();
+});
+
 document.getElementById("overview-list").addEventListener("click", (e) => {
   const row = e.target.closest("[data-jump]");
   if (!row) return;
@@ -3718,6 +3756,8 @@ datesEl.addEventListener("click", async (e) => {
   }
   const btn = e.target.closest("button[data-choice]");
   if (!btn || btn.disabled) return;
+  const voted = dates.find((d) => d.id === btn.dataset.id);
+  if (!dateAllowsVote(voted)) return;
   const forOther = btn.dataset.user && btn.dataset.user !== me?.id;
   if (!canVote() && !forOther) return;
   if (forOther && !isPlanner()) return;

@@ -265,3 +265,23 @@ func TestMemberBirthdays(t *testing.T) {
 		t.Fatalf("person %+v", person)
 	}
 }
+
+func TestMemberPastDateVoteClosed(t *testing.T) {
+	ts, st := plannerTestServer(t)
+	ada, err := st.CreateUser("Ada", "ada@example.com", "secret1", store.RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.ChangeOwnPassword(ada.ID, "secret2"); err != nil {
+		t.Fatal(err)
+	}
+	past, err := st.CreateDate("Old night", store.CategoryConcert, time.Now().Add(-48*time.Hour).UTC(), nil, "", "", "", []string{store.RoleChoir}, store.Bring{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := memberClient(t, ts, "ada@example.com", "secret2")
+	status, out := doJSON(t, c, http.MethodPost, ts.URL+"/api/dates/"+past.ID+"/vote", map[string]any{"choice": "yes"})
+	if status != http.StatusBadRequest {
+		t.Fatalf("past vote %d %v", status, out)
+	}
+}

@@ -779,10 +779,26 @@ func (s *Server) handleMemberFreezePoll(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]any{"date": view})
 }
 
+func (s *Server) requireCurrentDate(w http.ResponseWriter, dateID string) bool {
+	d, err := s.Store.DateView(dateID, nil)
+	if err != nil {
+		writeStoreError(w, err)
+		return false
+	}
+	if !store.DateIsCurrent(d.Date) {
+		writeError(w, http.StatusBadRequest, "voting is closed")
+		return false
+	}
+	return true
+}
+
 func (s *Server) handleVote(w http.ResponseWriter, r *http.Request) {
 	user, err := s.userFromRequest(r)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if !s.requireCurrentDate(w, r.PathValue("id")) {
 		return
 	}
 	var body struct {
@@ -816,6 +832,9 @@ func (s *Server) handlePollVote(w http.ResponseWriter, r *http.Request) {
 	user, err := s.userFromRequest(r)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if !s.requireCurrentDate(w, r.PathValue("id")) {
 		return
 	}
 	var body struct {
