@@ -6,12 +6,12 @@
         de: [
           "Termine, die vorbei sind, erscheinen nicht mehr in der Liste, nicht im ‹ ›-Blätterer und blinken nicht mehr zur Abstimmung. Mit „Vergangene Termine“ kannst du sie wieder einblenden; Fotos gehen noch, Abstimmen nicht.",
           "Dateien im Notenarchiv sind sofort zum Download da, auch wenn ein Mitglied sie hochlädt. Eine Freigabe ist vorerst nicht nötig.",
-          "Hat ein Termin einen Zeitplan, steht er bei Nächster Termin als Knopf und auf der Terminkarte als Uhr-Symbol, nicht nur im Menü.",
+          "Hat ein Termin einen Zeitplan, steht auf der Terminkarte ein Uhr-Symbol, nicht nur im Menü.",
         ],
         en: [
           "Dates that are already over no longer appear in the list or the ‹ › pager and no longer pulse for a vote. Turn on “Past dates” to see them again; you can still add photos, but voting stays closed.",
           "Files in the music archive are available for download immediately, including uploads from members. Approval is not required for now.",
-          "If a date has a schedule, Next date gets a button and the date card gets a clock icon, not only a menu item.",
+          "If a date has a schedule, the date card gets a clock icon, not only a menu item.",
         ],
       },
     },
