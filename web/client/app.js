@@ -638,6 +638,7 @@ function dateToolIcons(date) {
     isLocationOwner() ? "" : dateToolBtn("data-titles", date.id, I18N.t("titles"), "notes", titleCount),
     dateToolBtn("data-gallery", date.id, I18N.t("gallery"), "gallery", date.galleryCount),
     dateMapQuery(date) ? dateToolBtn("data-map", date.id, I18N.t("directions"), "map") : "",
+    date.schedule ? dateToolBtn("data-schedule", date.id, I18N.t("schedule"), "schedule") : "",
   ].join("");
 }
 
@@ -1588,6 +1589,7 @@ function renderNextUp() {
         ${next.location ? `<a class="btn ghost" href="${mapsSearchURL(next.location)}" target="_blank" rel="noopener noreferrer">${I18N.t("directions")}</a>` : ""}
         <button type="button" class="btn ghost" data-comments="${next.id}">${I18N.t("comments")}</button>
         <button type="button" class="btn ghost" data-titles="${next.id}">${I18N.t("titles")}</button>
+        ${next.schedule ? `<button type="button" class="btn ghost" data-schedule="${next.id}">${I18N.t("schedule")}</button>` : ""}
         <button type="button" class="btn ghost" data-event-chat="${next.id}">${I18N.t("chatBrand")}</button>
         <button type="button" class="btn ghost" data-gallery="${next.id}">${I18N.t("gallery")}${next.galleryCount ? ` (${next.galleryCount})` : ""}</button>
         ${dateShowsPromo(next) ? `<button type="button" class="btn ghost" data-promo="${next.id}">${I18N.t("promo")}${next.promoCount ? ` (${next.promoCount})` : ""}</button>` : ""}
