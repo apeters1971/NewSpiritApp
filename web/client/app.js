@@ -2029,6 +2029,20 @@ function ohSchreckTip(item) {
   return `${I18N.t("ohSchreck")}: ${names.join(", ")}`;
 }
 
+const TITLE_SETS = ["set1", "set2", "encore"];
+
+function titleSetOfItem(item) {
+  const set = item?.set;
+  if (set === "set2" || set === "encore") return set;
+  return "set1";
+}
+
+function titleSetLabel(set) {
+  if (set === "set2") return I18N.t("titleSet2");
+  if (set === "encore") return I18N.t("titleSetEncore");
+  return I18N.t("titleSet1");
+}
+
 function showTitlesList() {
   const date = dates.find((d) => d.id === titlesDateId);
   const list = document.getElementById("titles-list");
@@ -2039,13 +2053,21 @@ function showTitlesList() {
   list.hidden = false;
   const items = date?.titles || [];
   if (copyBtn) copyBtn.disabled = items.length === 0;
-  list.innerHTML = items.length
-    ? items.map((item, i) => {
-      const soloists = (item.soloists || []).map((s) => s.nickname).filter(Boolean).join(", ");
-      const on = !!item.myOhSchreck;
-      const n = item.ohSchreck || 0;
-      const tip = ohSchreckTip(item);
-      return `
+  if (!items.length) {
+    list.innerHTML = `<p class="muted">${I18N.t("noTitles")}</p>`;
+    return;
+  }
+  list.innerHTML = TITLE_SETS.map((set) => {
+    const rows = items.filter((item) => titleSetOfItem(item) === set);
+    if (!rows.length) return "";
+    return `<section class="title-set">
+      <h3 class="title-set-head">${escapeHtml(titleSetLabel(set))}</h3>
+      ${rows.map((item, i) => {
+        const soloists = (item.soloists || []).map((s) => s.nickname).filter(Boolean).join(", ");
+        const on = !!item.myOhSchreck;
+        const n = item.ohSchreck || 0;
+        const tip = ohSchreckTip(item);
+        return `
       <div class="title-item">
         <button type="button" class="title-item-open" data-title="${item.id}">
           <span class="title-num">${i + 1}</span>
@@ -2059,8 +2081,9 @@ function showTitlesList() {
           <span aria-hidden="true">🚨</span> ${n}
         </button>
       </div>`;
-    }).join("")
-    : `<p class="muted">${I18N.t("noTitles")}</p>`;
+      }).join("")}
+    </section>`;
+  }).join("");
 }
 
 function openTitles(id) {
@@ -6019,10 +6042,6 @@ function titleClipboardLine(item) {
   return names.length ? `${title} — ${I18N.t("soloLabel")}: ${names.join(", ")}` : title;
 }
 
-function numberedTitleList(titles) {
-  return titles.map((title, i) => `${i + 1}. ${title}`).join("\n");
-}
-
 function titleListHeader(date) {
   return [
     date?.title,
@@ -6031,10 +6050,19 @@ function titleListHeader(date) {
   ].map((s) => String(s || "").trim()).filter(Boolean).join(" · ");
 }
 
-function titlesClipboardText(date, titles) {
-  const list = numberedTitleList(titles);
+function titlesClipboardText(date, items) {
+  const parts = [];
   const head = titleListHeader(date);
-  return head ? `${head}\n\n${list}` : list;
+  if (head) parts.push(head);
+  TITLE_SETS.forEach((set) => {
+    const rows = items.filter((item) => titleSetOfItem(item) === set);
+    const lines = rows.map((item) => titleClipboardLine(item)).filter(Boolean);
+    if (!lines.length) return;
+    if (parts.length) parts.push("");
+    parts.push(titleSetLabel(set));
+    lines.forEach((line, i) => parts.push(`${i + 1}. ${line}`));
+  });
+  return parts.join("\n");
 }
 
 async function copyText(text) {
@@ -6066,7 +6094,7 @@ function flashCopyBtn(btn) {
 
 document.getElementById("titles-copy").addEventListener("click", async () => {
   const date = dates.find((d) => d.id === titlesDateId);
-  const titles = (date?.titles || []).map((item) => titleClipboardLine(item)).filter((t) => t);
+  const titles = date?.titles || [];
   if (!titles.length) return;
   try {
     await copyText(titlesClipboardText(date, titles));

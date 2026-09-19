@@ -23,6 +23,8 @@ let importLocal = {};
 let importAttachID = "";
 let dateTitleIDs = [];
 let dateTitleSoloists = {};
+let dateTitleSets = {};
+const TITLE_SETS = ["set1", "set2", "encore"];
 let dateFormClean = "";
 let pollRows = [];
 let pollFrozen = false;
@@ -881,6 +883,7 @@ function resetDateForm() {
   setPollRows([], false);
   dateTitleIDs = [];
   dateTitleSoloists = {};
+  dateTitleSets = {};
   const pickSearch = document.getElementById("archive-pick-search");
   if (pickSearch) pickSearch.value = "";
   clearTitleNewForm();
@@ -1733,9 +1736,31 @@ function renderArchivePick() {
     </button>`).join("");
 }
 
+function titleSetOfItem(item) {
+  const set = item?.set;
+  if (set === "set2" || set === "encore") return set;
+  return "set1";
+}
+
+function titleSetOf(id) {
+  return titleSetOfItem({ set: dateTitleSets[id] });
+}
+
+function titleSetLabel(set) {
+  if (set === "set2") return I18N.t("titleSet2");
+  if (set === "encore") return I18N.t("titleSetEncore");
+  return I18N.t("titleSet1");
+}
+
+function syncTitleIDOrder() {
+  dateTitleIDs = TITLE_SETS.flatMap((set) => dateTitleIDs.filter((id) => titleSetOf(id) === set));
+}
+
 function addTitleToDate(id) {
   if (!id || dateTitleIDs.includes(id)) return;
   dateTitleIDs.push(id);
+  dateTitleSets[id] = "set1";
+  syncTitleIDOrder();
   renderDateTitles();
   paintDateSave();
 }
@@ -1778,48 +1803,60 @@ function renderDateTitles() {
   const choir = choirMembers();
   const openID = box.querySelector("details[open]")?.closest("[data-title]")?.dataset.title;
   const dateTitles = (state.dates.find((d) => d.id === selectedDate)?.titles || []);
-  box.innerHTML = dateTitleIDs.map((id, i) => {
-    const item = archiveByID(id);
-    const title = item?.title || id;
-    const composer = item?.composer || "";
-    const selected = new Set(dateTitleSoloists[id] || []);
-    const names = soloistNamesFor(id);
-    const shock = dateTitles.find((t) => t.id === id);
-    const shockN = shock?.ohSchreck || 0;
-    const shockTip = (() => {
-      const names = (shock?.ohSchreckBy || []).map((p) => p.nickname).filter(Boolean);
-      if (!names.length) return I18N.t("ohSchreck");
-      return `${I18N.t("ohSchreck")}: ${names.join(", ")}`;
-    })();
-    const summary = names.length
-      ? `${I18N.t("soloists")}: ${names.join(", ")}`
-      : I18N.t("soloists");
-    const picks = choir.length
-      ? choir.map((u) => `
-          <label class="title-soloist">
-            <input type="checkbox" data-soloist="${u.id}" ${selected.has(u.id) ? "checked" : ""} />
-            ${escapeHtml(u.nickname)}
-          </label>`).join("")
-      : `<p class="muted">${I18N.t("noChoirSoloists")}</p>`;
-    return `<div class="title-pick" data-title="${id}">
-      <div class="title-pick-top">
-        <div>
-          <strong>${escapeHtml(title)}</strong>
-          ${composer ? `<span>${escapeHtml(composer)}</span>` : ""}
-          <p class="title-ohschreck-count" title="${escapeHtml(shockTip)}">🚨 ${shockN}</p>
+  const sections = TITLE_SETS.map((set) => {
+    const ids = dateTitleIDs.filter((id) => titleSetOf(id) === set);
+    if (!ids.length) return "";
+    const rows = ids.map((id, i) => {
+      const item = archiveByID(id);
+      const title = item?.title || id;
+      const composer = item?.composer || "";
+      const selected = new Set(dateTitleSoloists[id] || []);
+      const names = soloistNamesFor(id);
+      const shock = dateTitles.find((t) => t.id === id);
+      const shockN = shock?.ohSchreck || 0;
+      const shockTip = (() => {
+        const names = (shock?.ohSchreckBy || []).map((p) => p.nickname).filter(Boolean);
+        if (!names.length) return I18N.t("ohSchreck");
+        return `${I18N.t("ohSchreck")}: ${names.join(", ")}`;
+      })();
+      const summary = names.length
+        ? `${I18N.t("soloists")}: ${names.join(", ")}`
+        : I18N.t("soloists");
+      const picks = choir.length
+        ? choir.map((u) => `
+            <label class="title-soloist">
+              <input type="checkbox" data-soloist="${u.id}" ${selected.has(u.id) ? "checked" : ""} />
+              ${escapeHtml(u.nickname)}
+            </label>`).join("")
+        : `<p class="muted">${I18N.t("noChoirSoloists")}</p>`;
+      const setBtns = TITLE_SETS.map((s) => `
+        <button type="button" class="btn ghost title-set-btn${titleSetOf(id) === s ? " is-on" : ""}" data-title-set="${s}" aria-pressed="${titleSetOf(id) === s}">${escapeHtml(titleSetLabel(s))}</button>`).join("");
+      return `<div class="title-pick" data-title="${id}">
+        <div class="title-pick-top">
+          <div>
+            <strong>${escapeHtml(title)}</strong>
+            ${composer ? `<span>${escapeHtml(composer)}</span>` : ""}
+            <p class="title-ohschreck-count" title="${escapeHtml(shockTip)}">🚨 ${shockN}</p>
+          </div>
+          <div class="title-pick-actions">
+            <button type="button" class="btn ghost" data-move="-1" ${i === 0 ? "disabled" : ""}>↑</button>
+            <button type="button" class="btn ghost" data-move="1" ${i === ids.length - 1 ? "disabled" : ""}>↓</button>
+            <button type="button" class="btn ghost danger" data-remove-title>${I18N.t("removeTitle")}</button>
+          </div>
         </div>
-        <div class="title-pick-actions">
-          <button type="button" class="btn ghost" data-move="-1" ${i === 0 ? "disabled" : ""}>↑</button>
-          <button type="button" class="btn ghost" data-move="1" ${i === dateTitleIDs.length - 1 ? "disabled" : ""}>↓</button>
-          <button type="button" class="btn ghost danger" data-remove-title>${I18N.t("removeTitle")}</button>
-        </div>
-      </div>
-      <details class="title-soloists" ${openID === id ? "open" : ""}>
-        <summary>${escapeHtml(summary)}</summary>
-        <div class="title-soloist-list">${picks}</div>
-      </details>
-    </div>`;
+        <div class="title-set-actions">${setBtns}</div>
+        <details class="title-soloists" ${openID === id ? "open" : ""}>
+          <summary>${escapeHtml(summary)}</summary>
+          <div class="title-soloist-list">${picks}</div>
+        </details>
+      </div>`;
+    }).join("");
+    return `<section class="title-set">
+      <h3 class="title-set-head">${escapeHtml(titleSetLabel(set))}</h3>
+      ${rows}
+    </section>`;
   }).join("");
+  box.innerHTML = sections || "";
   renderDateTitleSelects();
 }
 
@@ -1942,15 +1979,19 @@ function choirMembers() {
 function setDateTitlesFrom(titles) {
   dateTitleIDs = (titles || []).map((t) => t.id);
   dateTitleSoloists = {};
+  dateTitleSets = {};
   for (const t of titles || []) {
     dateTitleSoloists[t.id] = (t.soloists || []).map((s) => s.id);
+    dateTitleSets[t.id] = titleSetOfItem(t);
   }
+  syncTitleIDOrder();
 }
 
 function dateTitlesPayload() {
   return dateTitleIDs.map((id) => ({
     id,
     soloistIds: dateTitleSoloists[id] || [],
+    set: titleSetOf(id),
   }));
 }
 
@@ -3859,10 +3900,6 @@ function titleClipboardLine(id) {
   return names.length ? `${title} — ${I18N.t("soloLabel")}: ${names.join(", ")}` : title;
 }
 
-function numberedTitleList(titles) {
-  return titles.map((title, i) => `${i + 1}. ${title}`).join("\n");
-}
-
 function titleListHeader(date) {
   return [
     date?.title,
@@ -3871,10 +3908,18 @@ function titleListHeader(date) {
   ].map((s) => String(s || "").trim()).filter(Boolean).join(" · ");
 }
 
-function titlesClipboardText(date, titles) {
-  const list = numberedTitleList(titles);
+function titlesClipboardText(date, items) {
+  const parts = [];
   const head = titleListHeader(date);
-  return head ? `${head}\n\n${list}` : list;
+  if (head) parts.push(head);
+  TITLE_SETS.forEach((set) => {
+    const rows = items.filter((item) => item.set === set && item.line);
+    if (!rows.length) return;
+    if (parts.length) parts.push("");
+    parts.push(titleSetLabel(set));
+    rows.forEach((item, i) => parts.push(`${i + 1}. ${item.line}`));
+  });
+  return parts.join("\n");
 }
 
 async function copyText(text) {
@@ -3905,15 +3950,15 @@ function flashCopyBtn(btn) {
 }
 
 document.getElementById("date-titles-copy").addEventListener("click", async () => {
-  const titles = dateTitleIDs.map((id) => titleClipboardLine(id)).filter((t) => t);
-  if (!titles.length) return;
+  const items = dateTitleIDs.map((id) => ({ set: titleSetOf(id), line: titleClipboardLine(id) })).filter((t) => t.line);
+  if (!items.length) return;
   const date = {
     title: document.getElementById("date-title").value,
     location: document.getElementById("date-location").value,
     startsAt: toISO(dateStartLocal()),
   };
   try {
-    await copyText(titlesClipboardText(date, titles));
+    await copyText(titlesClipboardText(date, items));
     flashCopyBtn(document.getElementById("date-titles-copy"));
   } catch (err) {
     alert(err.message);
@@ -3944,17 +3989,30 @@ document.getElementById("date-titles").addEventListener("click", (e) => {
   if (e.target.closest("[data-remove-title]")) {
     dateTitleIDs.splice(idx, 1);
     delete dateTitleSoloists[id];
+    delete dateTitleSets[id];
+    renderDateTitles();
+    paintDateSave();
+    return;
+  }
+  const setBtn = e.target.closest("[data-title-set]");
+  if (setBtn) {
+    dateTitleSets[id] = titleSetOfItem({ set: setBtn.dataset.titleSet });
+    syncTitleIDOrder();
     renderDateTitles();
     paintDateSave();
     return;
   }
   const move = e.target.closest("[data-move]");
   if (!move) return;
-  const next = idx + Number(move.dataset.move);
-  if (next < 0 || next >= dateTitleIDs.length) return;
-  const swap = dateTitleIDs[next];
-  dateTitleIDs[next] = dateTitleIDs[idx];
-  dateTitleIDs[idx] = swap;
+  const set = titleSetOf(id);
+  const group = dateTitleIDs.filter((x) => titleSetOf(x) === set);
+  const gidx = group.indexOf(id);
+  const gnext = gidx + Number(move.dataset.move);
+  if (gnext < 0 || gnext >= group.length) return;
+  const other = group[gnext];
+  const otherIdx = dateTitleIDs.indexOf(other);
+  dateTitleIDs[otherIdx] = id;
+  dateTitleIDs[idx] = other;
   renderDateTitles();
   paintDateSave();
 });

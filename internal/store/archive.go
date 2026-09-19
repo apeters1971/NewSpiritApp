@@ -54,12 +54,31 @@ type ArchiveItem struct {
 	OhSchreck    int               `json:"ohSchreck"`
 	MyOhSchreck  bool              `json:"myOhSchreck"`
 	OhSchreckBy  []OnlinePerson    `json:"ohSchreckBy,omitempty"`
+	Set          string            `json:"set,omitempty"`
 	CreatedAt    time.Time         `json:"createdAt"`
 }
+
+const (
+	TitleSet1      = "set1"
+	TitleSet2      = "set2"
+	TitleSetEncore = "encore"
+)
 
 type DateTitleInput struct {
 	ID         string   `json:"id"`
 	SoloistIDs []string `json:"soloistIds,omitempty"`
+	Set        string   `json:"set,omitempty"`
+}
+
+func NormalizeTitleSet(set string) string {
+	switch strings.ToLower(strings.TrimSpace(set)) {
+	case TitleSet2:
+		return TitleSet2
+	case TitleSetEncore, "zugabe":
+		return TitleSetEncore
+	default:
+		return TitleSet1
+	}
 }
 
 type ChoirSoloCount struct {
@@ -153,6 +172,9 @@ CREATE INDEX IF NOT EXISTS idx_date_titles_date ON date_titles(date_id, sort_ord
 	if err := s.migrateTitleOhSchreck(); err != nil {
 		return err
 	}
+	if err := s.migrateDateTitleSets(); err != nil {
+		return err
+	}
 	_, _ = s.db.Exec(`UPDATE archive_items SET title=TRIM(title), composer=TRIM(composer) WHERE title!=TRIM(title) OR composer!=TRIM(composer)`)
 	_, _ = s.db.Exec(`UPDATE archive_items SET status=? WHERE status=?`, ArchiveStatusAccepted, ArchiveStatusPending)
 	_, _ = s.db.Exec(`UPDATE archive_files SET status=? WHERE status=?`, ArchiveStatusAccepted, ArchiveStatusPending)
@@ -170,6 +192,12 @@ CREATE TABLE IF NOT EXISTS date_title_ohschreck (
 CREATE INDEX IF NOT EXISTS idx_title_ohschreck_date ON date_title_ohschreck(date_id, item_id);
 `)
 	return err
+}
+
+func (s *Store) migrateDateTitleSets() error {
+	_, _ = s.db.Exec(`ALTER TABLE date_titles ADD COLUMN title_set TEXT NOT NULL DEFAULT 'set1'`)
+	_, _ = s.db.Exec(`UPDATE date_titles SET title_set=? WHERE title_set='' OR title_set IS NULL`, TitleSet1)
+	return nil
 }
 
 func (s *Store) migrateTitleSoloists() error {
@@ -805,7 +833,7 @@ func (s *Store) SetDateTitleInputs(dateID string, titles []DateTitleInput) error
 			return err
 		}
 		seen[id] = true
-		clean = append(clean, DateTitleInput{ID: id, SoloistIDs: soloists})
+		clean = append(clean, DateTitleInput{ID: id, SoloistIDs: soloists, Set: NormalizeTitleSet(title.Set)})
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -819,7 +847,7 @@ func (s *Store) SetDateTitleInputs(dateID string, titles []DateTitleInput) error
 		return err
 	}
 	for i, title := range clean {
-		if _, err := tx.Exec(`INSERT INTO date_titles(date_id, item_id, sort_order) VALUES(?,?,?)`, dateID, title.ID, i); err != nil {
+		if _, err := tx.Exec(`INSERT INTO date_titles(date_id, item_id, sort_order, title_set) VALUES(?,?,?,?)`, dateID, title.ID, i, title.Set); err != nil {
 			return err
 		}
 		for _, userID := range title.SoloistIDs {
@@ -903,7 +931,7 @@ func (s *Store) titlesForDates(ids []string, viewerID string) (map[string][]Arch
 		args[i] = id
 	}
 	rows, err := s.db.Query(`
-SELECT t.date_id, a.id, a.title, a.composer, a.status, a.created_by, a.created_at
+SELECT t.date_id, a.id, a.title, a.composer, a.status, a.created_by, a.created_at, t.title_set
 FROM date_titles t
 JOIN archive_items a ON a.id = t.item_id
 WHERE t.date_id IN (`+placeholders+`)
@@ -922,9 +950,11 @@ ORDER BY t.sort_order, a.title COLLATE NOCASE`, args...)
 	for rows.Next() {
 		var dateID, created string
 		var item ArchiveItem
-		if err := rows.Scan(&dateID, &item.ID, &item.Title, &item.Composer, &item.Status, &item.CreatedBy, &created); err != nil {
+		var titleSet string
+		if err := rows.Scan(&dateID, &item.ID, &item.Title, &item.Composer, &item.Status, &item.CreatedBy, &created, &titleSet); err != nil {
 			return nil, err
 		}
+		item.Set = NormalizeTitleSet(titleSet)
 		if item.Status == "" {
 			item.Status = ArchiveStatusAccepted
 		}

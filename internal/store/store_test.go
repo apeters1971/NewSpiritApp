@@ -1262,6 +1262,49 @@ func TestArchiveLinks(t *testing.T) {
 	}
 }
 
+func TestDateTitleSets(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "title-sets.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	ada, err := st.CreateUser("Ada", "ada@example.com", "secret1", RoleChoir, "Sopran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	one, err := st.CreateArchiveItem("Open", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	two, err := st.CreateArchiveItem("Hold On", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	encore, err := st.CreateArchiveItem("Oh Happy Day", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := st.CreateDate("Show", CategoryConcert, time.Now().UTC().Add(24*time.Hour), nil, "", "", "", []string{RoleChoir}, Bring{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetDateTitleInputs(d.ID, []DateTitleInput{
+		{ID: one.ID, Set: "set1"},
+		{ID: two.ID, Set: "set2"},
+		{ID: encore.ID, Set: "zugabe"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	view, err := st.DateView(d.ID, &ada)
+	if err != nil || len(view.Titles) != 3 {
+		t.Fatalf("titles %+v %v", view.Titles, err)
+	}
+	if view.Titles[0].Set != TitleSet1 || view.Titles[1].Set != TitleSet2 || view.Titles[2].Set != TitleSetEncore {
+		t.Fatalf("sets %+v", view.Titles)
+	}
+}
+
 func TestArchiveMIDI(t *testing.T) {
 	st, err := Open(filepath.Join(t.TempDir(), "archive-midi.db"))
 	if err != nil {

@@ -3243,7 +3243,16 @@ p.notes { margin: 0.45rem 0 0; color: var(--muted); white-space: pre-wrap; }
   margin-bottom: 0.7rem;
 }
 
-.titles-list { display: grid; gap: 0.5rem; max-height: 50vh; overflow: auto; padding-top: 0.35rem; }
+.titles-list { display: grid; gap: 0.75rem; max-height: 50vh; overflow: auto; padding-top: 0.35rem; }
+.title-set { display: grid; gap: 0.5rem; }
+.title-set-head {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
 .title-item {
   display: flex;
   justify-content: space-between;
