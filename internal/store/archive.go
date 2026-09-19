@@ -154,6 +154,8 @@ CREATE INDEX IF NOT EXISTS idx_date_titles_date ON date_titles(date_id, sort_ord
 		return err
 	}
 	_, _ = s.db.Exec(`UPDATE archive_items SET title=TRIM(title), composer=TRIM(composer) WHERE title!=TRIM(title) OR composer!=TRIM(composer)`)
+	_, _ = s.db.Exec(`UPDATE archive_items SET status=? WHERE status=?`, ArchiveStatusAccepted, ArchiveStatusPending)
+	_, _ = s.db.Exec(`UPDATE archive_files SET status=? WHERE status=?`, ArchiveStatusAccepted, ArchiveStatusPending)
 	return nil
 }
 
@@ -317,7 +319,7 @@ func (s *Store) CreateArchiveItem(title, composer string) (ArchiveItem, error) {
 }
 
 func (s *Store) CreateMemberArchiveItem(title, composer, userID string) (ArchiveItem, error) {
-	return s.createArchiveItem(title, composer, userID, ArchiveStatusPending)
+	return s.createArchiveItem(title, composer, userID, ArchiveStatusAccepted)
 }
 
 func (s *Store) createArchiveItem(title, composer, createdBy, status string) (ArchiveItem, error) {
@@ -477,7 +479,7 @@ func (s *Store) AddArchiveFile(itemID, kind, role, filename string, data []byte)
 }
 
 func (s *Store) AddMemberArchiveFile(itemID, kind, role, filename, userID string, data []byte) (ArchiveItem, error) {
-	return s.addArchiveFile(itemID, kind, role, filename, data, userID, ArchiveStatusPending)
+	return s.addArchiveFile(itemID, kind, role, filename, data, userID, ArchiveStatusAccepted)
 }
 
 func (s *Store) AddArchiveLink(itemID, name, rawURL string) (ArchiveItem, error) {
@@ -485,7 +487,7 @@ func (s *Store) AddArchiveLink(itemID, name, rawURL string) (ArchiveItem, error)
 }
 
 func (s *Store) AddMemberArchiveLink(itemID, name, rawURL, userID string) (ArchiveItem, error) {
-	return s.addArchiveLink(itemID, name, rawURL, userID, ArchiveStatusPending)
+	return s.addArchiveLink(itemID, name, rawURL, userID, ArchiveStatusAccepted)
 }
 
 func (s *Store) addArchiveLink(itemID, name, rawURL, createdBy, status string) (ArchiveItem, error) {
@@ -736,16 +738,10 @@ func (s *Store) MemberCanDownloadArchiveFile(userID, itemID, fileID string) erro
 	if err != nil {
 		return err
 	}
-	if f.CreatedBy != "" && f.CreatedBy == userID {
-		return nil
-	}
 	if item.Status == ArchiveStatusTrashed || f.Status == ArchiveStatusTrashed {
 		return fmt.Errorf("%w: this archive file is pending", ErrForbidden)
 	}
-	if item.Status == ArchiveStatusAccepted && f.Status == ArchiveStatusAccepted {
-		return nil
-	}
-	return fmt.Errorf("%w: this archive file is pending", ErrForbidden)
+	return nil
 }
 
 func (s *Store) AcceptArchiveItem(id string) (ArchiveItem, error) {

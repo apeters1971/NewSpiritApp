@@ -5,9 +5,11 @@
       items: {
         de: [
           "Termine, die vorbei sind, erscheinen nicht mehr in der Liste, nicht im ‹ ›-Blätterer und blinken nicht mehr zur Abstimmung. Mit „Vergangene Termine“ kannst du sie wieder einblenden; Fotos gehen noch, Abstimmen nicht.",
+          "Dateien im Notenarchiv sind sofort zum Download da, auch wenn ein Mitglied sie hochlädt. Eine Freigabe ist vorerst nicht nötig.",
         ],
         en: [
           "Dates that are already over no longer appear in the list or the ‹ › pager and no longer pulse for a vote. Turn on “Past dates” to see them again; you can still add photos, but voting stays closed.",
+          "Files in the music archive are available for download immediately, including uploads from members. Approval is not required for now.",
         ],
       },
     },

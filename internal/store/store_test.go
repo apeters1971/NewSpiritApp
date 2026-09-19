@@ -1244,18 +1244,18 @@ func TestArchiveLinks(t *testing.T) {
 	if err != nil || got.URL != "https://youtu.be/xyz" || got.Name != "Live" {
 		t.Fatalf("update %+v %v", got, err)
 	}
-	pending, err := st.AddMemberArchiveLink(song.ID, "Demo", "https://example.com/song", ada.ID)
+	linked, err := st.AddMemberArchiveLink(song.ID, "Demo", "https://example.com/song", ada.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var pendingID string
-	for _, f := range pending.Files {
-		if f.Status == ArchiveStatusPending {
-			pendingID = f.ID
+	var linkID string
+	for _, f := range linked.Files {
+		if f.Name == "Demo" && f.CreatedBy == ada.ID {
+			linkID = f.ID
 		}
 	}
-	if pendingID == "" {
-		t.Fatal("pending link missing")
+	if linkID == "" {
+		t.Fatal("member link missing")
 	}
 	if _, err := st.AddArchiveFile(song.ID, ArchiveKindLink, "", "nope", []byte("x")); err == nil {
 		t.Fatal("file upload as link")
@@ -1590,34 +1590,20 @@ func TestArchiveApproval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pending, err := st.CreateMemberArchiveItem("New Tune", "", ada.ID)
-	if err != nil || pending.Status != ArchiveStatusPending {
-		t.Fatalf("pending song %+v %v", pending, err)
+	song, err := st.CreateMemberArchiveItem("New Tune", "", ada.ID)
+	if err != nil || song.Status != ArchiveStatusAccepted {
+		t.Fatalf("member song %+v %v", song, err)
 	}
 	mp3 := []byte{0xFF, 0xFB, 0x90, 0x00, 'I', 'D', '3'}
-	withFile, err := st.AddMemberArchiveFile(pending.ID, ArchiveKindAudio, "choir", "demo.mp3", ada.ID, mp3)
-	if err != nil || len(withFile.Files) != 1 || withFile.Files[0].Status != ArchiveStatusPending {
-		t.Fatalf("pending file %+v %v", withFile, err)
+	withFile, err := st.AddMemberArchiveFile(song.ID, ArchiveKindAudio, "choir", "demo.mp3", ada.ID, mp3)
+	if err != nil || len(withFile.Files) != 1 || withFile.Files[0].Status != ArchiveStatusAccepted {
+		t.Fatalf("member file %+v %v", withFile, err)
 	}
-	if err := st.MemberCanDownloadArchiveFile(ada.ID, pending.ID, withFile.Files[0].ID); err != nil {
+	if err := st.MemberCanDownloadArchiveFile(ada.ID, song.ID, withFile.Files[0].ID); err != nil {
 		t.Fatalf("uploader should hear own file %v", err)
 	}
-	if err := st.MemberCanDownloadArchiveFile(ben.ID, pending.ID, withFile.Files[0].ID); err == nil {
-		t.Fatal("others should not download pending material")
-	}
-	accepted, err := st.AcceptArchiveItem(pending.ID)
-	if err != nil || accepted.Status != ArchiveStatusAccepted {
-		t.Fatalf("accept song %+v %v", accepted, err)
-	}
-	if err := st.MemberCanDownloadArchiveFile(ben.ID, pending.ID, withFile.Files[0].ID); err == nil {
-		t.Fatal("pending file still blocked after song accept")
-	}
-	ready, err := st.AcceptArchiveFile(pending.ID, withFile.Files[0].ID)
-	if err != nil || ready.Files[0].Status != ArchiveStatusAccepted {
-		t.Fatalf("accept file %+v %v", ready, err)
-	}
-	if err := st.MemberCanDownloadArchiveFile(ben.ID, pending.ID, withFile.Files[0].ID); err != nil {
-		t.Fatalf("accepted file should download %v", err)
+	if err := st.MemberCanDownloadArchiveFile(ben.ID, song.ID, withFile.Files[0].ID); err != nil {
+		t.Fatalf("others should download immediately %v", err)
 	}
 }
 
