@@ -750,6 +750,44 @@ function dateIsUpcoming(d) {
   return !!(d && d.status !== "cancelled" && dateIsCurrent(d));
 }
 
+function dateHasEnded(d) {
+  if (!d) return true;
+  const now = Date.now();
+  if (d.pollOpen && (d.options || []).length) {
+    return d.options.every((o) => o.endsAt && dateMoment(o.endsAt) < now);
+  }
+  return !!(d.endsAt && dateMoment(d.endsAt) < now);
+}
+
+function startOfLocalDay(ts) {
+  const d = new Date(ts);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+function addLocalDays(dayTs, n) {
+  const d = new Date(dayTs);
+  d.setDate(d.getDate() + n);
+  return d.getTime();
+}
+
+function dateAnchorDay(d) {
+  if (d.pollOpen && (d.options || []).length) {
+    const ends = (d.options || []).map((o) => dateMoment(o.endsAt)).filter(Boolean);
+    if (ends.length) return startOfLocalDay(Math.max(...ends));
+  }
+  if (d.endsAt) return startOfLocalDay(dateMoment(d.endsAt));
+  return startOfLocalDay(dateMoment(d.startsAt));
+}
+
+function nextUpOngoing(d) {
+  if (!d || dateHasEnded(d)) return false;
+  const today = startOfLocalDay(Date.now());
+  const startDay = startOfLocalDay(dateMoment(d.startsAt));
+  if (startDay > today) return false;
+  return dateIsCurrent(d) || startDay === today;
+}
+
 function visibleDates() {
   if (showPastDates) return dates || [];
   return (dates || []).filter(dateIsUpcoming);
@@ -1161,7 +1199,22 @@ function focusedDateIndex() {
 }
 
 function nextParticipatingDate() {
-  return dates.find((d) => dateIsUpcoming(d) && d.status === "accepted" && userParticipates(d)) || null;
+  const pool = (dates || [])
+    .filter((d) => d && d.status === "accepted" && userParticipates(d))
+    .slice()
+    .sort((a, b) => dateMoment(a.startsAt) - dateMoment(b.startsAt));
+  if (!pool.length) return null;
+  const ongoing = pool.filter(nextUpOngoing);
+  if (ongoing.length) return ongoing[0];
+  const today = startOfLocalDay(Date.now());
+  const done = pool.filter((d) => startOfLocalDay(dateMoment(d.startsAt)) <= today && !nextUpOngoing(d));
+  if (!done.length) return pool.find((d) => startOfLocalDay(dateMoment(d.startsAt)) > today) || null;
+  const last = done[done.length - 1];
+  const followDay = addLocalDays(dateAnchorDay(last), 1);
+  const successor = pool.find((d) => startOfLocalDay(dateMoment(d.startsAt)) === followDay);
+  if (successor) return successor;
+  if (today <= followDay) return last;
+  return pool.find((d) => startOfLocalDay(dateMoment(d.startsAt)) > followDay) || null;
 }
 
 function mapsSearchURL(location) {
