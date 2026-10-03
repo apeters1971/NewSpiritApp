@@ -32,6 +32,9 @@ func TestVoteReminderMailAndLink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := st.CreateUser("Ben", "ben@example.com", "secret1", store.RoleChoir, "Alt"); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := st.ChangeOwnPassword(lead.ID, "secret2"); err != nil {
 		t.Fatal(err)
 	}
@@ -54,18 +57,26 @@ func TestVoteReminderMailAndLink(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("lead remind %d %v", status, out)
 	}
-	if out["sent"] != float64(1) || len(box.Messages) != 1 {
+	if out["sent"] != float64(2) || len(box.Messages) != 2 {
 		t.Fatalf("sent %+v mail %+v", out, box.Messages)
 	}
 	if box.Messages[0].From != "New Spirit <notifications@newspiritgospel.de>" {
 		t.Fatalf("from %q", box.Messages[0].From)
 	}
-	if !strings.Contains(box.Messages[0].Body, "/vote/") {
-		t.Fatalf("body %q", box.Messages[0].Body)
+	body, token := "", ""
+	for _, msg := range box.Messages {
+		if !strings.Contains(msg.Body, "/vote/") {
+			t.Fatalf("body %q", msg.Body)
+		}
+		if strings.Contains(msg.Body, "Hallo Ada") {
+			body = msg.Body
+		}
 	}
-	body := box.Messages[0].Body
+	if body == "" {
+		t.Fatalf("ada mail missing %+v", box.Messages)
+	}
 	i := strings.Index(body, "/vote/")
-	token := strings.TrimSpace(strings.Split(body[i+6:], "\n")[0])
+	token = strings.TrimSpace(strings.Split(body[i+6:], "\n")[0])
 
 	c := &http.Client{}
 	status, view := doJSON(t, c, http.MethodGet, ts.URL+"/api/vote/"+token, nil)
@@ -103,5 +114,8 @@ func TestVoteReminderMailAndLink(t *testing.T) {
 	}
 	if box.Messages[0].From != "New Spirit <choir@newspiritgospel.de>" {
 		t.Fatalf("configured from %q", box.Messages[0].From)
+	}
+	if !strings.Contains(box.Messages[0].Body, "Hallo Ben") {
+		t.Fatalf("should skip yes vote %q", box.Messages[0].Body)
 	}
 }

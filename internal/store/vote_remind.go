@@ -79,6 +79,10 @@ func (s *Store) ReplaceVoteReminderLinks(dateID string) ([]VoteReminderLink, err
 	if err != nil {
 		return nil, err
 	}
+	answered, err := s.reminderAnswered(d)
+	if err != nil {
+		return nil, err
+	}
 	now := now()
 	exp := now.Add(VoteLinkLife)
 	out := make([]VoteReminderLink, 0, len(people))
@@ -100,6 +104,9 @@ func (s *Store) ReplaceVoteReminderLinks(dateID string) ([]VoteReminderLink, err
 				continue
 			}
 		}
+		if !voteNeedsReminder(e.Choice) || answered[e.UserID] {
+			continue
+		}
 		token := newID() + newID()
 		if _, err := tx.Exec(
 			`INSERT INTO vote_reminders(id, date_id, user_id, token_hash, created_at, expires_at) VALUES(?,?,?,?,?,?)`,
@@ -119,6 +126,38 @@ func (s *Store) ReplaceVoteReminderLinks(dateID string) ([]VoteReminderLink, err
 	}
 	if len(out) == 0 {
 		return nil, fmt.Errorf("no one to mail")
+	}
+	return out, nil
+}
+
+func voteNeedsReminder(choice string) bool {
+	switch choice {
+	case VoteYes, VoteMaybe, VoteNo, VoteNotExpected:
+		return false
+	default:
+		return true
+	}
+}
+
+func (s *Store) reminderAnswered(d Date) (map[string]bool, error) {
+	out := map[string]bool{}
+	if !pollOpen(d.FrozenOptionID, d.Options) {
+		return out, nil
+	}
+	ids := make([]string, 0, len(d.Options))
+	for _, o := range d.Options {
+		ids = append(ids, o.ID)
+	}
+	votes, err := s.pollVotesForOptions(ids)
+	if err != nil {
+		return nil, err
+	}
+	for _, byUser := range votes {
+		for userID, row := range byUser {
+			if !voteNeedsReminder(row.Choice) {
+				out[userID] = true
+			}
+		}
 	}
 	return out, nil
 }

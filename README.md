@@ -61,7 +61,7 @@ Tabs: **Personen**, **Kontakte**, **Termine**, **Notenarchiv**, **Kanäle**, **S
 - Create and edit people, one-time passwords, photos, contact info, and the Streamer checkbox
 - Create dates: category, location, notes, schedule, what to bring (mic, cable, stand, white/black cloth, casual), roles, and optional time polls
 - Accept or cancel a date; freeze a poll to the chosen time
-- Send a vote-reminder mail from the choir director or the controller. Each person gets a no-reply message with a one-time link (one week, then five minutes after first open)
+- Send a vote-reminder mail from the choir director or the controller. Only people on that date who have not voted yet get a one-time link (one week, then five minutes after first open)
 - Music archive (audio, lyrics, sheets) and attach titles to dates
 - Assign mixer channels 1–96
 - Accept, decline, or comment on song proposals
