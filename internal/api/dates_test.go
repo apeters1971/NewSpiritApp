@@ -47,6 +47,25 @@ func memberClient(t *testing.T, ts *httptest.Server, email, password string) *ht
 	return c
 }
 
+func controllerClient(t *testing.T, ts *httptest.Server, secret string) *http.Client {
+	t.Helper()
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &http.Client{Jar: jar}
+	body, _ := json.Marshal(map[string]string{"secret": secret})
+	res, err := c.Post(ts.URL+"/api/controller/login", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("controller login: %d", res.StatusCode)
+	}
+	return c
+}
+
 func doJSON(t *testing.T, c *http.Client, method, url string, payload any) (int, map[string]any) {
 	t.Helper()
 	var rdr io.Reader

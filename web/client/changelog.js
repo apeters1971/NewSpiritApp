@@ -1,6 +1,17 @@
 (() => {
   const ENTRIES = [
     {
+      date: "2026-10-03",
+      items: {
+        de: [
+          "Chorleitung und Verwaltung können pro Termin eine Erinnerung senden. Jede Person bekommt eine Mail mit einem Abstimmungslink. Der Absender steht unter Einstellungen (Standard: notifications@newspiritgospel.de). Der Link gilt eine Woche und nach dem ersten Öffnen noch fünf Minuten.",
+        ],
+        en: [
+          "The choir director and the controller can send a reminder on each date. Everyone gets mail with a vote link. The sender is set in Settings (default: notifications@newspiritgospel.de). The link lasts one week and, after the first open, five minutes.",
+        ],
+      },
+    },
+    {
       date: "2026-09-19",
       items: {
         de: [

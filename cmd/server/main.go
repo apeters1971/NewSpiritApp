@@ -60,6 +60,8 @@ func main() {
 		ControllerSecret:    secret,
 		CloudflareToken:     cfToken,
 		CloudflareAccountID: cfAccount,
+		MailFrom:            os.Getenv("MAIL_FROM"),
+		MailDomain:          os.Getenv("MAIL_DOMAIN"),
 	}, clientFS, controllerFS)
 	cert := strings.TrimSpace(*certFile)
 	key := strings.TrimSpace(*keyFile)

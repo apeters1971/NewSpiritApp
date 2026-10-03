@@ -71,26 +71,26 @@ type DirectoryEntry struct {
 }
 
 type Date struct {
-	ID             string       `json:"id"`
-	Title          string       `json:"title"`
-	Category       string       `json:"category"`
-	StartsAt       time.Time    `json:"startsAt"`
-	EndsAt         *time.Time   `json:"endsAt,omitempty"`
-	Location       string       `json:"location,omitempty"`
-	LocationID     string       `json:"locationId,omitempty"`
-	Venue          *DateVenue   `json:"venue,omitempty"`
-	Notes          string       `json:"notes,omitempty"`
-	Schedule       string       `json:"schedule,omitempty"`
-	Status         string       `json:"status"`
-	Roles          []string     `json:"roles"`
-	Bring          Bring        `json:"bring"`
-	FrozenOptionID string       `json:"frozenOptionId,omitempty"`
-	PollOpen       bool         `json:"pollOpen"`
-	Options        []PollOption `json:"options"`
-	CreatedAt      time.Time    `json:"createdAt"`
-	CreatedBy      string       `json:"createdBy,omitempty"`
-	NeededIDs      []string     `json:"neededIds,omitempty"`
-	NeededRoles    []string     `json:"neededRoles,omitempty"`
+	ID             string         `json:"id"`
+	Title          string         `json:"title"`
+	Category       string         `json:"category"`
+	StartsAt       time.Time      `json:"startsAt"`
+	EndsAt         *time.Time     `json:"endsAt,omitempty"`
+	Location       string         `json:"location,omitempty"`
+	LocationID     string         `json:"locationId,omitempty"`
+	Venue          *DateVenue     `json:"venue,omitempty"`
+	Notes          string         `json:"notes,omitempty"`
+	Schedule       string         `json:"schedule,omitempty"`
+	Status         string         `json:"status"`
+	Roles          []string       `json:"roles"`
+	Bring          Bring          `json:"bring"`
+	FrozenOptionID string         `json:"frozenOptionId,omitempty"`
+	PollOpen       bool           `json:"pollOpen"`
+	Options        []PollOption   `json:"options"`
+	CreatedAt      time.Time      `json:"createdAt"`
+	CreatedBy      string         `json:"createdBy,omitempty"`
+	NeededIDs      []string       `json:"neededIds,omitempty"`
+	NeededRoles    []string       `json:"neededRoles,omitempty"`
 	FeeCents       int            `json:"feeCents,omitempty"`
 	FeeOverrides   map[string]int `json:"feeOverrides,omitempty"`
 }
@@ -361,6 +361,9 @@ CREATE TABLE IF NOT EXISTS settings (
 		return err
 	}
 	if err := s.migrateUserBank(); err != nil {
+		return err
+	}
+	if err := s.migrateVoteReminders(); err != nil {
 		return err
 	}
 	return s.migrateChatVoice()
@@ -1413,7 +1416,7 @@ func (s *Store) attachView(d Date, viewer *User, comments []Comment, titles []Ar
 	if err != nil {
 		return DateView{}, err
 	}
-		d.Options = attachPoll(d.Options, d.FrozenOptionID, roster, pollVotes, viewer)
+	d.Options = attachPoll(d.Options, d.FrozenOptionID, roster, pollVotes, viewer)
 	d.PollOpen = pollOpen(d.FrozenOptionID, d.Options)
 	stampVenueBooking(&d, roster)
 	countRoles := append([]string{}, d.Roles...)

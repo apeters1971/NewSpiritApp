@@ -5,6 +5,7 @@
   const dict = {
     de: {
       pageMember: "New Spirit",
+      pageVote: "Abstimmen · New Spirit",
       pageController: "Verwaltung · New Spirit",
       brand: "New Spirit",
       brandController: "New Spirit · Verwaltung",
@@ -132,6 +133,9 @@
       errAdminAliasLong: "Chat-Name ist zu lang",
       newsTicker: "Lauftext",
       newsTickerHint: "Erscheint unter der Tab-Leiste bei allen Mitgliedern. Leer lassen zum Ausblenden.",
+      mailFrom: "Absender der Erinnerungen",
+      mailFromHint: "Diese Adresse steht als Absender in den Abstimmungs-Mails. Leer lassen für die Standardadresse.",
+      errMailFrom: "Ungültige Absenderadresse",
       feedNeedPhoto: "Bitte lade ein Profilbild hoch!",
       feedNeedAddress: "Bitte ergänze deine Adressdaten!",
       feedNeedVote: "Bitte stimme noch ab: {titles}",
@@ -250,6 +254,17 @@
       noUpcoming: "Keine kommenden Termine.",
       showPastDates: "Vergangene Termine",
       errVoteClosed: "Abstimmung ist geschlossen",
+      sendVoteReminder: "Erinnerung senden",
+      sendVoteReminderConfirm: "Abstimmungslink an alle Personen dieses Termins senden?",
+      voteReminderSent: "Erinnerung an {n} Personen gesendet.",
+      voteReminderPartial: "Erinnerung an {n} Personen gesendet, {failed} fehlgeschlagen.",
+      voteLinkHint: "Der Link gilt eine Woche. Nach dem ersten Öffnen bleiben fünf Minuten.",
+      voteThanks: "Danke, deine Stimme ist gespeichert.",
+      voteHello: "Hallo {name}",
+      errVoteLink: "Dieser Abstimmungs-Link ist abgelaufen oder ungültig.",
+      errMailFailed: "Die Mails konnten nicht gesendet werden",
+      errNoMailRecipients: "Niemand mit E-Mail auf diesem Termin",
+      errRemindForbidden: "Nur die Chorleitung kann Erinnerungen senden",
       voteNeeded: "Noch keine Stimme (Ja / Vielleicht / Nein)",
       noDatesRole: "Noch keine Termine für deine Rolle.",
       noDatesYet: "Noch keine Termine.",
@@ -633,6 +648,7 @@
     },
     en: {
       pageMember: "New Spirit",
+      pageVote: "Vote · New Spirit",
       pageController: "Controller · New Spirit",
       brand: "New Spirit",
       brandController: "New Spirit · Controller",
@@ -760,6 +776,9 @@
       errAdminAliasLong: "Chat name is too long",
       newsTicker: "News ticker",
       newsTickerHint: "Shown under the tab bar for every member. Leave empty to hide it.",
+      mailFrom: "Reminder sender",
+      mailFromHint: "This address is the From on vote-reminder mail. Leave empty for the default address.",
+      errMailFrom: "Invalid sender address",
       feedNeedPhoto: "Please upload a profile picture!",
       feedNeedAddress: "Please complete your address information!",
       feedNeedVote: "Please vote on: {titles}",
@@ -878,6 +897,17 @@
       noUpcoming: "No upcoming dates.",
       showPastDates: "Past dates",
       errVoteClosed: "Voting is closed",
+      sendVoteReminder: "Send reminder",
+      sendVoteReminderConfirm: "Send a vote link to everyone on this date?",
+      voteReminderSent: "Reminder sent to {n} people.",
+      voteReminderPartial: "Reminder sent to {n} people, {failed} failed.",
+      voteLinkHint: "The link lasts one week. After you open it the first time, five minutes remain.",
+      voteThanks: "Thanks, your vote is saved.",
+      voteHello: "Hello {name}",
+      errVoteLink: "This vote link has expired or is not valid.",
+      errMailFailed: "The messages could not be sent",
+      errNoMailRecipients: "Nobody on this date has an email",
+      errRemindForbidden: "Only the choir director can send reminders",
       voteNeeded: "No Yes / Maybe / No vote yet",
       noDatesRole: "No dates for your role yet.",
       noDatesYet: "No dates yet.",
@@ -1272,6 +1302,11 @@
     "comment is too long": "errCommentLong",
     "invalid vote": "errVote",
     "voting is closed": "errVoteClosed",
+    "vote link expired": "errVoteLink",
+    "mail failed": "errMailFailed",
+    "invalid mail from": "errMailFrom",
+    "no one to mail": "errNoMailRecipients",
+    "only the choir director can send reminders": "errRemindForbidden",
     "not found": "errNotFound",
     "title is required": "errTitle",
     "at least one role is required": "errRoles",
@@ -1389,6 +1424,10 @@
     if (raw.includes("nickname or email already exists")) return t("errExists");
     if (raw.includes("already")) return t("errAlreadyFinal");
     if (raw.includes("voting is locked")) return t("errLocked");
+    if (raw.includes("vote link expired")) return t("errVoteLink");
+    if (raw.includes("only the choir director can send reminders")) return t("errRemindForbidden");
+    if (raw.includes("no one to mail")) return t("errNoMailRecipients");
+    if (raw.includes("mail failed")) return t("errMailFailed");
     if (raw.includes("this chat is not for your role")) return t("errChatRoom");
     if (raw.includes("cannot chat with yourself")) return t("errChatSelf");
     if (raw.includes("this person is not online")) return t("errChatOffline");

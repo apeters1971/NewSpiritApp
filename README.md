@@ -61,6 +61,7 @@ Tabs: **Personen**, **Kontakte**, **Termine**, **Notenarchiv**, **Kanäle**, **S
 - Create and edit people, one-time passwords, photos, contact info, and the Streamer checkbox
 - Create dates: category, location, notes, schedule, what to bring (mic, cable, stand, white/black cloth, casual), roles, and optional time polls
 - Accept or cancel a date; freeze a poll to the chosen time
+- Send a vote-reminder mail from the choir director or the controller. Each person gets a no-reply message with a one-time link (one week, then five minutes after first open)
 - Music archive (audio, lyrics, sheets) and attach titles to dates
 - Assign mixer channels 1–96
 - Accept, decline, or comment on song proposals
@@ -98,6 +99,8 @@ Yes = 2, Maybe = 1, No = 0 for the choir ranking. Switching from Yes to No later
 | `DATA_DIR` | `data` | SQLite directory (`data/spirit.db`) |
 | `TLS_CERT` | _(empty)_ | Certificate PEM; enables HTTPS |
 | `TLS_KEY` | _(empty)_ | Private key PEM (or a sibling of `TLS_CERT`) |
+| `MAIL_FROM` | `notifications@newspiritgospel.de` | Fallback From for reminders when Settings has no sender |
+| `SENDMAIL_PATH` | `/usr/sbin/sendmail` | sendmail binary (AlmaLinux / Postfix) |
 
 `data/` is gitignored. Cookies are `spirit_session` (members) and `spirit_controller` (admin).
 

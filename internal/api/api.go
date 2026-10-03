@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/apeters/newspirit/internal/hub"
+	"github.com/apeters/newspirit/internal/mail"
 	"github.com/apeters/newspirit/internal/store"
 	"github.com/gorilla/websocket"
 )
@@ -29,6 +30,9 @@ type Server struct {
 	ControllerSecret    string
 	CloudflareToken     string
 	CloudflareAccountID string
+	Mailer              mail.Sender
+	MailFrom            string
+	MailDomain          string
 	ClientFS            fs.FS
 	ControllerFS        fs.FS
 	upgrader            websocket.Upgrader
@@ -42,6 +46,9 @@ type Options struct {
 	ControllerSecret    string
 	CloudflareToken     string
 	CloudflareAccountID string
+	Mailer              mail.Sender
+	MailFrom            string
+	MailDomain          string
 }
 
 func New(st *store.Store, h *hub.Hub, opt Options, clientFS, controllerFS fs.FS) *Server {
@@ -51,6 +58,9 @@ func New(st *store.Store, h *hub.Hub, opt Options, clientFS, controllerFS fs.FS)
 		ControllerSecret:    opt.ControllerSecret,
 		CloudflareToken:     strings.TrimSpace(opt.CloudflareToken),
 		CloudflareAccountID: strings.TrimSpace(opt.CloudflareAccountID),
+		Mailer:              opt.Mailer,
+		MailFrom:            strings.TrimSpace(opt.MailFrom),
+		MailDomain:          strings.TrimSpace(opt.MailDomain),
 		ClientFS:            clientFS,
 		ControllerFS:        controllerFS,
 		dms:                 map[string][]store.ChatMessage{},
@@ -81,6 +91,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/dates/{id}", s.handleMemberDeleteDate)
 	mux.HandleFunc("POST /api/dates/{id}/status", s.handleMemberDateStatus)
 	mux.HandleFunc("POST /api/dates/{id}/freeze", s.handleMemberFreezePoll)
+	mux.HandleFunc("POST /api/dates/{id}/remind", s.handleMemberVoteRemind)
 	mux.HandleFunc("POST /api/dates/{id}/vote", s.handleVote)
 	mux.HandleFunc("POST /api/dates/{id}/poll", s.handlePollVote)
 	mux.HandleFunc("POST /api/dates/{id}/comments", s.handleAddComment)
@@ -131,6 +142,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/locations", s.handleLocations)
 	mux.HandleFunc("GET /api/me/calendar", s.handleMeCalendar)
 	mux.HandleFunc("GET /api/stream", s.handleStreamStatus)
+	mux.HandleFunc("GET /api/vote/{token}", s.handleVoteLink)
+	mux.HandleFunc("POST /api/vote/{token}", s.handleVoteLinkCast)
+	mux.HandleFunc("GET /vote/{token}", s.handleVotePage)
 	mux.HandleFunc("GET /calendar/{token}", s.handleCalendarFeed)
 	mux.HandleFunc("GET /ws/client", s.handleMemberWS)
 
@@ -152,6 +166,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/controller/dates/{id}", s.handleDeleteDate)
 	mux.HandleFunc("POST /api/controller/dates/{id}/status", s.handleDateStatus)
 	mux.HandleFunc("POST /api/controller/dates/{id}/attendance", s.handleControllerAttendance)
+	mux.HandleFunc("POST /api/controller/dates/{id}/remind", s.handleControllerVoteRemind)
 	mux.HandleFunc("POST /api/controller/dates/{id}/vote", s.handleControllerVote)
 	mux.HandleFunc("POST /api/controller/dates/{id}/freeze", s.handleFreezePoll)
 	mux.HandleFunc("GET /api/controller/dates/{id}/gallery", s.handleControllerGalleryList)
@@ -227,7 +242,7 @@ func (s *Server) withPasswordGate(next http.Handler) http.Handler {
 func (s *Server) blocksUntilPasswordChange(r *http.Request) bool {
 	p := r.URL.Path
 	switch {
-	case strings.HasPrefix(p, "/api/controller"), p == "/api/login", p == "/api/logout", p == "/api/catalog", p == "/api/me", p == "/api/me/password":
+	case strings.HasPrefix(p, "/api/controller"), strings.HasPrefix(p, "/api/vote/"), p == "/api/login", p == "/api/logout", p == "/api/catalog", p == "/api/me", p == "/api/me/password":
 		return false
 	case strings.HasPrefix(p, "/api/"), strings.HasPrefix(p, "/ws/"):
 		return true
@@ -283,7 +298,6 @@ func (s *Server) requireController(w http.ResponseWriter, r *http.Request) bool 
 	}
 	return true
 }
-
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var body struct {
@@ -1568,22 +1582,23 @@ func (s *Server) handleControllerState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"users":      users,
-		"dates":      dates,
-		"locations":  locations,
-		"online":     s.Hub.OnlineCount(),
-		"ranking":    rank,
-		"adminAlias": s.Store.AdminAlias(),
-		"newsTicker": s.Store.NewsTicker(),
-		"archive":      archive,
+		"users":          users,
+		"dates":          dates,
+		"locations":      locations,
+		"online":         s.Hub.OnlineCount(),
+		"ranking":        rank,
+		"adminAlias":     s.Store.AdminAlias(),
+		"newsTicker":     s.Store.NewsTicker(),
+		"mailFrom":       s.mailFrom(),
+		"archive":        archive,
 		"archiveTrash":   map[string]any{"items": trashItems, "files": trashFiles},
 		"archiveDropbox": dropbox,
 		"archiveAuto":    s.archiveAutoEnabled(),
-		"channels":   channels,
-		"proposals":  proposals,
-		"choirSoli":  choirSoli,
-		"unread":     unread,
-		"birthdays":  birthdays,
+		"channels":       channels,
+		"proposals":      proposals,
+		"choirSoli":      choirSoli,
+		"unread":         unread,
+		"birthdays":      birthdays,
 	})
 }
 
@@ -1594,6 +1609,7 @@ func (s *Server) handleControllerSettings(w http.ResponseWriter, r *http.Request
 	var body struct {
 		AdminAlias string `json:"adminAlias"`
 		NewsTicker string `json:"newsTicker"`
+		MailFrom   string `json:"mailFrom"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json")
@@ -1609,8 +1625,16 @@ func (s *Server) handleControllerSettings(w http.ResponseWriter, r *http.Request
 		writeStoreError(w, err)
 		return
 	}
+	from, err := s.Store.SetMailFrom(body.MailFrom)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if from == "" {
+		from = s.mailFrom()
+	}
 	s.Hub.Broadcast(hub.Envelope{Type: "changed"})
-	writeJSON(w, http.StatusOK, map[string]any{"adminAlias": alias, "newsTicker": ticker})
+	writeJSON(w, http.StatusOK, map[string]any{"adminAlias": alias, "newsTicker": ticker, "mailFrom": from})
 }
 
 func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
@@ -1618,13 +1642,13 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Nickname string `json:"nickname"`
-		Email    string `json:"email"`
-		Password string `json:"password"`
-		Role     string `json:"role"`
-		Subrole  string `json:"subrole"`
-		Address  string `json:"address"`
-		Phone    string `json:"phone"`
+		Nickname    string `json:"nickname"`
+		Email       string `json:"email"`
+		Password    string `json:"password"`
+		Role        string `json:"role"`
+		Subrole     string `json:"subrole"`
+		Address     string `json:"address"`
+		Phone       string `json:"phone"`
 		Birthday    string `json:"birthday"`
 		AltEmail    string `json:"altEmail"`
 		MemberSince string `json:"memberSince"`
@@ -1766,22 +1790,22 @@ type pollOptionBody struct {
 }
 
 type dateBody struct {
-	Title      string                 `json:"title"`
-	Category   string                 `json:"category"`
-	StartsAt   string                 `json:"startsAt"`
-	EndsAt     string                 `json:"endsAt"`
-	Location   string                 `json:"location"`
-	LocationID string                 `json:"locationId"`
-	Notes      string                 `json:"notes"`
-	Schedule string                 `json:"schedule"`
-	Roles    []string               `json:"roles"`
-	Bring    store.Bring            `json:"bring"`
-	Options  []pollOptionBody       `json:"options"`
-	TitleIDs []string               `json:"titleIds"`
-	Titles   []store.DateTitleInput `json:"titles"`
-	Needed       *dateNeededBody `json:"needed"`
-	FeeCents     *int            `json:"feeCents"`
-	FeeOverrides *map[string]int `json:"feeOverrides"`
+	Title        string                 `json:"title"`
+	Category     string                 `json:"category"`
+	StartsAt     string                 `json:"startsAt"`
+	EndsAt       string                 `json:"endsAt"`
+	Location     string                 `json:"location"`
+	LocationID   string                 `json:"locationId"`
+	Notes        string                 `json:"notes"`
+	Schedule     string                 `json:"schedule"`
+	Roles        []string               `json:"roles"`
+	Bring        store.Bring            `json:"bring"`
+	Options      []pollOptionBody       `json:"options"`
+	TitleIDs     []string               `json:"titleIds"`
+	Titles       []store.DateTitleInput `json:"titles"`
+	Needed       *dateNeededBody        `json:"needed"`
+	FeeCents     *int                   `json:"feeCents"`
+	FeeOverrides *map[string]int        `json:"feeOverrides"`
 }
 
 type dateNeededBody struct {

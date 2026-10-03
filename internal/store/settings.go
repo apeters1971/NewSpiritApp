@@ -3,13 +3,17 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"net/mail"
+	"strings"
 )
 
 const (
 	SettingAdminAlias = "admin_alias"
 	SettingNewsTicker = "news_ticker"
+	SettingMailFrom   = "mail_from"
 	maxAdminAlias     = 40
 	maxNewsTicker     = 400
+	maxMailFrom       = 254
 )
 
 func NormalizeAdminAlias(alias string) (string, error) {
@@ -88,6 +92,53 @@ func (s *Store) SetNewsTicker(text string) (string, error) {
 		return "", err
 	}
 	return text, nil
+}
+
+func NormalizeMailFrom(from string) (string, error) {
+	from = strings.TrimSpace(from)
+	if from == "" {
+		return "", nil
+	}
+	addr, err := mail.ParseAddress(from)
+	if err != nil || addr.Address == "" {
+		return "", fmt.Errorf("invalid mail from")
+	}
+	from = NormalizeEmail(addr.Address)
+	if from == "" || !strings.Contains(from, "@") {
+		return "", fmt.Errorf("invalid mail from")
+	}
+	if len(from) > maxMailFrom {
+		return "", fmt.Errorf("invalid mail from")
+	}
+	return from, nil
+}
+
+func (s *Store) MailFrom() string {
+	var value string
+	err := s.db.QueryRow(`SELECT value FROM settings WHERE key=?`, SettingMailFrom).Scan(&value)
+	if err != nil {
+		return ""
+	}
+	from, err := NormalizeMailFrom(value)
+	if err != nil {
+		return ""
+	}
+	return from
+}
+
+func (s *Store) SetMailFrom(from string) (string, error) {
+	from, err := NormalizeMailFrom(from)
+	if err != nil {
+		return "", err
+	}
+	_, err = s.db.Exec(
+		`INSERT INTO settings(key, value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+		SettingMailFrom, from,
+	)
+	if err != nil {
+		return "", err
+	}
+	return from, nil
 }
 
 func (s *Store) withAdminAlias(msgs []ChatMessage) []ChatMessage {

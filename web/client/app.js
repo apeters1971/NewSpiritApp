@@ -608,6 +608,7 @@ function dateMenuHTML(date) {
     dateMapQuery(date) ? dateMenuItem("data-map", date.id, I18N.t("directions")) : "",
     date.schedule ? dateMenuItem("data-schedule", date.id, I18N.t("schedule")) : "",
     dateShowsPromo(date) ? dateMenuItem("data-promo", date.id, I18N.t("promo"), date.promoCount) : "",
+    canSendVoteReminder(date) ? dateMenuItem("data-remind", date.id, I18N.t("sendVoteReminder")) : "",
     plannerMenuItems(date),
   ].join("");
   const menuLabel = escapeHtml(I18N.t("menu"));
@@ -639,6 +640,7 @@ function dateToolIcons(date) {
     dateToolBtn("data-gallery", date.id, I18N.t("gallery"), "gallery", date.galleryCount),
     dateMapQuery(date) ? dateToolBtn("data-map", date.id, I18N.t("directions"), "map") : "",
     date.schedule ? dateToolBtn("data-schedule", date.id, I18N.t("schedule"), "schedule") : "",
+    canSendVoteReminder(date) ? dateToolBtn("data-remind", date.id, I18N.t("sendVoteReminder"), "mail") : "",
   ].join("");
 }
 
@@ -823,6 +825,21 @@ function isLocationOwner() {
 
 function isChoirDirector() {
   return me?.role === "chorleiter";
+}
+
+function canSendVoteReminder(date) {
+  return isChoirDirector() && dateAllowsVote(date);
+}
+
+async function sendVoteReminder(id) {
+  if (!id || !confirm(I18N.t("sendVoteReminderConfirm"))) return;
+  const data = await api(`/api/dates/${encodeURIComponent(id)}/remind`, { method: "POST" });
+  const sent = data.sent || 0;
+  const failed = data.failed || 0;
+  const msg = failed
+    ? I18N.t("voteReminderPartial").replace("{n}", String(sent)).replace("{failed}", String(failed))
+    : I18N.t("voteReminderSent").replace("{n}", String(sent));
+  alert(msg);
 }
 
 function isLeadRoom(room) {
@@ -3739,6 +3756,15 @@ document.getElementById("next-up").addEventListener("click", async (e) => {
     await openPromo(promoBtn.dataset.promo);
     return;
   }
+  const remindBtn = e.target.closest("[data-remind]");
+  if (remindBtn) {
+    try {
+      await sendVoteReminder(remindBtn.dataset.remind);
+    } catch (err) {
+      alert(err.message);
+    }
+    return;
+  }
   const eventChat = e.target.closest("[data-event-chat]");
   if (!eventChat || isLocationOwner()) return;
   const date = dates.find((d) => d.id === eventChat.dataset.eventChat);
@@ -3818,6 +3844,15 @@ datesEl.addEventListener("click", async (e) => {
   const promoBtn = e.target.closest("button[data-promo]");
   if (promoBtn) {
     await openPromo(promoBtn.dataset.promo);
+    return;
+  }
+  const remindBtn = e.target.closest("button[data-remind]");
+  if (remindBtn) {
+    try {
+      await sendVoteReminder(remindBtn.dataset.remind);
+    } catch (err) {
+      alert(err.message);
+    }
     return;
   }
   const eventChat = e.target.closest("button[data-event-chat]");

@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#10161c" />
+  <title data-i18n-page="pageVote">Abstimmen · New Spirit</title>
+  <link rel="icon" href="/static/nsgc-symbol.png" type="image/png" />
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body class="vote-page">
+  <section class="gate">
+    <div class="gate-card vote-card">
+      <div class="gate-tools">
+        <div class="lang-switch" role="group" data-i18n-aria="lang">
+          <button type="button" class="lang-btn" data-lang="de">DE</button>
+          <button type="button" class="lang-btn" data-lang="en">EN</button>
+        </div>
+      </div>
+      <img class="logo logo-login" src="/static/nsgc-symbol.png" alt="New Spirit Gospel Choir" />
+      <p class="brand" data-i18n="brand">New Spirit</p>
+      <p id="vote-hello" class="lede"></p>
+      <h1 id="vote-title"></h1>
+      <p id="vote-when" class="muted"></p>
+      <p id="vote-location" class="muted"></p>
+      <p id="vote-hint" class="muted" data-i18n="voteLinkHint">Der Link gilt eine Woche. Nach dem ersten Öffnen bleiben fünf Minuten.</p>
+      <div id="vote-box"></div>
+      <p id="vote-ok" class="ok" hidden data-i18n="voteThanks">Danke, deine Stimme ist gespeichert.</p>
+      <p id="vote-error" class="error" hidden></p>
+    </div>
+  </section>
+  <script src="/static/i18n.js"></script>
+  <script src="/static/vote.js"></script>
+</body>
+</html>

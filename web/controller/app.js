@@ -888,6 +888,7 @@ function resetDateForm() {
   if (pickSearch) pickSearch.value = "";
   clearTitleNewForm();
   document.getElementById("btn-date-delete").disabled = true;
+  paintDateRemind();
   renderDates();
   renderDateTitles();
   showError(dateError, "");
@@ -921,9 +922,17 @@ function fillDateForm(d) {
   if (pickSearch) pickSearch.value = "";
   clearTitleNewForm();
   document.getElementById("btn-date-delete").disabled = false;
+  paintDateRemind();
   renderDates();
   renderDateTitles();
   captureDateForm();
+}
+
+function paintDateRemind() {
+  const btn = document.getElementById("btn-date-remind");
+  if (!btn) return;
+  const d = state.dates.find((x) => x.id === selectedDate);
+  btn.disabled = !d || d.status === "cancelled";
 }
 
 function dateShowsPromo(d) {
@@ -998,9 +1007,12 @@ function paintBirthdays() {
 function fillSettingsForm() {
   const input = document.getElementById("admin-alias");
   const ticker = document.getElementById("news-ticker");
-  if (!input || !ticker) return;
+  const mailFrom = document.getElementById("mail-from");
+  if (!input || !ticker || !mailFrom) return;
   input.value = state.adminAlias || "Admin";
   ticker.value = state.newsTicker || "";
+  mailFrom.value = state.mailFrom || "";
+  mailFrom.placeholder = "notifications@newspiritgospel.de";
   showError(document.getElementById("settings-error"), "");
 }
 
@@ -2201,6 +2213,22 @@ document.getElementById("date-form").addEventListener("submit", async (e) => {
       : await api("/api/controller/dates", { method: "POST", body: JSON.stringify(body) });
     await loadState();
     fillDateForm(data.date);
+  } catch (err) {
+    showError(dateError, err.message);
+  }
+});
+
+document.getElementById("btn-date-remind").addEventListener("click", async () => {
+  const id = document.getElementById("date-id").value;
+  if (!id || !confirm(I18N.t("sendVoteReminderConfirm"))) return;
+  showError(dateError, "");
+  try {
+    const data = await api(`/api/controller/dates/${encodeURIComponent(id)}/remind`, { method: "POST" });
+    const sent = data.sent || 0;
+    const failed = data.failed || 0;
+    alert(failed
+      ? I18N.t("voteReminderPartial").replace("{n}", String(sent)).replace("{failed}", String(failed))
+      : I18N.t("voteReminderSent").replace("{n}", String(sent)));
   } catch (err) {
     showError(dateError, err.message);
   }
@@ -3525,10 +3553,12 @@ document.getElementById("settings-form").addEventListener("submit", async (e) =>
       body: JSON.stringify({
         adminAlias: document.getElementById("admin-alias").value,
         newsTicker: document.getElementById("news-ticker").value,
+        mailFrom: document.getElementById("mail-from").value,
       }),
     });
     state.adminAlias = data.adminAlias || "Admin";
     state.newsTicker = data.newsTicker || "";
+    state.mailFrom = data.mailFrom || "";
     fillSettingsForm();
     chatMessages.forEach((m) => {
       if (m.isAdmin) m.nickname = state.adminAlias;

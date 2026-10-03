@@ -825,6 +825,23 @@ func TestChatRoom(t *testing.T) {
 	if _, err := st.SetNewsTicker(strings.Repeat("x", 401)); err == nil {
 		t.Fatal("expected long ticker error")
 	}
+	if got := st.MailFrom(); got != "" {
+		t.Fatalf("default mail from %q", got)
+	}
+	from, err := st.SetMailFrom("  Choir@NewSpiritGospel.de  ")
+	if err != nil || from != "choir@newspiritgospel.de" {
+		t.Fatalf("set mail from %q %v", from, err)
+	}
+	if got := st.MailFrom(); got != "choir@newspiritgospel.de" {
+		t.Fatalf("read mail from %q", got)
+	}
+	clearedFrom, err := st.SetMailFrom("   ")
+	if err != nil || clearedFrom != "" {
+		t.Fatalf("clear mail from %q %v", clearedFrom, err)
+	}
+	if _, err := st.SetMailFrom("not-an-email"); err == nil {
+		t.Fatal("expected invalid mail from")
+	}
 
 	edited, err := st.UpdateChatMessage(ada.ID, RoleChoir, msg.ID, "  Hello choir  ", false)
 	if err != nil || edited.Text != "Hello choir" {

@@ -251,6 +251,7 @@
           <div class="drawer-actions">
             <button type="submit" id="btn-date-save" class="btn" data-i18n="save">Speichern</button>
             <button type="button" id="btn-date-new" class="btn ghost" data-i18n="newDate">Neuer Termin</button>
+            <button type="button" id="btn-date-remind" class="btn ghost" data-i18n="sendVoteReminder" disabled>Erinnerung senden</button>
             <button type="button" id="btn-date-delete" class="btn ghost danger" data-i18n="delete" disabled>Löschen</button>
           </div>
           <div id="date-finalize" class="finalize" hidden>
@@ -507,6 +508,9 @@
         <label for="news-ticker" data-i18n="newsTicker">Lauftext</label>
         <p class="muted" data-i18n="newsTickerHint">Erscheint unter der Tab-Leiste bei allen Mitgliedern. Leer lassen zum Ausblenden.</p>
         <textarea id="news-ticker" maxlength="400" rows="3"></textarea>
+        <label for="mail-from" data-i18n="mailFrom">Absender der Erinnerungen</label>
+        <p class="muted" data-i18n="mailFromHint">Diese Adresse steht als Absender in den Abstimmungs-Mails. Leer lassen für die Standardadresse.</p>
+        <input id="mail-from" type="email" maxlength="254" autocomplete="off" />
         <p id="settings-error" class="error" hidden></p>
         <div class="drawer-actions">
           <button type="submit" class="btn" data-i18n="save">Speichern</button>
